@@ -1,0 +1,55 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Isolated React hook verification. */
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const vm=require('node:vm');
+const ts=require('typescript');
+const viem=require('viem');
+const {JSDOM}=require('jsdom');
+const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost:3000'});
+global.window=dom.window;global.document=dom.window.document;global.IS_REACT_ACT_ENVIRONMENT=true;
+Object.defineProperty(global,'navigator',{configurable:true,value:dom.window.navigator});
+const React=require('react'),{createRoot}=require('react-dom/client');
+const A='0x1111111111111111111111111111111111111111',B='0x2222222222222222222222222222222222222222',TOKEN='0x3333333333333333333333333333333333333333',USDT='0x4444444444444444444444444444444444444444',SALE='0x5555555555555555555555555555555555555555';
+const abi=viem.parseAbi(['function subscribe(uint256,address)']);
+const request={address:SALE,abi,functionName:'subscribe',args:[1n,viem.zeroAddress],description:'fixture purchase',approval:{token:USDT,amount:50n}};
+let count=0;
+function passed(name){count++;console.log('PASS '+name);}
+async function setup({allowance=0n,behavior=[],rejectAction=false}={}){
+ const root=createRoot(document.getElementById('root')),store={state:{connected:true,address:A,chainId:56}},storage=new Map(),sent=[],events=[];
+ let controller,sequence=0,network=56;const actual=new Map(),deferred=new Map();
+ const provider={request:async({method})=>method==='eth_accounts'?[store.state.address]:undefined};
+ const wallet={getConnection:()=>({address:store.state.address,provider}),getChainId:async()=>store.state.chainId};
+ const client={getChainId:async()=>network,getCode:async()=>'0x1234',readContract:async()=>allowance,simulateContract:async request=>({request}),getTransaction:async({hash})=>actual.get(hash),waitForTransactionReceipt:async({hash})=>{
+   const mode=behavior.shift()||'success';if(mode==='timeout')throw new Error('fixture timeout');if(mode==='hold')return await new Promise(resolve=>deferred.set(hash,resolve));if(mode==='cancel'){actual.set(hash,{...actual.get(hash),input:'0x12345678'});}return {status:mode==='revert'?'reverted':'success',transactionHash:hash};
+ }};
+ const filename=path.resolve(__dirname,'../src/lib/contract-transactions.tsx'),runtimeModule={exports:{}};
+ const replacements={react:React,'./chain-config':{appChain:{id:56},chainConfig:{id:56,shortName:'BSC',rpcUrls:['http://isolated.fixture']},chainConfigurationValid:true,contracts:{token:TOKEN,usdt:USDT,sale:SALE},getExplorerTxUrl:hash=>'http://explorer.fixture/'+hash},'./wallet':wallet,'./chain-audit':{recordChainAudit:()=>{}},'./store':{useStore:()=>store},viem:{...viem,createPublicClient:()=>client,createWalletClient:()=>({writeContract:async payload=>{if(rejectAction&&payload.functionName!=='approve')throw new Error('User rejected action');const hash='0x'+(++sequence).toString(16).padStart(64,'0');sent.push({...payload,hash});actual.set(hash,{from:payload.account,to:payload.address,input:viem.encodeFunctionData(payload),value:0n});return hash;}})}};
+ vm.runInNewContext(ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{module:runtimeModule,exports:runtimeModule.exports,require:name=>Object.hasOwn(replacements,name)?replacements[name]:require(name),window:{setTimeout,clearTimeout,dispatchEvent:event=>{events.push(event.type);}},Event:dom.window.Event,localStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setTimeout,clearTimeout,console},{filename});
+ const hook=runtimeModule.exports.useContractTransaction;
+ function Probe(){controller=hook('fixture');return null;}
+ async function render(){await React.act(async()=>{root.render(React.createElement(Probe,{revision:Math.random()}));await new Promise(resolve=>setTimeout(resolve,5));});}
+ await render();
+ return {sent,events,storage,behavior,actual,deferred,controller:()=>controller,run:async input=>{let result;await React.act(async()=>{result=await controller.run(input||request);});return result;},resume:async()=>{let result;await React.act(async()=>{result=await controller.resume();});return result;},switchAccount:async address=>{store.state={...store.state,address};await render();},setNetwork:value=>{network=value;},unmount:async()=>{await React.act(async()=>root.unmount());}};
+}
+async function main(){
+ let fixture=await setup();let hash=await fixture.run();assert(hash);assert.equal(fixture.sent.length,2);assert.equal(fixture.sent[0].functionName,'approve');assert.equal(fixture.sent[0].args[1],50n);assert.equal(fixture.sent[1].functionName,'subscribe');assert.equal(fixture.controller().transaction.phase,'action');assert.equal(fixture.controller().transaction.status,'success');assert.equal(fixture.events.filter(type=>type==='cabi-chain-updated').length,2);await fixture.unmount();passed('exact approval precedes action, confirmed receipts publish chain refresh');
+ fixture=await setup({allowance:5n});await fixture.run();assert.equal(fixture.sent.length,3);assert.deepEqual(fixture.sent.slice(0,2).map(tx=>tx.args[1]),[0n,50n]);await fixture.unmount();passed('nonzero insufficient allowance is reset before exact approval');
+ fixture=await setup({allowance:100n});await fixture.run();assert.equal(fixture.sent.length,1);assert.equal(fixture.sent[0].functionName,'subscribe');await fixture.unmount();passed('sufficient existing allowance does not ask for another approval');
+ fixture=await setup({behavior:['success'],rejectAction:true});assert.equal(await fixture.run(),undefined);assert.equal(fixture.sent.length,1);assert.equal(fixture.controller().transaction.status,'failed');assert.equal(fixture.controller().transaction.phase,'action');await fixture.unmount();passed('successful approval never reports business success after action rejection');
+ fixture=await setup({behavior:['timeout']});assert.equal(await fixture.run(),undefined);assert.equal(fixture.controller().transaction.status,'pending');assert.equal(fixture.sent.length,1);await fixture.run();assert.equal(fixture.sent.length,1);assert.equal(await fixture.resume(),undefined);assert.equal(fixture.controller().transaction.phase,'approval');assert.equal(fixture.controller().transaction.status,'success');assert.equal(fixture.sent.length,1);await fixture.unmount();passed('pending approval blocks duplicate submission and resume does not fabricate action completion');
+ fixture=await setup({allowance:100n,behavior:['cancel']});assert.equal(await fixture.run(),undefined);assert.equal(fixture.controller().transaction.status,'failed');assert(fixture.controller().transaction.message.includes('替换'));assert.equal(fixture.storage.size,0);await fixture.unmount();passed('cancelled or replaced transaction with different calldata is rejected');
+ fixture=await setup({allowance:100n,behavior:['revert']});assert.equal(await fixture.run(),undefined);assert.equal(fixture.controller().transaction.status,'failed');assert.equal(fixture.events.length,0);await fixture.unmount();passed('reverted receipt cannot produce business success or refresh event');
+ fixture=await setup({allowance:100n,behavior:['hold']});let running;await React.act(async()=>{running=fixture.controller().run(request);await new Promise(resolve=>setTimeout(resolve,5));});assert.equal(fixture.sent.length,1);const originalHash=fixture.sent[0].hash;await fixture.switchAccount(B);await React.act(async()=>{fixture.deferred.get(originalHash)({status:'success',transactionHash:originalHash});await running;});assert.equal(fixture.controller().transaction,null);assert.equal(await running,undefined);await fixture.unmount();passed('account switch during receipt wait hides old result and never returns old success');
+ fixture=await setup({allowance:100n,behavior:['timeout']});await fixture.run();fixture.setNetwork(97);assert.equal(await fixture.resume(),undefined);assert.equal(fixture.controller().transaction.status,'pending');assert.equal(fixture.sent.length,1);fixture.setNetwork(56);assert(await fixture.resume());assert.equal(fixture.sent.length,1);await fixture.unmount();passed('wrong RPC network during resume stays pending and can recover without duplicate write');
+ fixture=await setup({allowance:100n});const staleController=fixture.controller();await fixture.switchAccount(B);await fixture.switchAccount(A);let staleResult;await React.act(async()=>{staleResult=await staleController.run(request);});assert.equal(staleResult,undefined);assert.equal(fixture.sent.length,0);assert(await fixture.run());assert.equal(fixture.sent.length,1);await fixture.unmount();passed('account round trip permanently invalidates old controller while current form remains usable');
+ fixture=await setup({allowance:100n});const abandonedController=fixture.controller();await fixture.unmount();assert.equal(await abandonedController.run(request),undefined);assert.equal(fixture.sent.length,0);passed('unmounted form cannot start a delayed wallet transaction');
+ fixture=await setup({behavior:['hold']});let interrupted;await React.act(async()=>{interrupted=fixture.controller().run(request);await new Promise(resolve=>setTimeout(resolve,5));});assert.equal(fixture.sent.length,1);assert.equal(fixture.sent[0].functionName,'approve');const approvalHash=fixture.sent[0].hash;await fixture.unmount();await React.act(async()=>{fixture.deferred.get(approvalHash)({status:'success',transactionHash:approvalHash});await interrupted;});assert.equal(await interrupted,undefined);assert.equal(fixture.sent.length,1);passed('approval mined after unmount cannot continue to the abandoned business action');
+ fixture=await setup();let checks=0;await fixture.run({...request,beforeSend:async()=>{checks++;assert.equal(fixture.sent.length,1);assert.equal(fixture.sent[0].functionName,'approve');}});assert.equal(checks,1);assert.equal(fixture.sent.length,2);await fixture.unmount();passed('final server validation runs after approval and before the business transaction');
+ fixture=await setup();await fixture.run({...request,beforeSend:async()=>{throw new Error('Expired invitation session');}});assert.equal(fixture.sent.length,1);assert.equal(fixture.sent[0].functionName,'approve');assert.equal(fixture.controller().transaction.status,'failed');assert.equal(fixture.controller().transaction.phase,'action');await fixture.unmount();passed('failed final server validation preserves approval receipt but prevents the business transaction');
+ fixture=await setup({allowance:100n});await fixture.run({...request,beforeSend:async()=>{await fixture.switchAccount(B);}});assert.equal(fixture.sent.length,0);await fixture.unmount();passed('wallet changes during final validation prevent signing even if validation resolves');
+ console.log(count+' isolated transaction checks passed.');
+}
+main().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>dom.window.close());
+
+

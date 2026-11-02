@@ -1,0 +1,28 @@
+[Unit]
+Description=CaBi DApp (Next.js standalone)
+Documentation=file:///opt/cabi/deploy/README.md
+After=network.target
+
+[Service]
+Type=simple
+User=cabi
+Group=cabi
+WorkingDirectory=/opt/cabi
+EnvironmentFile=-/etc/cabi.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node /opt/cabi/server.js
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# 图片优化会写 .next/cache/images，SQLite 写 CABI_DATA_DIR；其余路径只读。
+ReadWritePaths=/opt/cabi/.next/cache /var/lib/cabi
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

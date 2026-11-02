@@ -1,0 +1,335 @@
+@import "tailwindcss";
+@source not "../../output";
+
+:root {
+  --background: #f9f9f9;
+  --foreground: #240f46;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ============================================================
+   蟹比特设计系统 · 薰衣草亮紫主题（对标参考站 h5 视觉语言）
+   层级：abyss(页面) → well(内嵌) → card(卡片) → raise(抬升)
+   色彩分工：紫 = 界面氛围 / 选中态；金 = 仅关键 CTA 与数值
+   间距刻度：4 / 8 / 12 / 16 / 24 / 32 / 48（Tailwind 1/2/3/4/6/8/12）
+   ============================================================ */
+@theme {
+  /* 亮色层次（页面底 #F9F9F9，顶部薰衣草渐变挂在 body） */
+  --color-deep: #ffffff; /* 顶栏 / 页脚 / 内嵌底 */
+  --color-abyss: #f9f9f9; /* 页面底 */
+  --color-well: #f3edf6; /* 卡片内嵌层 / 输入底 / 分段轨道 */
+  --color-card: #ffffff; /* 卡片 */
+  --color-raise: #faf7fe; /* 悬浮 / 抬升 */
+  --color-line: #e9e3f2; /* 描边 / 分隔（rgb(36 15 70 / 10%) 近似） */
+  --color-plum: #240f46; /* 紫调基底：配合透明度修饰替代暗色的 white/N */
+
+  /* 文本阶梯（紫调，非纯黑非灰色） */
+  --color-strong: #240f46; /* 主要 */
+  --color-mute: #7a708e; /* 次要（rgb(36 15 70 / 55%) 近似） */
+  --color-faint: #83738f; /* 辅助信息保持白底可读 */
+
+  /* 品牌金：仅关键 CTA（按钮渐变）与数值强调 */
+  --color-gold: #b45309; /* 文字 / 图标 / 描边语义金（白底可读） */
+  --color-gold-2: #f0b90b; /* 亮金：按钮渐变 / 进度填充 / 图标底 */
+
+  /* 主题紫：页面氛围、选中态、链接、聚焦 */
+  --color-purple: #d11bff; /* 品牌紫 */
+  --color-purple-deep: #9900ff; /* 高亮紫 */
+  --color-purple-a: #753dea; /* 紫渐变起 */
+  --color-purple-b: #b34cf7; /* 紫渐变止 */
+  --color-lavender: #f8eafe; /* 页面顶部渐变起 */
+
+  /* 语义色 */
+  --color-up: #1ec800;
+  --color-down: #f1463d;
+  --color-warn: #ff8400;
+
+  /* 阴影：亮色下以浅紫灰落影为主 */
+  --shadow-card:
+    0 1px 2px rgb(36 15 70 / 4%),
+    0 8px 24px -12px rgb(36 15 70 / 8%);
+  --shadow-pop: 0 24px 64px -16px rgb(36 15 70 / 22%);
+  --shadow-gold: 0 8px 24px -10px rgba(240, 185, 11, 0.45);
+  --shadow-purple: 0 8px 20px -8px rgb(209 27 255 / 28%);
+
+  /* 动效 */
+  --animate-fade-up: fade-up 0.4s cubic-bezier(0.22, 0.68, 0.36, 1) both;
+  --animate-pop-in: pop-in 0.26s cubic-bezier(0.22, 0.68, 0.36, 1) both;
+  --animate-sheet-up: sheet-up 0.3s cubic-bezier(0.22, 0.68, 0.36, 1) both;
+  --animate-toast-in: toast-in 0.24s ease-out both;
+  --animate-drawer-item: drawer-item 0.24s cubic-bezier(0.22, 0.68, 0.36, 1) both;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.97) translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes sheet-up {
+  from { opacity: 0.4; transform: translateY(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes drawer-item {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+body {
+  background-color: var(--color-abyss);
+  /* 参考站招牌：页面顶部薰衣草渐变（高度约一屏头部，向下融入页面底） */
+  background-image: linear-gradient(
+    180deg,
+    var(--color-lavender) 0%,
+    var(--color-abyss) 100%
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 460px;
+  color: var(--color-strong);
+  font-family: Inter, system-ui, Avenir, "Helvetica Neue", Helvetica,
+    "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  /* 全站数字等宽，便于金额 / 份额 / 百分比对齐 */
+  font-feature-settings: "tnum" 1;
+  text-rendering: optimizeLegibility;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: rgb(209 27 255 / 16%);
+  color: #240f46;
+}
+
+/* 全局细滚动条（与聊天区 .chat-scroll 一致） */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d8cfE6 transparent;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb {
+  background: #d8cfe6;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 键盘可达焦点环（仅键盘聚焦时显示） */
+:focus-visible {
+  outline: 2px solid rgb(209 27 255 / 45%);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 720px) {
+  [class~="text-[9px]"],
+  [class~="text-[10px]"],
+  [class~="text-[11px]"] {
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .btn {
+    min-height: 44px;
+    white-space: normal;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+@layer components {
+  /* ---- 容器：白卡 + 浅紫描边 + 极浅落影（嵌套不超过三层） ---- */
+  .card {
+    border-radius: 16px;
+    border: 1px solid rgb(36 15 70 / 7%);
+    background-color: var(--color-card);
+    box-shadow: var(--shadow-card);
+  }
+
+  .well {
+    border-radius: 12px;
+    border: 1px solid rgb(36 15 70 / 5%);
+    background-color: var(--color-well);
+  }
+
+  /* ---- 按钮体系（高度由 sm/md/lg 工具类控制：h-8 / h-10 / h-12） ---- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 9999px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+    transition:
+      background-color 0.16s ease, border-color 0.16s ease,
+      color 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease,
+      transform 0.08s ease, opacity 0.16s ease;
+  }
+  .btn:active:not(:disabled) { transform: scale(0.985); }
+  .btn:focus-visible {
+    outline: 2px solid rgb(209 27 255 / 45%);
+    outline-offset: 2px;
+  }
+  .btn:disabled { cursor: not-allowed; }
+
+  /* 关键 CTA：参考站亮紫渐变胶囊与白色内发光。 */
+  .btn-gold {
+    background-color: var(--color-purple-a);
+    background-image: linear-gradient(90deg, var(--color-purple-a), var(--color-purple-b));
+    color: #ffffff;
+    box-shadow: inset 0 0 10px rgb(255 255 255 / 60%);
+  }
+  .btn-gold:hover:not(:disabled) { filter: brightness(1.04); }
+  .btn-gold:disabled {
+    background-image: none;
+    background-color: var(--color-well);
+    color: var(--color-faint);
+    box-shadow: none;
+  }
+
+  /* 次级主操作 / 选中态：主题紫渐变胶囊 + 白色内发光 */
+  .btn-purple {
+    background-color: var(--color-purple-a);
+    background-image: linear-gradient(
+      90deg,
+      var(--color-purple-a),
+      var(--color-purple-b)
+    );
+    color: #ffffff;
+    box-shadow:
+      var(--shadow-purple),
+      inset 0 0 10px rgb(255 255 255 / 45%);
+  }
+  .btn-purple:hover:not(:disabled) { filter: brightness(1.05); }
+  .btn-purple:disabled {
+    background-image: none;
+    background-color: var(--color-well);
+    color: var(--color-faint);
+    box-shadow: none;
+  }
+
+  /* 次按钮：描边 */
+  .btn-outline {
+    border: 1px solid #dcd4ea;
+    background-color: var(--color-card);
+    color: var(--color-strong);
+  }
+  .btn-outline:hover:not(:disabled) {
+    border-color: rgb(209 27 255 / 40%);
+    background-color: rgb(209 27 255 / 5%);
+    color: var(--color-purple-deep);
+  }
+
+  /* 演示按钮：虚线 */
+  .btn-dashed {
+    border: 1px dashed rgb(209 27 255 / 40%);
+    background-color: transparent;
+    color: var(--color-purple-deep);
+  }
+  .btn-dashed:hover:not(:disabled) {
+    border-color: rgb(209 27 255 / 60%);
+    background-color: rgb(209 27 255 / 6%);
+  }
+
+  /* ---- 表单控件：白底 + 紫聚焦 ---- */
+  .field {
+    background-color: var(--color-card);
+    border: 1px solid #e3dcef;
+    border-radius: 12px;
+    color: var(--color-strong);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .field::placeholder { color: var(--color-faint); }
+  .field:focus,
+  .field:focus-within {
+    border-color: rgb(209 27 255 / 45%);
+    box-shadow: 0 0 0 3px rgb(209 27 255 / 10%);
+  }
+
+  /* ---- 分段控件选中指示器：紫渐变胶囊 ---- */
+  .seg-active {
+    background-image: linear-gradient(
+      90deg,
+      var(--color-purple-a),
+      var(--color-purple-b)
+    );
+    color: #ffffff;
+    box-shadow: inset 0 0 8px rgb(255 255 255 / 40%);
+  }
+
+  /* ---- 骨架屏 ---- */
+  .skeleton {
+    border-radius: 12px;
+    background: linear-gradient(
+      90deg,
+      rgb(36 15 70 / 5%) 25%,
+      rgb(36 15 70 / 9%) 37%,
+      rgb(36 15 70 / 5%) 63%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+
+  /* ---- 数值：等宽 + 表格数字（金额 / 份额 / 百分比统一对齐） ---- */
+  .num {
+    font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo,
+      Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* ---- 表头 / 字段标签：11-12px 全大写 + 字距 ---- */
+  .kicker {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-faint);
+  }
+
+  /* ---- 社群消息区细滚动条 ---- */
+  .chat-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #d8cfe6 transparent;
+  }
+  .chat-scroll::-webkit-scrollbar { width: 6px; }
+  .chat-scroll::-webkit-scrollbar-thumb {
+    background: #d8cfe6;
+    border-radius: 999px;
+  }
+  .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+}

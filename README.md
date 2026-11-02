@@ -1,0 +1,148 @@
+# 蟹比特 · CaBi DApp
+
+Next.js 16 / React 19 / Node.js 24 应用。认购、基于认购记录的定时双模式领取、实物兑换及后台管理使用真实合约/API；代币买卖跳转外部交易页面，不在 DApp 内提供买卖表单。
+
+## 本地运行
+
+```sh
+npm ci
+npm run admin:setup
+npm run dev
+```
+
+首页 http://localhost:3000/，管理入口 /admin/login。管理员初始化资料写入本机私有文件，终端不打印密码；Windows 默认 %LOCALAPPDATA%/CaBi/admin/login-credentials.txt。已有配置不会覆盖。
+
+## 正式配置
+
+参照 .env.example；默认 BSC 主网56。所有未部署的地址留空，不会自动使用历史测试网合约。NEXT_PUBLIC_ 修改后重新构建；服务器设置 APP_ORIGIN=https://实际域名。
+
+| 配置 | 说明 |
+| --- | --- |
+| NEXT_PUBLIC_CHAIN_ID | 56主网 / 97测试网 |
+| NEXT_PUBLIC_TRADING_MODE | pancake（新版 CaBiPancakeToken）/ gateway（旧网关版） |
+| NEXT_PUBLIC_TOKEN_ADDRESS | 与所选模式对应的 CaBi 合约 |
+| NEXT_PUBLIC_USDT_ADDRESS | 当前链 USDT，业务界面支持6/18位精度 |
+| NEXT_PUBLIC_SALE_ADDRESS | **已废弃并移除读取**。认购改为用户直接向后台配置的收款地址转 USDT，由服务器核验记账；不要填写或重新引入 |
+| NEXT_PUBLIC_CLAIM_POOL_ADDRESS | CaBiSimpleClaimPool(token,owner)，独立领取池；额度由服务器批次写入，用户自领 50% / 70% |
+| NEXT_PUBLIC_REWARD_POOL_ADDRESS | 可选历史 XBTRewardPool（50% / 金库模式），新定时领取方案留空 |
+| NEXT_PUBLIC_GATEWAY_ADDRESS | 仅旧 gateway 模式填写；薄饼模式留空 |
+| NEXT_PUBLIC_SWAP_URL | 可选薄饼 HTTPS 地址，默认官方 swap 路径；网站会追加当前代币及 BSC 参数 |
+| NEXT_PUBLIC_RPC_URL | 可选公共 RPC，进入浏览器，不要填写含私钥的地址 |
+| REDEMPTION_DATA_SECRET | 至少32字符的固定服务端订单加密密钥，与数据库一并安全备份 |
+| CABI_DATA_DIR | 固定持久磁盘目录，单实例 SQLite |
+| REDEMPTION_CONFIG_CACHE_MS | 服务端兑换配置缓存毫秒数，默认 60000，0 关闭，最大 300000 |
+
+ADMIN_USERNAME、ADMIN_PASSWORD_HASH、ADMIN_SESSION_SECRET、REDEMPTION_DATA_SECRET 仅服务端使用。不要添加 NEXT_PUBLIC_ 前缀，不放 public，不提交版本库。当前兑换兼容回退使用 ADMIN_SESSION_SECRET；生产应固定独立 REDEMPTION_DATA_SECRET，已有订单时不能随意更换，否则旧收货资料无法解密。
+
+## 部署（生产）
+
+**服务器选型**：最小可跑 2 vCPU / 4 GB / 40 GB SSD / 5 Mbps；推荐 4 vCPU / 8 GB / 80 GB NVMe / 30 Mbps + CDN。系统 Ubuntu 24.04 LTS + Node.js 24 LTS。
+
+- 构建使用 `output: "standalone"`，发布 `.next/standalone/server.js`，并手动复制 `.next/static` 与 `public`；完整命令见 [deploy/README.md](deploy/README.md)。
+- 服务只监听 `127.0.0.1:3000`，由 Caddy/Nginx 提供 HTTPS；安全组只开 443（80 用于跳转与签发），22 限管理员 IP。
+- 三个 SQLite 文件必须放在项目目录外的持久磁盘（建议 `/var/lib/cabi`，0700、属主为服务用户），不可用网络盘；**保持单实例**，多实例需先迁移 Postgres。
+- `NEXT_PUBLIC_*` 在构建期固化，换合约地址或链 ID 必须重新构建。
+- 发布前先备份；备份脚本、恢复演练、systemd 单元与反代示例见 [deploy/README.md](deploy/README.md)。
+
+## 已实现流程
+
+- 钱包：账户/网络同步，错误网络阻止写入，真实余额使用 bigint，不恢复本地演示记录。
+- 认购（服务器记账）：进入 DApp 前先完成邀请绑定；用户直接向后台配置的认购收款地址转入 USDT，金额 = 份数 × 50。服务端复用兑换核验：交易成功、至少 2 个确认、from = 用户、tx.to = USDT、transfer 参数与 Transfer 事件一致、金额与份数匹配，且同一哈希只登记一张认购单。单账户 1–2 份、全局硬顶 20000 由服务端复核；globalSold、直推业绩、团队业绩全部由认购单聚合，前端不再模拟。
+- 领取（独立领取池）：CaBiSimpleClaimPool(token,owner) 不依赖任何认购合约。服务器按认购单 + 直推每 3 份 1 份 + 团队极差算出每人累计额度，增量写入领取池（已领取地址跳过）；owner 私钥不进 Web 进程，推荐离线签名或独立写入进程 + CLI。用户每个地址只能领取一次：直接领取 50%（其余按 burnRemainder 销毁或留池），或领取 70%（30% CaBi 进 LP 地址并支付 30% USDT 等值）。
+- 领取保护：nonReentrant、迷你 SafeERC20、零地址校验、claimable > 0、余额不足整体 revert；预览 claimableOf / previewClaim 与池余额、已分配未领、已领取累计、销毁累计同块读取并交叉校验。比例 50 / 70 / 30 固定，setRatios 只允许 0 < ratio ≤ 100 且 lpToken = 100 - lp。
+- 历史独立奖励池：仅填写 NEXT_PUBLIC_REWARD_POOL_ADDRESS 时显示旧版 XBTRewardPool 的 50% / 金库模式；它只转账到金库，不自动创建 LP，不会迁移到新池。
+- 实物兑换：不依赖兑换合约。用户按 3500 CaBi / 份把代币直接转入后台配置的收款地址（默认黑洞地址，可改为任意项目地址），确认转账后页面锁定「已转账待提交」，再填写收货信息。服务端按代币合约核验转账：发起钱包、收款地址、金额、Transfer 事件与回执成功，同一交易哈希只能绑定一张兑换单。
+- 订单物流：订单状态仅「待发货 / 已发货 / 已完结」；用户仅查看本人订单，管理员只能给待发货订单填物流并备注，用户确认收货后完结。
+- 交易反馈：区分钱包确认、授权、业务交易、待确认和失败。钱包/链变化后不会显示前一个账户的成功状态。
+- 后台：服务端 HttpOnly 会话及 SQLite 审计，链上管理仍需对应 owner 钱包签名。
+
+客服聊天、工单及完整团队关系/历史索引尚未接入，继续明确关闭或显示未知，不编造人数和流水。
+
+## 推广奖励与累计团队结算
+
+### 邀请绑定入口
+
+总览及所有 DApp 路由要求先连接钱包、免费签名登录邀请账户，然后绑定服务器生成的 8 位邀请码。没有链接须手填邀请码；链接带唯一 ref 参数时自动预填，仍须本人确认。只签登录消息，不请求代币授权、不发送绑定交易、不消耗 Gas。推荐关系保存在 CABI_DATA_DIR/referrals.sqlite，不依赖链上绑定接口、认购资金或 RPC。只有服务器确认已绑定（或管理员初始化的项目邀请账户）才挂载业务页面；刷新或换设备后登录同一钱包恢复。数据库启用 WAL 和原子事务，拒绝自邀、循环、无效/未启用邀请码及更换上级。前端只显示短码，不把钱包地址当邀请码。
+
+首次运营：管理员在 /admin/community 的“项目初始邀请码”中填写项目真实钱包，启用并获取首个邀请码。该钱包作为无上级的项目根账户，普通用户不需要后台逐个登记。系统不预置演示邀请码，不会把第一位访问者自动设为项目方。服务器需要持久磁盘并备份 referrals.sqlite（运行中采用 SQLite 一致备份）；不要部署到临时文件系统或用多实例各自独立的 SQLite。邀请登录与兑换订单会话各自隔离，Cookie 为 HttpOnly/SameSite Strict，仅数据库存登录令牌哈希。
+
+绑定本身完全在服务器完成。直推奖励由服务器按认购单聚合，不再读取任何认购合约的 referrer；用户认购只是向收款地址转 USDT，提交前再次核对服务器关系、当前钱包和同区块认购记录，上级不一致或未绑定则阻止认购。不会静默更换历史上级或追补历史奖励。项目根账户无上级。入口强制邀请是网站规则，不等于所有外部合约调用都强制邀请码。
+
+直推按认购份数计算，不按人数：同一推荐钱包带来 2 份后再带来 1 份，累计增加 1 份奖励；达到 6 份累计为 2 份。每次只记新跨过的整档，奖励计入服务器累计可领额度，实际到账仍遵守下述直接 50% / 组 LP 70% 领取规则。
+
+团队档位按所有下级无限代的成功认购份数取档，不含本人；100 / 200 / 500 / 1000 / 2000 份分别为 1% / 2% / 3% / 4% / 5%。已确认的每个直接下级分支奖励为：本人的团队档位比例 × 该直接下级本人认购份数，加上 max(本人团队档位比例 − 该下级团队档位比例, 0) × 该下级团队份数。下级自己的团队档位仍不包含其本人认购，不能遗漏这部分给上级的奖励。
+
+例如 100 名直接下级各认购 1 份，或 50 名各认购 2 份，上级团队都为 100 份、档位 1%，团队奖励都为 1 份；这与自动直推奖励分别计算，不重复录入直推。按整棵关系树逐人汇总后向下取整到整数份，每份对应 35,000 CaBi 完整配额，不对每个分支先分别取整。
+
+后台“团队奖励累计结算”由服务器直接计算：输入或自动读取钱包后会按同一邀请关系树展示认购、直推、极差与合计份数，每份对应 35,000 CaBi。生成批次时只写入此前未写入（pending / applied）的差额，已领取地址跳过；管理员核对后导出「地址,数量」或由独立写入进程调用 batchSetClaimable。
+
+批次号、地址数、总额、交易哈希与状态落库。pending 与 applied 都计入已写入，重复生成同一批次不会双倍发放；failed 可重新生成并重试。写入池前先读取同一区块的已领取标记，避免把额度发给已经领取的地址。团队的加减档规则不变，链上只保存最终可领额度，不再保存团队累计。
+
+## 底池周期销毁
+
+新版 CaBiPancakeToken 已加入固定每 8 小时销毁唯一绑定 V2 池内当前 CaBi 余额 1% 到黑洞，保留报价资产 USDT / WBNB 及 LP 凭证，并同步池子储备。按实时余额三次约 2.9701%，不是日初余额精确 3%；不补扣错过的时段。正常买卖税和认购领取规则独立。后台“代币与分红税管理”提供到期执行与状态；scripts/pool-burn-keeper.cjs 提供默认只读检查和显式 --execute 执行模式。自动执行需要部署新版合约后配置真实地址、专用 keeper 钱包及持久目录，并在服务器调度；当前未部署、未启动定时任务。详见 contracts/DEPLOYMENT.md 的“底池固定周期代币销毁”。
+
+## 薄饼分红税
+
+新版 CaBiPancakeToken 用于直接 V2 Router 交易：买入输出扣3% CaBi，累积后卖成 USDT，默认按2:1给两个收款地址；卖出3% CaBi直接入黑洞；普通转账0%。这是两个指定地址的分账，不是所有持币人的自动分红，也不等于精确扣买家付款的3% USDT。
+
+分配权重合计300 BPS，可设置200/100、150/150或0/300。税币不会在买入时兑换，避免 pair 锁冲突；后续卖出时尝试限额兑换，失败保留税币且不阻断卖出。USDT 支付失败保留原收款地址的待领额度，可由该地址提取到其它地址。更换收款地址不会迁移旧额度。
+
+只覆盖绑定的 CaBi/USDT V2 池；V3、其它池和任意路由不在本实现保证范围内。外链只有在代币版本正确、已绑定且有流动性时开放。手续费滑点需在薄饼核对；自动税币兑换使用现货报价保护，不能消除MEV。
+
+初始流动性需先创建pair并给pair持仓豁免，在交易尚未绑定时添加，再 configureTrading 一次绑定。绑定后直接加LP按卖税、移除LP按买税。完整部署步骤见 contracts/DEPLOYMENT.md。
+
+## 独立领取池（服务器写入额度，用户自领）
+
+代币合约不包含普通用户奖励名单、个人可领额度或认购领取逻辑。CaBiPancakeToken.claimDividend 只处理两个分红收款地址未成功到账的 USDT。领取使用独立合约 CaBiSimpleClaimPool(tokenAddress, ownerAddress)，**不依赖任何认购合约**；token 部署后不可更换，USDT 由 owner 调用 setUsdt 配置（自动读取 6/18 位精度），LP 接收地址由 setLpReceiver 设置，初始为 0 时只允许直接领取。
+
+owner 先 approve 领取池再调用 deposit(amount) 注入 CaBi；withdrawUnused(amount) 只能取回 poolBalance 超过 allocatedUnclaimed 的未分配部分，已分配未领额度不能被取走。大额注资前，由代币 owner 设置 setMaxWalletExempt(pool,true)；这只豁免池子的持仓上限，不豁免买卖税，普通用户仍受当前持仓上限约束。
+
+额度写入不是链上自动计算：后台按认购单 + 直推（每满 3 份 = 1 份）+ 团队极差生成每人累计额度，扣除已写入批次（pending / applied）后得到本次增量，已领取地址自动跳过；owner 再通过 batchSetClaimable(users, amounts, incremental) 批量写入。批次号、地址数、总额、交易哈希与状态落库，失败可重试，重复导入同一批次不会双倍发放。
+
+owner 私钥隔离：Web 服务只生成「地址,数量」名单，不持有 owner 私钥。推荐把名单交给 scripts/push-claimable.cjs，在独立机器或离线环境通过 CLAIM_POOL_OWNER_PRIVATE_KEY 读取私钥（脚本不读取 .env.local），带锁文件与 gas 上限，默认增量、--overwrite 覆盖；也可以由独立写入进程调用 batchSetClaimable。不要在生产 Web 进程里加载 owner 私钥。
+
+每个地址一次性领取，二选一：
+
+- 直接领取（mode 0）：领取 50%，剩余 50% 按 burnRemainder 销毁或留在池内转为未分配余额。不需要 USDT 授权。
+- 组 LP 领取（mode 1）：领取 70%，30% CaBi 转入 owner 配置的 lpReceiver；同时通过 transferFrom 收取 30% USDT 等值（额度 × 50 × 30% × 10^usdtDecimals ÷ 35000），用户需先授权 USDT 给领取池。USDT 归 lpReceiver。
+
+比例默认 50 / 70 / 30。setRatios 只允许 0 < ratio ≤ 100，且 lpToken = 100 - lp；已领取地址不能再写入额度。lpReceiver 为 0 或 USDT 未配置时只开放直接领取。领取前重新读取链上快照，额度、比例、LP 地址变化或余额不足会整体 revert。
+
+预览字段：claimableOf、previewClaim(addr, mode)、poolBalance、allocatedUnclaimed、unusedBalance、totalClaimed、totalBurned、hasClaimed。前端按同一区块读取，并校验比例 50/70/30、token 与配置一致、poolBalance ≥ allocatedUnclaimed、预览与 claimableOf 一致；任一项不符直接报错，不展示不安全数字。
+
+填写 NEXT_PUBLIC_TOKEN_ADDRESS、NEXT_PUBLIC_USDT_ADDRESS 和 NEXT_PUBLIC_CLAIM_POOL_ADDRESS 后重新构建；不要填写已废弃的 NEXT_PUBLIC_SALE_ADDRESS。开放前核对池余额、比例、LP 接收地址和小额 50% / 70% 领取全流程。
+
+## 上线顺序
+
+1. 确认管理员、两个分红收款地址及项目 LP 接收地址。LP 接收地址不是代币/USDT/交易对/路由等系统地址，不得假设它已锁仓。新版代币 constructor(receiver1,receiver2,ownerAddress) 全量发给 ownerAddress，后续分配由持币人决定。领取池构造参数为 (token, owner)；owner 初始为部署钱包，如最终管理员不同用两步 transferOwnership。
+2. 创建并配置官方 V2 流动性及一次性交易绑定，核验所选 Router/USDT/Factory/pair。
+3. 部署 CaBiSimpleClaimPool(token, owner)，随后由 owner 调用 setUsdt(USDT)、setLpReceiver(项目 LP 地址，可留空)；需要时再 setRatios / setBurnRemainder。XBTSale.sol 与 CaBiClaimPool.sol 仅留档，不再部署、不再被前端引用。
+4. 代币 owner 先为领取池设置持仓豁免，再 approve + deposit 实际所需的 CaBi；withdrawUnused 只能取回未分配部分。其它大额业务合约或金库按需单独豁免。
+5. 后台设置认购收款地址并开启认购：用户直接转 USDT → 服务端核验并生成认购单 → 按认购单 + 直推 + 极差生成增量批次 → 导出「地址,数量」交给 scripts/push-claimable.cjs 或独立写入进程 → 用户选择 50% / 70% 领取。核验小额全流程后再正式开放；实物兑换默认库存 0 且关闭，需设置真实价格/库存并开启运营开关。
+6. 填写公开地址，保存固定服务器加密key和持久数据目录，重新构建；核对小额完整流程后再正式开放。
+
+本轮只修改代码和隔离测试，不会自动部署、注资、添加流动性或发送链上交易。
+
+## 数据、备份与缓存
+
+operations.sqlite 保存后台会话/设置/审计；referrals.sqlite 保存邀请关系和登录会话；redemption.sqlite 保存钱包 nonce/会话、订单和 AES-256-GCM 加密收货资料。默认项目外 Windows %LOCALAPPDATA%/CaBi/admin，其他系统 ~/.local/share/cabi-admin；生产用 `CABI_DATA_DIR` 固定到持久磁盘。
+
+备份使用 [deploy/backup-sqlite.mjs](deploy/backup-sqlite.mjs) 的 `VACUUM INTO` 一致性快照，不直接拷贝正在写入的库和 WAL；备份必须同时保存订单加密 key，且不可放公开静态目录。恢复步骤与演练清单见 [deploy/README.md](deploy/README.md)。多实例或无持久磁盘部署需先改共享数据库。
+
+`/api/redemption/config` 带 60 秒进程内缓存（`REDEMPTION_CONFIG_CACHE_MS` 可调，0 关闭），命中时不再请求 RPC；后台改收款地址或兑换开关会立即失效，RPC 失败不缓存。响应头 `X-Redemption-Config-Cache` 只标记 `hit` / `miss`。
+
+## 检查
+
+```sh
+npm run lint
+npx tsc --noEmit
+npm run test:wallet
+npm run test:contracts
+npm run test:pancake
+npm run test:claim
+npm run test:business
+npm run build
+```
+
+测试使用隔离 provider、临时数据库和本地 Ganache，不使用真实用户私钥、钱包签名或公共链交易。通过测试不等同于外部安全审计；正式地址配置与线上端到端验收仍需在部署后完成。

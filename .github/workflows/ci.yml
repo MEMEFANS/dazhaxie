@@ -1,0 +1,24 @@
+name: Application checks
+on:
+  push:
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run test:wallet
+      - run: npm run test:contracts
+      - run: npm run test:pancake
+      - run: npm run test:claim
+      - run: npm run test:business
+      - run: npm run build

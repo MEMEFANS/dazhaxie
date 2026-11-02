@@ -1,0 +1,31 @@
+# Caddy 反代示例：自动 HTTPS、HSTS，应用只监听 127.0.0.1:3000。
+# 使用前替换 example.com 与管理员出口 IP。
+{
+	email admin@example.com
+}
+
+example.com {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# 可选：只允许指定 IP 访问后台；启用时取消下面三行注释并改成你的出口 IP/网段。
+	# @admin_blocked {
+	# 	path /admin*
+	# 	not remote_ip 203.0.113.10/32
+	# }
+	# respond @admin_blocked 403
+
+	reverse_proxy 127.0.0.1:3000 {
+		# Next.js 自己输出 Cache-Control：/_next/static 为 1 年 immutable，
+		# 公共静态页为 s-maxage=31536000，/admin 与 /api 为 no-store，不要在这里覆盖。
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+
+# 发布后让 CDN 刷新：HTML 与 _rsc 变体最长缓存 1 年，不清会继续引用旧构建。

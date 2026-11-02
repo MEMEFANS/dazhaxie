@@ -1,0 +1,18 @@
+# 构建上下文最小化；密钥与本地数据绝不进入镜像。
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+deploy
+backups
+data
+logs
+*.log
+.trae
+contracts
+scripts
+README.md
+AGENTS.md

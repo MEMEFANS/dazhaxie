@@ -1,0 +1,91 @@
+.shell {
+  min-height: 100dvh;
+  color: #281441;
+  background: radial-gradient(ellipse at 85% 0, #f1e1ff 0, transparent 34rem), linear-gradient(180deg, #f9f1ff 0, #f8f7fb 44rem);
+}
+.header { position: sticky; top: 0; z-index: 40; border-bottom: 1px solid #e9e2f080; background: #ffffffed; backdrop-filter: blur(20px); }
+.headerInner { display: flex; width: min(1120px, calc(100% - 48px)); min-height: 72px; align-items: center; gap: 24px; margin-inline: auto; }
+.brand { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; }
+.brand img { width: 40px; height: 40px; border: 1px solid #e5d9f0; border-radius: 14px; object-fit: cover; }
+.brand strong, .brand small { display: block; }
+.brand strong { font-size: 18px; font-weight: 800; letter-spacing: -0.04em; line-height: 1.1; }
+.brand small { margin-top: 5px; color: #9a87ab; font-size: 8px; font-weight: 700; letter-spacing: 0.19em; }
+.desktopNav { display: flex; align-items: center; gap: 5px; margin-inline: auto; }
+.desktopNav a { padding: 10px 15px; border-radius: 11px; color: #887693; font-size: 13px; font-weight: 650; transition: background 160ms ease, color 160ms ease; }
+.desktopNav a:hover { color: #7942c8; background: #faf5ff; }
+.desktopNav .active { color: #773fca; background: #f2e9ff; }
+.headerActions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; margin-left: auto; }
+.networkBar { display: flex; width: min(1120px, calc(100% - 48px)); min-height: 44px; align-items: center; justify-content: space-between; gap: 10px; margin-inline: auto; border-top: 1px solid #eee6f4; color: #6d537f; font-size: 12px; }
+.networkIdentity, .networkState { display: inline-flex; align-items: center; gap: 6px; }
+.networkIdentity { flex-shrink: 0; font-weight: 650; }
+.networkIdentity i { width: 7px; height: 7px; border-radius: 50%; background: #528c63; }
+.networkIdentity i[data-testnet="true"] { background: #bf8134; }
+.networkState { color: #806c90; font-size: 12px; }
+.switchNetwork { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 5px; padding: 6px 8px; border: 0; color: #8548ba; background: transparent; font-size: 12px; font-weight: 650; cursor: pointer; }
+.switchNetwork:disabled, .walletButton:disabled, .connectButton:disabled, .assetButton:disabled { cursor: wait; opacity: .65; }
+.assetButton { width: 100%; min-height: 44px; margin-top: 14px; border: 1px solid #ddcbea; border-radius: 999px; color: #704a8d; background: #fff; font-size: 12px; font-weight: 650; cursor: pointer; }
+.walletButton, .connectButton { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 7px; padding: 0 16px; border: 0; border-radius: 999px; color: #fff; background: linear-gradient(110deg, #7c44ee, #ad5aef); box-shadow: 0 4px 14px #7c44ee20, inset 0 0 8px #ffffff24; font-size: 12px; font-weight: 700; cursor: pointer; }
+.walletButton i { width: 6px; height: 6px; border-radius: 50%; background: #c7ffa8; }
+.moreButton { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid #eae1f4; border-radius: 12px; color: #7e668f; background: #fff; cursor: pointer; }
+.moreButton:hover { color: #753dea; background: #f7f0ff; }
+.overviewContent { min-width: 0; }
+.content { width: min(1168px, 100%); min-width: 0; margin-inline: auto; padding: 28px 24px 48px; }
+.inviteShell { background: radial-gradient(ellipse at 50% 0, #e5d1ff 0, transparent 40rem), #f7f2fc; }
+.inviteContent { width: min(520px, 100%); min-width: 0; margin-inline: auto; padding-bottom: 32px; }
+.mobileNav { display: none; }
+.backdrop { position: fixed; inset: 0; z-index: 60; opacity: 0; background: #24113e55; backdrop-filter: blur(3px); pointer-events: none; transition: opacity 180ms ease; }
+.backdropOpen { opacity: 1; pointer-events: auto; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 61; display: flex; width: min(360px, 90vw); flex-direction: column; padding: 25px 22px max(24px, env(safe-area-inset-bottom)); overflow-y: auto; border-left: 1px solid #e9e1f0; background: #fffdff; box-shadow: -12px 0 50px #260f4420; transform: translateX(105%); transition: transform 220ms ease; }
+.drawerOpen { transform: translateX(0); }
+.drawerHeading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+.drawerHeading small, .drawerHeading strong { display: block; }
+.drawerHeading small { color: #a08aaf; font-size: 9px; font-weight: 700; letter-spacing: 0.18em; }
+.drawerHeading strong { margin-top: 5px; font-size: 21px; font-weight: 800; }
+.drawerHeading button { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid #eee6f4; border-radius: 50%; color: #856b98; background: #fff; cursor: pointer; }
+.accountCard { padding: 20px; border: 1px solid #e9ddf4; border-radius: 20px; background: linear-gradient(135deg, #f6eeff, #fff8ef); }
+.accountIcon { display: grid; width: 43px; height: 43px; place-items: center; border-radius: 14px; color: #8250bf; background: #fff; box-shadow: 0 3px 12px #6f439d10; }
+.accountCard > p { margin-top: 14px; font-size: 16px; font-weight: 750; }
+.accountCard > small { display: block; margin-top: 6px; color: #927da2; font-size: 11px; line-height: 1.7; }
+.connectButton { width: 100%; margin-top: 17px; }
+.address { display: flex; align-items: center; gap: 4px; margin-top: 5px; color: #77518c; font-size: 13px; }
+.disconnectButton { width: 100%; min-height: 44px; margin-top: 10px; border: 1px solid #ddcbea; border-radius: 999px; color: #725582; background: #fff9; font-size: 12px; cursor: pointer; }
+.drawerLabel { margin: 28px 0 9px; color: #a08caf; font-size: 10px; font-weight: 650; letter-spacing: 0.1em; }
+.serviceNav { display: grid; gap: 6px; }
+.serviceNav a { display: flex; min-height: 70px; align-items: center; gap: 12px; padding: 12px 8px; border-radius: 14px; }
+.serviceNav a:hover, .serviceNav a[aria-current] { background: #f8f2fe; }
+.serviceIcon { display: grid; width: 39px; height: 39px; flex: 0 0 auto; place-items: center; border-radius: 12px; color: #8b55bf; background: #f4eafd; }
+.serviceNav a > span:nth-child(2) { flex: 1; }
+.serviceNav strong, .serviceNav small { display: block; }
+.serviceNav strong { font-size: 13px; font-weight: 700; }
+.serviceNav small { margin-top: 5px; color: #a08caf; font-size: 10px; }
+.serviceNav a > svg { color: #b9a7c5; }
+.drawerFooter { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 36px; color: #9d84ad; }
+.drawerFooter p { flex: 1; font-size: 11px; line-height: 1.6; }
+.drawerFooter p span { font-size: 10px; color: #b3a0bf; }
+
+@media (max-width: 900px) {
+  .headerInner { gap: 16px; }
+  .desktopNav { gap: 1px; }
+  .desktopNav a { padding: 9px 10px; font-size: 12px; }
+}
+@media (max-width: 720px) {
+  .shell { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .headerInner { width: calc(100% - 32px); min-height: 64px; gap: 10px; }
+  .brand { gap: 8px; }
+  .brand img { width: 35px; height: 35px; border-radius: 12px; }
+  .brand strong { font-size: 16px; }
+  .brand small { margin-top: 4px; font-size: 7px; }
+  .desktopNav { display: none; }
+  .headerActions { gap: 6px; }
+  .walletButton { min-height: 44px; gap: 5px; padding-inline: 12px; font-size: 12px; }
+  .moreButton { width: 44px; height: 44px; border-radius: 11px; }
+  .networkBar { width: calc(100% - 32px); gap: 6px; }
+  .networkIdentity, .networkState { font-size: 11px; }
+  .content { padding: 20px 16px 28px; }
+  .mobileNav { position: fixed; right: 0; bottom: 0; left: 0; z-index: 45; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); min-height: calc(67px + env(safe-area-inset-bottom)); padding: 7px 9px calc(7px + env(safe-area-inset-bottom)); border-top: 1px solid #e7dcf1; border-radius: 21px 21px 0 0; background: #ffffffed; box-shadow: 0 -5px 26px #47216d09; backdrop-filter: blur(20px); }
+  .mobileNav a { display: flex; min-width: 0; min-height: 48px; flex-direction: column; align-items: center; justify-content: center; gap: 4px; margin-inline: 3px; border-radius: 14px; color: #80678f; font-size: 12px; font-weight: 600; }
+  .mobileNav .active { color: #8242cf; background: #f5ecff; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .backdrop, .drawer, .desktopNav a { transition: none; }
+}

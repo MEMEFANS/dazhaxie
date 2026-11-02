@@ -1,0 +1,51 @@
+{
+  "name": "daxhaxie",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test:contracts": "node scripts/verify-trading-fees.cjs",
+    "test:pancake": "node scripts/verify-pancake-tax.cjs && node scripts/verify-pancake-data.cjs && node scripts/verify-pancake-admin.cjs && npm run test:pool-burn",
+    "test:wallet": "node scripts/verify-wallet-network.cjs",
+    "test:referral": "node scripts/verify-referral-binding.cjs && node scripts/verify-referral-data.cjs && node scripts/verify-referral-client.cjs && node scripts/verify-referral-gate.cjs && node scripts/verify-subscription-purchase.cjs",
+    "test:referral-navigation": "node scripts/verify-referral-gate-navigation.cjs",
+    "test:claim": "node scripts/verify-signed-claim-pool.cjs && node scripts/verify-simple-claim-pool.cjs && node scripts/verify-claim-pool-data.cjs && node scripts/verify-subscribe-admin.cjs && node scripts/verify-subscription-purchase.cjs",
+    "test:subscribe": "node scripts/verify-subscription-server.cjs && node scripts/verify-subscription-purchase.cjs",
+    "test:business": "node scripts/verify-contract-transactions.cjs && node scripts/verify-subscription-server.cjs && npm run test:team && npm run test:referral && npm run test:claim",
+    "test:team": "node scripts/verify-team-reward.ts && node scripts/verify-team-reward-contract.cjs",
+    "admin:setup": "node scripts/setup-admin.cjs",
+    "test:pool-burn": "node scripts/verify-pool-burn.cjs && node scripts/verify-pool-burn-data.cjs && node scripts/verify-pool-burn-admin.cjs && node scripts/verify-pool-burn-keeper.cjs",
+    "keeper:pool-burn": "node scripts/pool-burn-keeper.cjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.105.0",
+    "lucide-react": "^1.62.0",
+    "next": "16.4.3",
+    "qrcode.react": "^4.2.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "viem": "^2.57.12",
+    "wagmi": "^3.7.9"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@uniswap/v2-core": "^1.0.1",
+    "@uniswap/v2-periphery": "^1.1.0-beta.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.3",
+    "ganache": "^7.9.2",
+    "jsdom": "^30.1.3",
+    "solc": "^0.8.24",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

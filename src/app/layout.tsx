@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { StoreProvider } from "@/lib/store";
+import { RouteShell } from "@/components/dapp/route-shell";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,7 +17,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "蟹比特 XIE BIT · CaBi 生态与蟹礼",
   description:
-    "了解蟹比特 CaBi 生态份额、代币配额、实物蟹礼兑换与蟹友社区。查看项目规则与开放进度。",
+    "了解蟹比特 CaBi 生态份额、代币配额、实物蟹礼兑换与社群动态。查看项目规则与开放进度。",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -26,7 +27,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <StoreProvider>{children}</StoreProvider>
+        <StoreProvider><RouteShell>{children}</RouteShell></StoreProvider>
       </body>
     </html>
   );

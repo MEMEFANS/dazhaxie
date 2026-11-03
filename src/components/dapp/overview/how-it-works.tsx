@@ -19,7 +19,7 @@ const STEPS = [
   {
     no: "03",
     title: "兑换",
-    desc: `${fmt(EXCHANGE_COST)} CaBi 兑换 1 份实物蟹礼：代币转入后台指定收款地址，再填写收货信息。`,
+    desc: `${fmt(EXCHANGE_COST)} CaBi 兑换 1 份实物蟹礼：代币转入项目收款地址，再填写收货信息。`,
   },
 ];
 

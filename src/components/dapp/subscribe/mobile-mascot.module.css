@@ -1,0 +1,44 @@
+.mobileBadge { display: none; }
+
+@media (max-width: 540px) {
+  .desktopArt.desktopArt { display: none; }
+  .mobileBadge {
+    position: absolute;
+    top: 31px;
+    right: 24px;
+    display: grid;
+    width: 84px;
+    height: 84px;
+    place-items: center;
+    padding: 5px;
+    border: 1px solid #d5b7ec;
+    border-radius: 50%;
+    background: #f8efff;
+    box-shadow: 0 5px 16px #8553ae14;
+  }
+  .mobileBadge::before {
+    position: absolute;
+    inset: -5px;
+    border: 1px solid #d9c0ee80;
+    border-radius: 50%;
+    content: "";
+  }
+  .mobileBadge::after {
+    position: absolute;
+    bottom: 1px;
+    left: 2px;
+    width: 8px;
+    height: 8px;
+    border: 2px solid #fbf5ff;
+    border-radius: 50%;
+    background: #e5b769;
+    content: "";
+  }
+  .mobileBadge > img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+  .sparkle { position: absolute; top: -5px; right: -5px; color: #a46cc8; }
+}
+
+@media (max-width: 360px) {
+  .mobileBadge { top: 41px; right: 19px; width: 64px; height: 64px; padding: 4px; }
+  .sparkle { width: 14px; height: 14px; }
+}

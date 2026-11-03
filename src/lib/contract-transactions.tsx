@@ -7,12 +7,13 @@ import { appChain, chainConfig, chainConfigurationValid, contracts, getExplorerT
 import * as wallet from "./wallet";
 import { useStore } from "./store";
 import { recordChainAudit } from "./chain-audit";
+import { isUserCancelledError } from "./transaction-cancellation";
 
 const client = createPublicClient({ chain: appChain, transport: fallback(chainConfig.rpcUrls.map(url => http(url, { timeout: 12_000, retryCount: 0 })), { retryCount: 0 }) });
 type Phase = "approval" | "action";
-export type ContractTransaction = { status: "wallet" | "pending" | "success" | "failed"; description: string; phase: Phase; hash?: Hash; message: string };
+export type ContractTransaction = { status: "wallet" | "pending" | "success" | "failed"; description: string; phase: Phase; hash?: Hash; message: string; cancelled?: boolean };
 type Pending = { version: 1; scope: string; chainId: number; account: Address; address: Address; data: Hex; hash: Hash; description: string; phase: Phase };
-export type ContractRequest = { address: Address; abi: Abi; functionName: string; args?: readonly unknown[]; description: string; approval?: { token: Address; amount: bigint }; beforeSend?: () => Promise<void> };
+export type ContractRequest = { address: Address; abi: Abi; functionName: string; args?: readonly unknown[]; description: string; approval?: { token: Address; amount: bigint }; beforeSend?: () => Promise<void>; allowUnsimulated?: boolean };
 const inFlight = new Set<string>();
 const configuredTargets = () => Object.values(contracts).filter((value): value is Address => Boolean(value));
 const isConfigured = (address: string) => configuredTargets().some(value => value.toLowerCase() === address.toLowerCase());
@@ -31,7 +32,7 @@ function savePending(key: string, record: Pending) { try { localStorage.setItem(
 function removePending(key: string) { try { localStorage.removeItem(key); } catch { /* Chain is authoritative. */ } }
 function errorText(error: unknown) {
   const text = error instanceof Error ? error.message : "";
-  if (/rejected|denied|4001/i.test(text)) return "已取消钱包确认，本次操作未完成。";
+  if (isUserCancelledError(error)) return "已取消钱包确认，本次操作未完成。";
   if (/insufficient funds/i.test(text)) return "BNB 手续费余额不足，请补足后重试。";
   if (/钱包|网络|配置|管理员|账户|合约|授权|余额|处理中/.test(text) && text.length < 160) return text;
   if (/max wallet/i.test(text)) return "到账后将超过当前持仓上限，请先调整持仓。";
@@ -121,12 +122,24 @@ export function useContractTransaction(scope: string, options?: { audit?: boolea
       const bytecode = await client.getCode({ address });
       if (!isConfigured(address) || !bytecode || bytecode === "0x") throw new Error("目标合约未正确配置。");
       publish({ status: "wallet", phase: stage, description, message: "请核对钱包显示的合约、金额及操作内容。" });
-      const simulation = await client.simulateContract({ address, abi, functionName, args, account });
-      await verifyWallet(account);
-      if (stage === "action" && request.beforeSend) { await request.beforeSend(); await verifyWallet(account); }
       const data = encodeFunctionData({ abi, functionName, args });
-      const signer = createWalletClient({ chain: appChain, transport: custom(connection.provider) });
-      const hash = await signer.writeContract(simulation.request);
+      let hash: Hash;
+      let walletRequested = false;
+      try {
+        const simulation = await client.simulateContract({ address, abi, functionName, args, account });
+        await verifyWallet(account);
+        if (stage === "action" && request.beforeSend) { await request.beforeSend(); await verifyWallet(account); }
+        const signer = createWalletClient({ chain: appChain, transport: custom(connection.provider) });
+        walletRequested = true;
+        hash = await signer.writeContract(simulation.request);
+      } catch (simulationError) {
+        // 认购等场景允许跳过前端预演：预演失败（如余额不足）时仍唤起钱包，由钱包与链上自行判定成败。
+        if (walletRequested || isUserCancelledError(simulationError) || !request.allowUnsimulated) throw simulationError;
+        const fresh = await verifyWallet(account);
+        if (stage === "action" && request.beforeSend) { await request.beforeSend(); await verifyWallet(account); }
+        const signer = createWalletClient({ chain: appChain, transport: custom(fresh.provider) });
+        hash = await signer.sendTransaction({ account, chain: appChain, to: address, data, value: 0n });
+      }
       const record: Pending = { version: 1, scope, chainId: chainConfig.id, account, address, data, hash, description, phase: stage };
       savePending(key, record); pending.current = { key, record };
       publish({ status: "pending", phase: stage, description, hash, message: "交易已广播，等待两个区块确认。" });
@@ -136,7 +149,7 @@ export function useContractTransaction(scope: string, options?: { audit?: boolea
     try {
       if (!isConfigured(request.address)) throw new Error("业务合约未正确配置。");
       await verifyWallet(account);
-      publish({ status: "wallet", phase: "action", description: request.description, message: "正在校验余额与链上状态。" });
+      publish({ status: "wallet", phase: "action", description: request.description, message: "正在核对钱包与链上状态。" });
       if (request.approval && request.approval.amount > 0n) {
         if (![contracts.usdt, contracts.token].some(value => value?.toLowerCase() === request.approval!.token.toLowerCase())) throw new Error("授权资产与项目配置不一致。");
         const allowance = await client.readContract({ address: request.approval.token, abi: erc20Abi, functionName: "allowance", args: [account, request.address] });
@@ -147,7 +160,7 @@ export function useContractTransaction(scope: string, options?: { audit?: boolea
       }
       return await send(request.address, request.abi, request.functionName, request.args || [], request.description, "action");
     } catch (error) {
-      publish({ status: "failed", phase, description: request.description, message: errorText(error) });
+      publish({ status: "failed", phase, description: request.description, message: errorText(error), cancelled: isUserCancelledError(error) });
       if (auditEnabled) recordChainAudit({ action: request.description, status: "failed", wallet: account, error: errorText(error) });
       return undefined;
     } finally { inFlight.delete(key); }

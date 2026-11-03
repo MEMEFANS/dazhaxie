@@ -5,8 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowUpRight, ChevronRight, Coins, Gift, Headphones, LayoutDashboard,
-  Check, CircleAlert, LoaderCircle, MessageCircle, MoreHorizontal, ShieldCheck, ShoppingBag, Users, Wallet, X,
+  ArrowUpRight, ChevronRight, Coins, Headphones, House,
+  Check, CircleAlert, LoaderCircle, MessageCircle, MoreHorizontal, Network, ShieldCheck, ShoppingBag, Users, Wallet, X,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { shortAddr } from "@/lib/constants";
@@ -19,15 +19,18 @@ import * as wallet from "@/lib/wallet";
 import styles from "./shell.module.css";
 
 const primaryItems = [
-  { href: "/", label: "总览", icon: LayoutDashboard },
+  { href: "/", label: "首页", icon: House },
   { href: "/dapp/subscribe", label: "认购", icon: ShoppingBag },
   { href: "/dapp/token", label: "代币", icon: Coins },
-  { href: "/dapp/exchange", label: "蟹礼", icon: Gift },
   { href: "/dapp/promotion", label: "邀请", icon: Users },
+  { href: "/dapp/team", label: "团队", icon: Network },
 ];
 
+const communityItem = { href: "/dapp/community", label: "社群", icon: MessageCircle };
+const mobileItems = primaryItems.map(item => item.href === "/dapp/promotion" ? communityItem : item);
+
 const serviceItems = [
-  { href: "/dapp/community", label: "蟹友社区", detail: "公告、交流与生态动态", icon: MessageCircle },
+  { ...communityItem, detail: "公告、交流与生态动态" },
   { href: "/dapp/support", label: "联系支持", detail: "查看工单与常见问题", icon: Headphones },
 ];
 
@@ -44,12 +47,14 @@ export function DAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const overviewPage = pathname === "/" || pathname === "/dapp";
   const invitePage = pathname === "/dapp/promotion";
+  const communityPage = pathname === "/dapp/community";
   const { state, hydrated, connecting, connect, disconnect, showToast } = useStore();
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [addingToken, setAddingToken] = useState(false);
   const [previousPath, setPreviousPath] = useState(pathname);
   const drawerRef = useRef<HTMLElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
   const connected = hydrated && state.connected;
   const wrongNetwork = connected && state.chainId !== chainConfig.id;
   const token = useTokenData();
@@ -91,6 +96,28 @@ export function DAppShell({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
+    if (!communityPage) return;
+    const viewport = window.visualViewport;
+    let element = shellRef.current;
+    const resize = () => {
+      element = shellRef.current;
+      element?.style.setProperty("--chat-viewport-height", `${viewport?.height ?? window.innerHeight}px`);
+      element?.style.setProperty("--chat-viewport-top", `${viewport?.offsetTop ?? 0}px`);
+    };
+    resize();
+    viewport?.addEventListener("resize", resize);
+    viewport?.addEventListener("scroll", resize);
+    window.addEventListener("resize", resize);
+    return () => {
+      viewport?.removeEventListener("resize", resize);
+      viewport?.removeEventListener("scroll", resize);
+      window.removeEventListener("resize", resize);
+      element?.style.removeProperty("--chat-viewport-height");
+      element?.style.removeProperty("--chat-viewport-top");
+    };
+  }, [communityPage]);
+
+  useEffect(() => {
     if (!open) return;
     const previousOverflow = document.body.style.overflow;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -122,10 +149,10 @@ export function DAppShell({ children }: { children: React.ReactNode }) {
   }, [open]);
 
   return (
-    <ReferralGate><div className={`${styles.shell} ${invitePage ? styles.inviteShell : ""}`}>
+    <ReferralGate><div ref={shellRef} className={`${styles.shell} ${invitePage ? styles.inviteShell : ""} ${communityPage ? styles.communityShell : ""}`}>
       <header className={styles.header}>
         <div className={styles.headerInner}>
-          <Link href="/" className={styles.brand} aria-label="蟹比特总览">
+          <Link href="/" className={styles.brand} aria-label="蟹比特首页">
             <Image src="/images/xiebit-avatar-v4.webp" alt="" width={40} height={40} preload />
             <span><strong>蟹比特</strong><small>XIE BIT CLUB</small></span>
           </Link>
@@ -157,11 +184,11 @@ export function DAppShell({ children }: { children: React.ReactNode }) {
           ) : <span className={styles.networkState}>{connected ? <><Check size={12} /> 网络已匹配</> : "连接钱包查看个人资产"}</span>}
         </div>
       </header>
-      <main id="home" className={overviewPage ? styles.overviewContent : invitePage ? styles.inviteContent : styles.content}>
+      <main id="home" className={communityPage ? styles.communityContent : overviewPage ? styles.overviewContent : invitePage ? styles.inviteContent : styles.content}>
         {children}
       </main>
       <nav className={styles.mobileNav} aria-label="主导航">
-        {primaryItems.map(item => {
+        {mobileItems.map(item => {
           const active = isActive(pathname, item.href);
           return (
             <Link key={item.href} href={item.href} className={active ? styles.active : undefined} aria-current={active ? "page" : undefined}>

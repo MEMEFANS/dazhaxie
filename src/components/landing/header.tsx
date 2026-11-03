@@ -7,7 +7,7 @@ const navItems = [
   { label: "生态介绍", href: "#ecosystem" },
   { label: "参与流程", href: "#how-it-works" },
   { label: "蟹礼兑换", href: "#crab-gifts" },
-  { label: "蟹友社区", href: "#community" },
+  { label: "社群", href: "#community" },
 ];
 
 export function Header() {

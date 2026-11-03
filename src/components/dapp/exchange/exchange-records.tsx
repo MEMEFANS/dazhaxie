@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Package, RefreshCw } from "lucide-react";
+import { useStore } from "@/lib/store";
 import { useRedemptionAccount, redemptionRequest, notifyRedemptionChanged } from "@/lib/redemption-client";
 import { getExplorerTxUrl } from "@/lib/chain-config";
 import { formatAssetAmount } from "@/lib/amounts";
@@ -11,6 +12,7 @@ const labels: Record<RedemptionOrder["status"], string> = { paid: "待发货", s
 const tones: Record<RedemptionOrder["status"], "live" | "soon" | "paused"> = { paid: "soon", shipped: "live", delivered: "paused", cancelled: "paused" };
 
 export default function ExchangeRecords() {
+  const { state, connect } = useStore();
   const account = useRedemptionAccount();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -26,10 +28,10 @@ export default function ExchangeRecords() {
   }
   return (
     <section className="card p-5 sm:p-6">
-      <SectionTitle icon={Package} title="兑换记录" extra={<Badge tone="gray">{account.authenticated ? account.orders.length + " 笔" : "私密订单"}</Badge>} />
-      <button onClick={() => void account.refresh()} className="btn btn-outline mb-4 min-h-11 px-3 text-xs"><RefreshCw size={13} />刷新订单</button>
+      <SectionTitle icon={Package} title="我的兑换" extra={account.authenticated ? <Badge tone="gray">{account.orders.length} 笔</Badge> : null} />
+      {account.authenticated ? <button onClick={() => void account.refresh()} className="btn btn-outline mb-4 min-h-11 px-3 text-xs"><RefreshCw size={13} />刷新订单</button> : null}
       {error || account.error ? <p role="alert" className="mb-3 text-sm text-down">{error || account.error}</p> : null}
-      {!account.authenticated ? <EmptyRow text="连接钱包并签名登录后，可查看本人收货信息和物流" />
+      {!account.authenticated ? <button type="button" onClick={state.connected ? () => void account.login() : connect} disabled={account.busy} className="btn btn-outline min-h-11 w-full text-xs">{account.busy ? "请在钱包中确认…" : "查看我的订单"}</button>
         : !account.orders.length ? <EmptyRow text="暂无兑换订单" />
           : <div className="space-y-4">
             {account.orders.map(order => (

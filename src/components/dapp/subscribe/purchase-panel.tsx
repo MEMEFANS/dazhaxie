@@ -2,14 +2,22 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { erc20Abi, parseUnits } from "viem";
-import { Check, Copy, Wallet } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Coins, Copy, ShoppingBag, Wallet } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { chainConfig } from "@/lib/chain-config";
 import { formatAssetAmount } from "@/lib/amounts";
-import { fetchUsdtBalance, useSubscribeConfig, useSubscribeOrders } from "@/lib/subscribe-data";
+import { useSubscribeConfig, useSubscribeOrders } from "@/lib/subscribe-data";
 import { fetchReferralData, useReferralData } from "@/lib/referral-data";
-import { TransactionFeedback, useContractTransaction } from "@/lib/contract-transactions";
-import { Badge, Card, DataRow, QtyStepper } from "@/components/dapp/ui";
+import { useContractTransaction } from "@/lib/contract-transactions";
+import { isUserCancelledError } from "@/lib/transaction-cancellation";
+import { RelationNotice } from "./relation-notice";
+import { ShareOptions } from "./share-options";
+import { PurchaseSuccess } from "./purchase-success";
+import { PurchaseRecords } from "./purchase-records";
+import { PurchaseStatus, type PurchaseStatusKind } from "./purchase-status";
+import styles from "./subscribe.module.css";
+
+type PurchaseSnapshot = { hash: string; shares: number; paid: string; allocation: string };
 
 export function PurchasePanel() {
   const { state } = useStore();
@@ -25,12 +33,36 @@ function PurchasePanelForm() {
   const mounted = useRef(false), operation = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [checking, setChecking] = useState(false);
-  const [quantity, setQuantity] = useState(1), [accepted, setAccepted] = useState(""), [error, setError] = useState("");
-  const [balance, setBalance] = useState<bigint | undefined>();
+  const [selectedQuantity, setQuantity] = useState(1), [error, setError] = useState("");
+  const [cancelled, setCancelled] = useState(false), [resuming, setResuming] = useState(false);
   const [serverState, setServerState] = useState<"idle" | "verifying" | "success" | "failed">("idle");
   const [serverMessage, setServerMessage] = useState("");
-  const [pending, setPending] = useState<{ hash: string; shares: number } | null>(null);
+  const [pending, setPending] = useState<PurchaseSnapshot | null>(null);
+  const [completed, setCompleted] = useState<PurchaseSnapshot | null>(null);
+  const [unregisteredHash, setUnregisteredHash] = useState("");
   const [copied, setCopied] = useState(false);
+  const [inlineActionVisible, setInlineActionVisible] = useState(false);
+  const inlineActions = useRef<HTMLDivElement>(null), successResult = useRef<HTMLDivElement>(null), statusResult = useRef<HTMLDivElement>(null);
+  const submitted = useRef<Omit<PurchaseSnapshot, "hash"> | null>(null);
+
+  useEffect(() => {
+    if (!inlineActions.current || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => setInlineActionVisible(entry.isIntersecting), {
+      rootMargin: "-116px 0px -160px 0px", threshold: 1,
+    });
+    observer.observe(inlineActions.current);
+    return () => observer.disconnect();
+  }, [completed]);
+
+  useEffect(() => {
+    if (!completed || !successResult.current) return;
+    const target = successResult.current;
+    const frame = window.requestAnimationFrame(() => {
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [completed]);
 
   async function verifyOnServer(hash: string, shares: number): Promise<Response> {
     return fetch("/api/subscribe/orders", {
@@ -38,45 +70,38 @@ function PurchasePanelForm() {
       body: JSON.stringify({ shares, hash }),
     });
   }
-  function reportServerResult(response: Response, body: { error?: string }, hash: string, shares: number) {
-    if (response.status === 202) { setServerState("verifying"); setServerMessage(body.error || "等待区块确认，请稍后点击重新核验。"); return false; }
-    if (!response.ok) { setServerState("failed"); setServerMessage(body.error || "认购核验未通过，请核对后重试。"); setPending(null); return false; }
-    setServerState("success"); setServerMessage(`认购单已登记：${shares} 份，交易 ${hash.slice(0, 10)}…`); setPending(null);
-    setConfirmed(false); setQuantity(1); void query.refresh(); orders.refresh();
+  function reportServerResult(response: Response, body: { error?: string }, purchase: PurchaseSnapshot) {
+    if (response.status === 202) { setServerState("verifying"); setServerMessage(body.error || "转账确认中，请稍后点击重新查询。"); return false; }
+    if (!response.ok) { setServerState("failed"); setServerMessage(body.error || "暂未完成认购登记，请查询本次结果，无需再次支付。"); return false; }
+    setServerState("success"); setServerMessage(""); setCompleted(purchase); setPending(null);
+    setQuantity(Math.max(1, data?.minShares ?? 1)); void query.refresh(); orders.refresh();
     return true;
   }
-
-  useEffect(() => {
-    if (!state.connected || !data?.usdt) return;
-    let active = true;
-    void fetchUsdtBalance(state.address, data.usdt).then(value => { if (active) setBalance(value); }, () => { if (active) setBalance(undefined); });
-    return () => { active = false; };
-  }, [state.connected, state.address, data?.usdt, data?.globalSold, orders.orders.length]);
 
   useEffect(() => {
     if (tx.transaction?.status === "success") { void query.refresh(); orders.refresh(); }
   }, [tx.transaction?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const bound = referral.status === "ready" && Boolean(relation?.bound) && relation?.account.toLowerCase() === state.address.toLowerCase();
-  const amount = data ? parseUnits(String(quantity * data.unitPrice), data.usdtDecimals) : 0n;
-  const quota = data ? BigInt(quantity) * BigInt(data.tokensPerShare) * 10n ** 18n : 0n;
+  const restoredShares = tx.transaction?.status === "pending" ? Number(tx.transaction.description.match(/^认购 (\d+) 份/)?.[1]) : 0;
+  const quantity = Math.max(Math.max(1, data?.minShares ?? 1), Number.isSafeInteger(restoredShares) && restoredShares > 0 ? restoredShares : selectedQuantity);
+  const amount = data ? parseUnits(String(data.unitPrice), data.usdtDecimals) * BigInt(quantity) : 0n;
+  const quota = data ? parseUnits(String(data.tokensPerShare), data.tokenDecimals) * BigInt(quantity) : 0n;
   const remaining = data ? Math.max(0, data.maxShares - data.purchased) : 0;
   const confirmationKey = [state.address.toLowerCase(), state.chainId, quantity, data?.unitPrice, data?.usdtDecimals, data?.payee, data?.purchased, data?.globalSold, relation?.code, relation?.referrerCode, relation?.referrer, referral.status].join(":");
   const context = useMemo(() => ({ confirmationKey }), [confirmationKey]), current = useRef<object | null>(null);
   useEffect(() => { current.current = context; return () => { current.current = null; }; }, [context]);
-  const confirmed = accepted === confirmationKey;
-  const setConfirmed = (value: boolean) => setAccepted(value ? confirmationKey : "");
 
   let reason = "";
   if (!state.connected) reason = "请连接钱包";
   else if (state.chainId !== chainConfig.id) reason = "请切换到" + chainConfig.shortName;
   else if (query.status !== "ready" || query.error || !data) reason = query.error || "正在读取认购配置";
-  else if (!data.configured) reason = data.message || "等待后台设置认购收款地址";
+  else if (!data.configured) reason = data.message || "认购暂未开放";
   else if (!bound) reason = "请先在邀请入口绑定推荐关系";
   else if (!data.enabled) reason = data.message || "认购暂时关闭";
   else if (quantity > remaining) reason = "超过此钱包剩余认购份数";
   else if (quantity > data.remainingGlobal) reason = "超过全局剩余份数";
-  else if (balance !== undefined && balance < amount) reason = "USDT 余额不足";
+  // 不做 USDT 余额前置校验：余额不足时钱包转账会自行失败回滚，避免误拦截
   else if (!data.payee || !data.usdt) reason = "收款地址或 USDT 配置缺失";
 
   async function verifyReferral() {
@@ -86,8 +111,9 @@ function PurchasePanelForm() {
   }
 
   async function submit() {
-    if (reason || !data?.payee || !data.usdt || !bound || operation.current || tx.busy || !confirmed) return;
-    operation.current = true; setChecking(true); setError(""); setServerState("idle"); setServerMessage("");
+    if (reason || !data?.payee || !data.usdt || !bound || operation.current || tx.busy || pending || unregisteredHash) return;
+    operation.current = true; setChecking(true); setError(""); setCancelled(false); setCompleted(null); setServerState("idle"); setServerMessage(""); tx.clear();
+    submitted.current = { shares: quantity, paid: formatAssetAmount(amount, data.usdtDecimals), allocation: formatAssetAmount(quota, data.tokenDecimals) };
     try {
       await verifyReferral();
       const hash = await tx.run({
@@ -95,31 +121,58 @@ function PurchasePanelForm() {
         args: [data.payee, amount],
         description: `认购 ${quantity} 份，向收款地址转入 ${formatAssetAmount(amount, data.usdtDecimals)} USDT`,
         beforeSend: verifyReferral,
+        allowUnsimulated: true,
       });
       if (!hash || !mounted.current) return;
-      const shares = quantity;
-      setPending({ hash, shares });
-      setServerState("verifying"); setServerMessage("转账已确认，服务器正在核验并写入认购单…");
-      const response = await verifyOnServer(hash, shares);
-      const body = await response.json().catch(() => ({}));
-      const recorded = reportServerResult(response, body, hash, shares);
-      if (recorded) setBalance(await fetchUsdtBalance(state.address, data.usdt).catch(() => balance));
+      await registerPurchase({ hash, ...submitted.current });
     } catch (cause) {
-      if (mounted.current) { setServerState("failed"); setPending(null); setError(cause instanceof Error ? cause.message : "认购校验失败，请重试"); }
+      if (mounted.current) { setServerState("failed"); setCancelled(isUserCancelledError(cause)); setError(isUserCancelledError(cause) ? "你已取消钱包确认，可重新发起认购。" : cause instanceof Error ? cause.message : "本次认购未完成，请核对后重试。"); }
     } finally { operation.current = false; if (mounted.current) setChecking(false); }
   }
 
+  async function registerPurchase(purchase: PurchaseSnapshot) {
+    setPending(purchase); setServerState("verifying"); setServerMessage("");
+    try {
+      const response = await verifyOnServer(purchase.hash, purchase.shares);
+      const body = await response.json().catch(() => ({}));
+      if (mounted.current) reportServerResult(response, body, purchase);
+    } catch {
+      if (mounted.current) { setServerState("failed"); setServerMessage("认购登记暂时无法查询，请重试查询本次结果，无需再次支付。"); }
+    }
+  }
+
   async function recheck() {
-    if (!pending || !data?.usdt || checking || operation.current) return;
+    if (!pending || checking || operation.current) return;
     operation.current = true; setChecking(true); setError("");
     try {
       const response = await verifyOnServer(pending.hash, pending.shares);
       const body = await response.json().catch(() => ({}));
       if (!mounted.current) return;
-      if (reportServerResult(response, body, pending.hash, pending.shares)) setBalance(await fetchUsdtBalance(state.address, data.usdt).catch(() => balance));
+      reportServerResult(response, body, pending);
     } catch (cause) {
       if (mounted.current) { setServerState("failed"); setServerMessage(cause instanceof Error ? cause.message : "重新核验失败，请稍后重试"); }
     } finally { operation.current = false; if (mounted.current) setChecking(false); }
+  }
+
+  async function resumeTransfer() {
+    if (checking || resuming || operation.current) return;
+    operation.current = true; setResuming(true); setError("");
+    try {
+      const description = tx.transaction?.description;
+      const hash = await tx.resume();
+      if (!hash || !mounted.current) return;
+      let snapshot = submitted.current;
+      // Restored transactions retain the original app-generated purchase description.
+      const restored = description?.match(/^认购 (\d+) 份，向收款地址转入 ([\d,]+(?:\.\d+)?) USDT$/);
+      if (!snapshot && restored && data) {
+        const shares = Number(restored[1]);
+        if (Number.isSafeInteger(shares) && shares > 0) snapshot = { shares, paid: restored[2], allocation: formatAssetAmount(parseUnits(String(data.tokensPerShare), data.tokenDecimals) * BigInt(shares), data.tokenDecimals) };
+      }
+      if (snapshot) await registerPurchase({ hash, ...snapshot });
+      else { setUnregisteredHash(hash); setServerState("failed"); setServerMessage("转账已确认，请联系支持核对本笔认购登记，无需再次支付。"); }
+    } catch {
+      if (mounted.current) setServerMessage("暂时无法查询链上结果，请稍后重试，无需再次支付。");
+    } finally { operation.current = false; if (mounted.current) setResuming(false); }
   }
 
   async function copyPayee() {
@@ -127,48 +180,74 @@ function PurchasePanelForm() {
     try { await navigator.clipboard.writeText(data.payee); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { /* Clipboard may require a secure context. */ }
   }
 
-  const busy = checking || tx.busy || serverState === "verifying" || Boolean(pending);
-  return <Card className="p-5 sm:p-6">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="kicker">SUBSCRIBE</p><h2 className="mt-1.5 text-lg font-semibold">转账认购</h2></div><Badge tone={data?.enabled ? "green" : "gray"}>{data ? data.enabled ? "可认购" : data.locked ? "已暂停" : "等待配置" : "等待配置"}</Badge></div>
-    <p className="mt-3 text-xs leading-6 text-mute">向下方收款地址转入 USDT（{data?.unitPrice ?? 50} USDT / 份），转账成功后提交交易哈希，服务器核验通过即登记认购单。整套流程不再调用认购合约。</p>
-    <div className="mt-5 grid gap-5 lg:grid-cols-2">
-      <div className="min-w-0">
-        <p className="mb-3 text-xs text-mute">每钱包限购 {data?.maxShares ?? 2} 份 · 剩余 {data ? remaining : "—"} 份</p>
-        <QtyStepper value={quantity} onDecrease={() => { setQuantity(v => Math.max(1, v - 1)); setConfirmed(false); }} onIncrease={() => { setQuantity(v => Math.min(Number(data?.maxShares || 2), v + 1)); setConfirmed(false); }} />
-        <div className="mt-4 rounded-lg border border-line bg-well px-4 py-2">
-          <DataRow label="USDT 余额" value={balance !== undefined && data ? formatAssetAmount(balance, data.usdtDecimals) + " USDT" : "读取中…"} />
-          <DataRow label="已认购" value={data ? data.purchased + " 份" : "—"} />
-          <DataRow label="全局进度" value={data ? data.globalSold + " / " + data.hardCap + " 份" : "—"} />
-          <DataRow label="剩余额度" value={data ? data.remainingGlobal + " 份" : "—"} />
-        </div>
-        <div className="mt-4 rounded-lg border border-line bg-well p-3">
-          <div className="flex items-center justify-between gap-2"><p className="text-xs text-mute">认购收款地址</p><button type="button" onClick={() => void copyPayee()} disabled={!data?.payee} className="btn btn-outline min-h-9 px-2 text-[11px]">{copied ? <><Check size={12} />已复制</> : <><Copy size={12} />复制</>}</button></div>
-          <p className="mt-2 break-all font-mono text-xs">{data?.payee || "等待后台设置"}</p>
-          <p className="mt-2 text-[11px] leading-6 text-faint">仅转入 USDT；转错链、转错币或金额不符将无法核验。请勿重复转账。</p>
+  const busy = checking || resuming || tx.busy || serverState === "verifying" || Boolean(pending) || Boolean(unregisteredHash);
+  const maximum = data ? Math.min(data.maxShares, data.remainingGlobal, state.connected ? remaining : data.maxShares) : 1;
+  const shortPayee = data?.payee ? `${data.payee.slice(0, 6)}…${data.payee.slice(-4)}` : "等待配置";
+  const confirming = tx.transaction?.status === "pending";
+  const actionLabel = tx.busy ? tx.transaction?.status === "wallet" ? "等待钱包确认" : "等待链上确认" : checking ? "正在核对认购" : pending ? "等待认购登记" : unregisteredHash ? "请核对认购登记" : reason || "确认认购";
+  const mobileLabel = !state.connected ? "连接钱包" : pending || confirming ? checking || resuming ? "正在查询…" : confirming ? "查询转账结果" : "查询认购结果" : actionLabel;
+  const mobileDisabled = state.connected && (pending || confirming ? checking || resuming : Boolean(reason) || busy);
+  let statusKind: PurchaseStatusKind | undefined;
+  let statusMessage: string | undefined;
+  if (pending || unregisteredHash) { statusKind = serverState === "failed" ? "registration-failed" : "registering"; statusMessage = serverMessage || undefined; }
+  else if (error) { statusKind = cancelled ? "cancelled" : "failed"; statusMessage = error; }
+  else if (tx.transaction?.status === "failed") { statusKind = tx.transaction.cancelled ? "cancelled" : "failed"; statusMessage = tx.transaction.message; }
+  else if (confirming) { statusKind = "confirming"; statusMessage = serverMessage || undefined; }
+  else if (tx.transaction?.status === "wallet") { statusKind = "wallet"; }
+  else if (checking) { statusKind = "checking"; }
+
+  useEffect(() => {
+    if (!statusKind || !["failed", "cancelled", "registration-failed", "confirming"].includes(statusKind) || !statusResult.current) return;
+    const target = statusResult.current;
+    const frame = window.requestAnimationFrame(() => {
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [statusKind]);
+
+  return (
+    <>
+    <section className={styles.purchase} aria-labelledby="purchase-title">
+      <div className={styles.purchaseHeading}><h2 id="purchase-title"><ShoppingBag size={19} strokeWidth={1.7} />选择认购份额</h2><span><Wallet size={13} />USDT 支付</span></div>
+      <p className={styles.purchaseIntro}>选择你的份数，核对本次支付与配额。</p>
+      {completed ? <div ref={successResult} tabIndex={-1} className={styles.successTarget} aria-label="本次认购结果">
+        <PurchaseSuccess shares={completed.shares} paid={completed.paid} allocation={completed.allocation} txHash={completed.hash} />
+        {data?.enabled && maximum >= Math.max(1, data.minShares) ? <button type="button" className={`btn btn-outline ${styles.continueButton}`} onClick={() => setCompleted(null)}>继续认购其他份额<ArrowRight size={14} /></button> : null}
+      </div> : <>
+      <RelationNotice />
+
+      <ShareOptions value={quantity} onChange={setQuantity} config={data} available={maximum} disabled={busy} />
+      <div className={styles.accountStats}><span>已认购 <strong>{data && state.connected ? data.purchased : "—"}</strong> 份</span><span>此钱包还可认购 <strong>{data && state.connected ? remaining : "—"}</strong> 份</span></div>
+
+      <div className={styles.receipt}>
+        <div className={styles.payment}><span>本次支付</span><strong aria-live="polite">{data ? formatAssetAmount(amount, data.usdtDecimals) : "—"}<small>USDT</small></strong></div>
+        <div className={styles.allocation}><span><Coins size={14} />对应 CaBi 配额</span><strong>{data ? formatAssetAmount(quota, data.tokenDecimals) : "—"}<small>CaBi</small></strong></div>
+        <p className={styles.receiptHint}>以下为不同领取方式的预计到账数量，认购后前往代币中心领取。</p>
+        <div className={styles.claimOptions}>
+          <div><span>直接领取 · 50%</span><strong>{data ? formatAssetAmount(quota * 50n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong></div>
+          <div><span>组建流动性 · 70%</span><strong>{data ? formatAssetAmount(quota * 70n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong><p className={styles.claimRequirement}>领取时另付 30% USDT</p></div>
         </div>
       </div>
-      <div className="min-w-0">
-        <div className="rounded-lg border border-line bg-well px-4 py-2">
-          <DataRow label="本次应付" value={data ? formatAssetAmount(amount, data.usdtDecimals) + " USDT" : "—"} />
-          <DataRow label="代币配额" value={data ? formatAssetAmount(quota, data.tokenDecimals) + " CaBi" : "—"} />
-          <DataRow label="直接领取到账" value={data ? formatAssetAmount(quota * 50n / 100n, data.tokenDecimals) + " CaBi（50%）" : "—"} />
-          <DataRow label="组 LP 领取到账" value={data ? formatAssetAmount(quota * 70n / 100n, data.tokenDecimals) + " CaBi（70%）" : "—"} />
-        </div>
-        <div className="mt-4 rounded-lg border border-line bg-well p-3">
-          <p className="text-xs text-mute">已绑定邀请码（服务器保存）</p>
-          <p className="mt-2 break-all font-mono text-xs" data-referral-code>{bound ? (relation?.root ? "项目初始邀请账户" : relation?.referrerCode) : "请先在邀请入口完成绑定"}</p>
-          <p className="mt-2 text-[11px] leading-6 text-faint">认购沿用已绑定关系，邀请链接不能覆盖推荐人。</p>
-        </div>
-        <label className="mt-3 flex items-start gap-2 text-xs leading-6 text-mute"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} disabled={busy || !data} className="mt-1.5 h-4 w-4 shrink-0" />我已核对收款地址、USDT 金额和推荐关系；转账成功后由服务器核验记账，领取时可在 50% / 70% 两种方式中二选一。</label>
+
+      <details className={styles.payee}><summary><span>收款地址与网络</span><span>{shortPayee}<ChevronDown size={14} /></span></summary><div className={styles.payeeAddress}><code>{data?.payee || "暂未开放"}</code><button type="button" onClick={() => void copyPayee()} disabled={!data?.payee} className={styles.copyButton}>{copied ? <><Check size={12} />已复制</> : <><Copy size={12} />复制</>}</button></div><p>请使用 BSC 网络 USDT 支付，转账前核对收款地址与金额。</p></details>
+
+      {statusKind ? <div ref={statusResult} tabIndex={-1} aria-label="本次认购状态"><PurchaseStatus kind={statusKind} message={statusMessage} hash={pending?.hash || unregisteredHash || tx.transaction?.hash} onQuery={pending ? () => void recheck() : confirming ? () => void resumeTransfer() : undefined} querying={checking || resuming} /></div> : null}
+      {unregisteredHash ? <a href="/dapp/support" className={`btn btn-outline ${styles.continueButton}`}>联系支持核对登记<ArrowRight size={14} /></a> : null}
+      <div ref={inlineActions} className={styles.actions}>
+        {!state.connected ? <button type="button" onClick={connect} className={`btn btn-gold ${styles.primaryButton}`}><Wallet size={16} />连接钱包，开始认购<ArrowRight size={16} /></button> : <button type="button" onClick={() => void submit()} disabled={Boolean(reason) || busy} className={`btn btn-gold ${styles.primaryButton}`}>{actionLabel}{!reason && !busy ? <ArrowRight size={16} /> : null}</button>}
       </div>
-    </div>
-    {error ? <p role="alert" className="mt-3 text-xs leading-6 text-down">{error}</p> : null}
-    {serverMessage ? <p role={serverState === "failed" ? "alert" : "status"} className={"mt-3 text-xs leading-6 " + (serverState === "failed" ? "text-down" : serverState === "success" ? "text-up" : "text-mute")}>{serverMessage}</p> : null}
-    {!state.connected ? <button onClick={connect} className="btn btn-outline mt-4 min-h-11 w-full text-sm"><Wallet size={14} />连接钱包</button> : null}
-    {pending ? <button onClick={() => void recheck()} disabled={checking || tx.busy} className="btn btn-outline mt-3 min-h-11 w-full text-sm">{checking ? "重新核验中…" : "重新核验上一次转账（不会再次转账）"}</button> : null}
-    <button onClick={() => void submit()} disabled={Boolean(reason) || !confirmed || busy} className="btn btn-gold mt-4 min-h-11 w-full text-sm">{checking || tx.busy ? "等待钱包 / 链上确认" : pending ? "等待服务器核验" : reason || "确认转账认购"}</button>
-    <p className="mt-2 text-xs leading-6 text-faint">只有转账交易成功、达到 2 次确认且金额与份数一致时才会登记；同一交易哈希只能登记一次。</p>
-    <TransactionFeedback controller={tx} />
-    {orders.orders.length ? <div className="mt-4 rounded-lg border border-line bg-well px-4 py-2"><p className="mb-2 text-xs text-mute">我的认购凭证</p>{orders.orders.map(order => <DataRow key={order.id} label={`${new Date(order.createdAt).toLocaleString("zh-CN")} · ${order.shares} 份`} value={order.txHash.slice(0, 10) + "…"} />)}</div> : null}
-  </Card>;
+      <p className={styles.actionHint}><Wallet size={12} />BSC 网络 · USDT 转账 · 确认后登记认购</p>
+      </>}
+      {orders.error ? <p role="status" className={styles.feedback}>{orders.error}</p> : null}
+      <PurchaseRecords orders={orders.orders} usdtDecimals={data?.usdtDecimals} />
+    </section>
+    {!completed ? <div className={styles.mobileCheckout} data-inline-visible={inlineActionVisible} role="region" aria-label="快捷认购">
+      <div className={styles.mobileCheckoutInner}>
+        <div className={styles.mobileTotal}><span>本次支付 · {quantity} 份</span><strong aria-live="polite">{data ? formatAssetAmount(amount, data.usdtDecimals) : "—"}<small>USDT</small></strong></div>
+        <button type="button" disabled={mobileDisabled} onClick={() => { if (!state.connected) connect(); else if (pending) void recheck(); else if (confirming) void resumeTransfer(); else void submit(); }} className={styles.mobileSubmit}>{mobileLabel}{!mobileDisabled ? <ArrowRight size={16} /> : null}</button>
+      </div>
+    </div> : null}
+    </>
+  );
 }

@@ -15,7 +15,9 @@ const abi=viem.parseAbi(['function subscribe(uint256,address)']);
 const request={address:SALE,abi,functionName:'subscribe',args:[1n,viem.zeroAddress],description:'fixture purchase',approval:{token:USDT,amount:50n}};
 let count=0;
 function passed(name){count++;console.log('PASS '+name);}
-async function setup({allowance=0n,behavior=[],rejectAction=false}={}){
+const cancellationModule={exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname,'../src/lib/transaction-cancellation.ts'),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.CommonJS}}).outputText,{module:cancellationModule,exports:cancellationModule.exports});
+async function setup({allowance=0n,behavior=[],rejectAction=false,walletError,simulationError}={}){
  const root=createRoot(document.getElementById('root')),store={state:{connected:true,address:A,chainId:56}},storage=new Map(),sent=[],events=[];
  let controller,sequence=0,network=56;const actual=new Map(),deferred=new Map();
  const provider={request:async({method})=>method==='eth_accounts'?[store.state.address]:undefined};
@@ -25,12 +27,16 @@ async function setup({allowance=0n,behavior=[],rejectAction=false}={}){
  }};
  const filename=path.resolve(__dirname,'../src/lib/contract-transactions.tsx'),runtimeModule={exports:{}};
  const replacements={react:React,'./chain-config':{appChain:{id:56},chainConfig:{id:56,shortName:'BSC',rpcUrls:['http://isolated.fixture']},chainConfigurationValid:true,contracts:{token:TOKEN,usdt:USDT,sale:SALE},getExplorerTxUrl:hash=>'http://explorer.fixture/'+hash},'./wallet':wallet,'./chain-audit':{recordChainAudit:()=>{}},'./store':{useStore:()=>store},viem:{...viem,createPublicClient:()=>client,createWalletClient:()=>({writeContract:async payload=>{if(rejectAction&&payload.functionName!=='approve')throw new Error('User rejected action');const hash='0x'+(++sequence).toString(16).padStart(64,'0');sent.push({...payload,hash});actual.set(hash,{from:payload.account,to:payload.address,input:viem.encodeFunctionData(payload),value:0n});return hash;}})}};
+ replacements['./transaction-cancellation']=cancellationModule.exports;
+ const attempts={wallet:0,fallback:0},originalSigner=replacements.viem.createWalletClient;
+ replacements.viem.createWalletClient=()=>{const signer=originalSigner();return {...signer,writeContract:async payload=>{attempts.wallet++;if(walletError)throw walletError;return signer.writeContract(payload);},sendTransaction:async()=>{attempts.fallback++;throw new Error('Fixture fallback submission');}};};
+ if(simulationError)client.simulateContract=async()=>{throw simulationError;};
  vm.runInNewContext(ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{module:runtimeModule,exports:runtimeModule.exports,require:name=>Object.hasOwn(replacements,name)?replacements[name]:require(name),window:{setTimeout,clearTimeout,dispatchEvent:event=>{events.push(event.type);}},Event:dom.window.Event,localStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setTimeout,clearTimeout,console},{filename});
  const hook=runtimeModule.exports.useContractTransaction;
  function Probe(){controller=hook('fixture');return null;}
  async function render(){await React.act(async()=>{root.render(React.createElement(Probe,{revision:Math.random()}));await new Promise(resolve=>setTimeout(resolve,5));});}
  await render();
- return {sent,events,storage,behavior,actual,deferred,controller:()=>controller,run:async input=>{let result;await React.act(async()=>{result=await controller.run(input||request);});return result;},resume:async()=>{let result;await React.act(async()=>{result=await controller.resume();});return result;},switchAccount:async address=>{store.state={...store.state,address};await render();},setNetwork:value=>{network=value;},unmount:async()=>{await React.act(async()=>root.unmount());}};
+ return {sent,events,storage,behavior,actual,deferred,attempts,controller:()=>controller,run:async input=>{let result;await React.act(async()=>{result=await controller.run(input||request);});return result;},resume:async()=>{let result;await React.act(async()=>{result=await controller.resume();});return result;},switchAccount:async address=>{store.state={...store.state,address};await render();},setNetwork:value=>{network=value;},unmount:async()=>{await React.act(async()=>root.unmount());}};
 }
 async function main(){
  let fixture=await setup();let hash=await fixture.run();assert(hash);assert.equal(fixture.sent.length,2);assert.equal(fixture.sent[0].functionName,'approve');assert.equal(fixture.sent[0].args[1],50n);assert.equal(fixture.sent[1].functionName,'subscribe');assert.equal(fixture.controller().transaction.phase,'action');assert.equal(fixture.controller().transaction.status,'success');assert.equal(fixture.events.filter(type=>type==='cabi-chain-updated').length,2);await fixture.unmount();passed('exact approval precedes action, confirmed receipts publish chain refresh');
@@ -48,6 +54,10 @@ async function main(){
  fixture=await setup();let checks=0;await fixture.run({...request,beforeSend:async()=>{checks++;assert.equal(fixture.sent.length,1);assert.equal(fixture.sent[0].functionName,'approve');}});assert.equal(checks,1);assert.equal(fixture.sent.length,2);await fixture.unmount();passed('final server validation runs after approval and before the business transaction');
  fixture=await setup();await fixture.run({...request,beforeSend:async()=>{throw new Error('Expired invitation session');}});assert.equal(fixture.sent.length,1);assert.equal(fixture.sent[0].functionName,'approve');assert.equal(fixture.controller().transaction.status,'failed');assert.equal(fixture.controller().transaction.phase,'action');await fixture.unmount();passed('failed final server validation preserves approval receipt but prevents the business transaction');
  fixture=await setup({allowance:100n});await fixture.run({...request,beforeSend:async()=>{await fixture.switchAccount(B);}});assert.equal(fixture.sent.length,0);await fixture.unmount();passed('wallet changes during final validation prevent signing even if validation resolves');
+ const nestedRejection={message:'RPC request failed',cause:{cause:{code:4001,message:'User rejected the request'}}};
+ fixture=await setup({allowance:100n,walletError:nestedRejection});await fixture.run({...request,approval:undefined,allowUnsimulated:true});assert.equal(fixture.controller().transaction.cancelled,true);assert(fixture.controller().transaction.message.includes('已取消'));assert.equal(fixture.attempts.wallet,1);assert.equal(fixture.attempts.fallback,0);assert.equal(fixture.sent.length,0);await fixture.unmount();passed('wrapped wallet rejection reports cancellation without reopening a fallback wallet request');
+ fixture=await setup({allowance:100n,walletError:new Error('insufficient funds')});await fixture.run({...request,approval:undefined,allowUnsimulated:true});assert.equal(fixture.controller().transaction.cancelled,false);assert.equal(fixture.controller().transaction.status,'failed');assert.equal(fixture.attempts.wallet,1);assert.equal(fixture.attempts.fallback,0);await fixture.unmount();passed('wallet failure remains failure and never causes a second submission attempt');
+ fixture=await setup({allowance:100n,simulationError:new Error('insufficient token balance')});await fixture.run({...request,approval:undefined,allowUnsimulated:true});assert.equal(fixture.attempts.wallet,0);assert.equal(fixture.attempts.fallback,1);await fixture.unmount();passed('subscription simulation failure still permits one wallet submission');
  console.log(count+' isolated transaction checks passed.');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>dom.window.close());

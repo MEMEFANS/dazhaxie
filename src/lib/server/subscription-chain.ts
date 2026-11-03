@@ -41,7 +41,7 @@ export async function readSubscribeConfig(address?: string): Promise<SubscribeCo
   if (!chainConfigurationValid) message = "当前网络配置无效";
   else if (!contracts.usdt) message = "等待配置 USDT 地址";
   else if (!contracts.token) message = "等待配置 CaBi 代币地址";
-  else if (!payee) message = "等待后台设置认购收款地址";
+  else if (!payee) message = "认购暂未开放";
   else if (settings.subscribeLocked) message = "认购暂时关闭";
   else if (remainingGlobal <= 0) message = "认购已达硬顶";
   return {

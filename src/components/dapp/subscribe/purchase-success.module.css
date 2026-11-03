@@ -1,0 +1,54 @@
+.success {
+  min-width: 0;
+  margin-top: 22px;
+  padding: 22px;
+  border: 1px solid #dbe8de;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f1f8f2, #fcf9ff);
+  scroll-margin-top: 140px;
+}
+
+.heading { display: flex; align-items: center; gap: 11px; }
+.successIcon { display: grid; width: 43px; height: 43px; flex-shrink: 0; place-items: center; border: 1px solid #d0e3d3; border-radius: 14px; color: #467752; background: #fff; }
+.eyebrow { color: #467151; font-size: 11px; font-weight: 650; }
+.heading h3 { margin-top: 4px; color: #34543d; font-size: 16px; font-weight: 750; line-height: 1.6; letter-spacing: -.02em; }
+.description { margin-top: 14px; color: #596d5f; font-size: 13px; line-height: 1.9; }
+.description strong { color: #3f6448; font-weight: 650; }
+.summary { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 17px; padding: 17px 0; border-top: 1px solid #dce8de; border-bottom: 1px solid #dce8de; }
+.summary > div { min-width: 0; }
+.summary > div + div { padding-left: 16px; border-left: 1px solid #dce8de; }
+.summary dt { color: #697769; font-size: 12px; line-height: 1.6; }
+.summary dd { margin-top: 7px; color: #4a6552; font-size: 24px; font-weight: 750; line-height: 1.4; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.summary dd > span { display: inline-block; margin-left: 5px; color: #657966; font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.note { margin-top: 12px; color: #6e6377; font-size: 12px; line-height: 1.9; }
+.nextSteps { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 17px; }
+.nextSteps > a { display: flex; min-height: 46px; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; border: 1px solid #d8c6e7; border-radius: 11px; font-size: 13px; font-weight: 650; line-height: 1.6; transition: background .15s ease, border-color .15s ease; }
+.viewAllocation { color: #71458e; background: #fff; }
+.viewAllocation:hover { border-color: #b998ce; background: #f6effb; }
+.nextSteps > .claimTokens { border-color: transparent; color: #fff; background: #8050a3; }
+.nextSteps > .claimTokens:hover { background: #70418f; }
+.transaction { display: flex; min-height: 44px; align-items: center; justify-content: center; flex-wrap: wrap; gap: 7px; margin-top: 7px; color: #6d5b7b; font-size: 11px; line-height: 1.7; }
+.transaction > span { font-family: monospace; }
+.transaction:hover { color: #66388a; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+
+@media (max-width: 540px) {
+  .success { padding: 18px 15px; scroll-margin-top: 125px; }
+  .heading { gap: 9px; }
+  .successIcon { width: 36px; height: 36px; border-radius: 12px; }
+  .heading h3 { font-size: 15px; }
+  .description { font-size: 13px; }
+  .summary { gap: 12px; }
+  .summary > div + div { padding-left: 12px; }
+  .summary dd { font-size: 22px; }
+  .summary dd > span { display: block; margin: 4px 0 0; }
+  .nextSteps { gap: 8px; }
+  .nextSteps > a { font-size: 13px; }
+  .transaction { font-size: 12px; }
+}
+
+@media (max-width: 360px) {
+  .heading h3 { font-size: 14px; }
+  .summary dd { font-size: 20px; }
+  .nextSteps { grid-template-columns: 1fr; }
+}

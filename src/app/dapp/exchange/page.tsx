@@ -5,7 +5,6 @@
 import { useStore } from "@/lib/store";
 import { EXCHANGE_COST, fmt } from "@/lib/constants";
 import { LoadingBlock, PageHeader, PageStack } from "@/components/dapp/ui";
-import { ExchangeClosedAlert } from "@/components/dapp/exchange/status-alert";
 import MarketInfo from "@/components/dapp/exchange/market-info";
 import ExchangeForm from "@/components/dapp/exchange/exchange-form";
 import ExchangeRecords from "@/components/dapp/exchange/exchange-records";
@@ -19,11 +18,9 @@ export default function ExchangePage() {
     <PageStack>
       <PageHeader
         eyebrow="CRAB EXCHANGE"
-        title="兑换大闸蟹"
-        desc={`${fmt(EXCHANGE_COST)} CaBi = 1 份蟹礼 · 代币转入后台指定收款地址`}
+        title="蟹礼兑换"
+        desc={`${fmt(EXCHANGE_COST)} CaBi / 份 · 付款后填写收货信息`}
       />
-
-      <ExchangeClosedAlert />
 
       {/* 主操作区：移动端表单置顶，桌面端左信息右表单 */}
       <div className="grid gap-6 lg:grid-cols-[.92fr_1.08fr]">

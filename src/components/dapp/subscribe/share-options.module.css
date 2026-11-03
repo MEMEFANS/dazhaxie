@@ -1,0 +1,60 @@
+.fieldset { position: relative; min-width: 0; margin: 24px 0 0; padding: 0; border: 0; }
+.legend { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; padding: 0; color: #4e365f; font-size: 14px; font-weight: 700; line-height: 24px; }
+.limit { color: #796187; font-size: 12px; font-weight: 400; line-height: 24px; }
+.options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.option { position: relative; display: block; min-width: 0; cursor: pointer; }
+.input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.card { display: flex; min-height: 150px; flex-direction: column; padding: 16px; border: 1px solid #e4d6ed; border-radius: 14px; background: #fff; transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease; }
+.option:hover .input:not(:disabled) + .card { border-color: #b992d5; background: #fcf9ff; }
+.input:checked + .card { border-color: #9b68c6; background: linear-gradient(140deg, #f7efff, #fffcff); box-shadow: inset 0 0 0 1px #9b68c6; }
+.input:focus-visible + .card { outline: 3px solid #b587d8; outline-offset: 3px; }
+.input:disabled + .card { border-color: #e9e1ef; background: #f7f4fa; cursor: not-allowed; }
+.input:disabled + .card .cardHeading > strong, .input:disabled + .card .price { color: #927e9f; }
+.cardHeading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cardHeading > strong { color: #63417c; font-size: 25px; font-weight: 750; line-height: 1.3; }
+.cardHeading small { margin-left: 5px; color: #765b87; font-size: 12px; font-weight: 500; }
+.radioMark { display: grid; width: 18px; height: 18px; flex: 0 0 auto; place-items: center; border: 1px solid #c7afd9; border-radius: 50%; background: #fff; }
+.input:checked + .card .radioMark { border-color: #8756ad; background: #8756ad; }
+.input:checked + .card .radioMark::after { width: 8px; height: 5px; margin-top: -2px; border-right: 2px solid #fff; border-bottom: 2px solid #fff; content: ""; transform: rotate(45deg); }
+.price { display: block; margin-top: 12px; color: #5e337e; font-size: 22px; font-weight: 750; letter-spacing: -.035em; line-height: 1.35; overflow-wrap: anywhere; }
+.price > small, .customSummary strong > small { margin-left: 5px; color: #765b87; font-size: 12px; font-weight: 500; letter-spacing: 0; }
+.allocation { display: block; margin-top: 5px; color: #6f557f; font-size: 12px; font-weight: 600; line-height: 1.7; overflow-wrap: anywhere; }
+.allocation > span { font-weight: 400; }
+.cardFoot { display: block; margin-top: 12px; color: #795e8a; font-size: 12px; line-height: 1.6; }
+.input:checked + .card .cardFoot { color: #7c46a5; font-weight: 600; }
+.placeholder { display: grid; min-height: 150px; align-content: center; gap: 14px; padding: 18px; border: 1px solid #e9deef; border-radius: 14px; background: #faf7fc; }
+.placeholder > span { width: 65%; height: 12px; border-radius: 5px; background: #eae0f1; }
+.placeholder > span:nth-child(2) { width: 45%; height: 22px; }
+.placeholder > span:last-child { width: 85%; }
+.custom { display: grid; grid-template-columns: minmax(0, 1fr) 90px; align-items: center; gap: 14px; margin-top: 12px; padding: 16px; border: 1px solid #e4d6ed; border-radius: 14px; background: #fcf9ff; }
+.custom > label { color: #604375; font-size: 13px; font-weight: 600; line-height: 1.8; }
+.custom > label > span { display: block; color: #796187; font-size: 12px; font-weight: 400; }
+.custom > input { min-width: 0; min-height: 48px; padding: 8px; border: 1px solid #cbb0df; border-radius: 9px; color: #604375; background: #fff; font-size: 18px; text-align: center; }
+.custom > input:disabled { color: #927e9f; background: #f4eef8; cursor: not-allowed; }
+.customSummary { grid-column: 1 / -1; padding-top: 12px; border-top: 1px solid #e6daee; }
+.customSummary > strong { color: #5e337e; font-size: 22px; font-weight: 750; }
+.customSummary > p { margin-top: 5px; color: #6f557f; font-size: 12px; line-height: 1.8; }
+.empty { margin-top: 12px; padding: 18px; border: 1px solid #e9deef; border-radius: 12px; color: #796187; background: #faf7fc; font-size: 13px; }
+@media (max-width: 540px) {
+  .fieldset { margin-top: 20px; }
+  .options { gap: 10px; }
+  .card { min-height: 148px; padding: 14px 12px; }
+  .cardHeading > strong { font-size: 24px; }
+  .cardHeading small { margin-left: 4px; font-size: 12px; }
+  .price { font-size: 23px; }
+  .allocation > span { display: block; }
+  .radioMark { width: 17px; height: 17px; }
+}
+@media (max-width: 360px) {
+  .limit { font-size: 11px; }
+  .options { margin-top: 9px; }
+  .card { padding-inline: 11px; }
+  .cardHeading small { display: block; margin: 2px 0 0; }
+  .cardHeading { align-items: flex-start; }
+  .radioMark { margin-top: 5px; }
+  .price { font-size: 21px; }
+  .cardFoot { font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card { transition: none; }
+}

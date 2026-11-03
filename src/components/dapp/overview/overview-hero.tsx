@@ -56,7 +56,7 @@ export function OverviewHero() {
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <StatusPill tone={status.tone}>{status.label}</StatusPill>
-            <span className="rounded-md border border-line px-2 py-0.5 text-[10px] text-mute">服务器记账 · 领取池发放</span>
+            <span className="rounded-md border border-line px-2 py-0.5 text-[10px] text-mute">自动登记 · 领取池发放</span>
           </div>
           <p className="mt-3 text-[10px] leading-5 text-[#dcc7ee]">
             BTC 为创意灵感符号 · 生态代币为 CaBi
@@ -134,8 +134,8 @@ export function OverviewHero() {
               mono={false}
               tone={closed ? "mute" : "up"}
             />
-            <DataRow label="认购方式" value="USDT 转账 · 服务器记账" mono={false} tone="mute" />
-            <DataRow label="领取方式" value={config ? "独立领取池" : "待配置"} mono={false} />
+            <DataRow label="认购方式" value="USDT 转账 · 自动登记" mono={false} tone="mute" />
+            <DataRow label="领取方式" value={config ? "代币中心自行领取" : "待配置"} mono={false} />
           </div>
         </div>
       </div>
@@ -154,7 +154,7 @@ export function OverviewHero() {
           {closed
             ? "认购入口已关闭"
             : config
-              ? "按份转入 USDT，服务器核验后登记认购凭证"
+              ? "按份转入 USDT，确认后自动登记认购凭证"
               : "正在读取认购配置"}
         </span>
       </div>

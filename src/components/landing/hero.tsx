@@ -91,7 +91,7 @@ export function Hero() {
         />
         <div className={styles.bannerShade} aria-hidden="true" />
         <div className={styles.bannerContent}>
-          <p className={styles.eyebrow}>XIE BIT CLUB · 生态总览</p>
+          <p className={styles.eyebrow}>XIE BIT CLUB · 首页</p>
           <h1 id="landing-title">
             今天也要
             <span>横着开心。</span>
@@ -206,7 +206,7 @@ export function Hero() {
         </div>
       </section>
 
-      <section className={styles.featureGrid} aria-label="蟹礼与社区">
+      <section className={styles.featureGrid} aria-label="蟹礼与社群">
         <article id="crab-gifts" className={styles.featureCard}>
           <div className={styles.featureImage}>
             <Image
@@ -238,9 +238,9 @@ export function Hero() {
           <div className={styles.featureCopy}>
             <p className={styles.sectionKicker}>CRAB FRIENDS</p>
             <h2>和蟹友一起探索</h2>
-            <p>进入社区查看公告、交流生态进展并联系支持。</p>
+            <p>进入社群查看公告、交流生态进展并联系支持。</p>
             <Link href="/dapp/community" className={styles.textLink}>
-              进入蟹友社区 <MessageCircle size={14} />
+              进入社群 <MessageCircle size={14} />
             </Link>
           </div>
         </article>
@@ -257,8 +257,8 @@ export function Hero() {
             <p>BTC 是视觉灵感元素；生态代币名称为 CaBi，两者不是同一种资产。</p>
           </details>
           <details className={styles.faqItem}>
-            <summary>首页显示的数据代表实时链上状态吗？</summary>
-            <p>CaBi 余额和持仓上限在配置合约后从当前项目网络查询，页面会分别标注查询状态。尚未配置、未连接钱包或查询失败的字段显示“—”。认购额度和兑换单价属于项目规则参数，不代表已发生认购或已分配资产。</p>
+            <summary>首页显示的数据是实时的吗？</summary>
+            <p>认购进度、余额等数据实时更新；个别字段在读取中会短暂显示为「—」，稍后自动恢复。</p>
           </details>
           <details className={styles.faqItem}>
             <summary>CaBi 交易有哪些费用？</summary>
@@ -266,7 +266,7 @@ export function Hero() {
           </details>
           <details className={styles.faqItem}>
             <summary>认购后什么时候可以领取 CaBi？</summary>
-            <p>连接认购时使用的钱包，系统会读取链上认购记录，无需另行登记领取名单。配置定时领取池后，管理员存入 CaBi 并设置开放时间；到时可自行选择：直接领取50%，剩余50%销毁；或支付配对USDT领取70%，剩余30%实际组成LP，LP凭证归项目指定钱包。两种方式均需支付网络费用。实际额度、开放时间与领取状态以链上查询为准。</p>
+            <p>认购完成后，CaBi 按认购记录自动计入可领额度。开放领取后在代币中心自行领取，两种方式二选一：直接领取 50%，或支付 30% USDT 组建流动性领取 70%。领取需支付少量网络手续费。</p>
           </details>
         </div>
       </section>

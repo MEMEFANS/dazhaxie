@@ -2,7 +2,7 @@
 
 // 社群主视图：服务端成员 / 管理员 / 消息 / 禁言状态；免签名登录后参与发言与群管理
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Send, ShieldAlert, ShieldCheck, UserMinus, UserX, Users, Wallet, X } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { shortAddr, timeAgo } from "@/lib/constants";
@@ -29,6 +29,25 @@ export function CommunityView() {
   const [membersOpen, setMembersOpen] = useState(false);
   const [kickTarget, setKickTarget] = useState<CommunityMemberView | null>(null);
   const [busy, setBusy] = useState(false);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  const latestMessage = data?.messages.at(-1)?.id;
+
+  useEffect(() => {
+    if (followLatest.current && messagesRef.current) {
+      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+    }
+  }, [latestMessage]);
+
+  useEffect(() => {
+    const element = messagesRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => {
+      if (followLatest.current) element.scrollTop = element.scrollHeight;
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -72,6 +91,7 @@ export function CommunityView() {
     setSending(true);
     try {
       const { message } = await communityRequest<{ message: CommunityMessageView }>("/api/community/messages", { method: "POST", body: JSON.stringify({ text }) });
+      followLatest.current = true;
       setInput("");
       setData(prev => prev ? { ...prev, messages: [...prev.messages, message].slice(-120) } : prev);
     } catch (e) { showToast(e instanceof Error ? e.message : "发送失败"); }
@@ -93,7 +113,7 @@ export function CommunityView() {
   const members = data?.members || [];
 
   const memberList = (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="mb-2 flex items-end justify-between gap-2 border-b border-line pb-2.5">
         <div className="min-w-0">
           <p className="kicker">MEMBERS</p>
@@ -107,7 +127,7 @@ export function CommunityView() {
       {members.length === 0 ? (
         <EmptyRow text={loading ? "正在同步成员…" : "暂无成员 · 连接钱包加入社群"} />
       ) : (
-        <div className="divide-y divide-line">
+        <div className="min-h-0 flex-1 divide-y divide-line overflow-y-auto overscroll-contain">
           {members.map(member => {
             const isAdmin = adminSet.has(member.address.toLowerCase());
             const isSelf = Boolean(state.address) && member.address.toLowerCase() === state.address.toLowerCase();
@@ -136,7 +156,7 @@ export function CommunityView() {
           })}
         </div>
       )}
-      <p className="mt-auto flex items-start gap-1.5 border-t border-line pt-3 text-[11px] leading-5 text-faint">
+      <p className="mt-auto flex shrink-0 items-start gap-1.5 border-t border-line pt-3 text-[11px] leading-5 text-faint">
         <ShieldCheck size={11} className="mt-0.5 shrink-0 text-up/70" />
         管理员不能移出自己、其他管理员与官方账号；被移出成员的历史消息保留。
       </p>
@@ -145,19 +165,17 @@ export function CommunityView() {
 
   return (
     <>
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-6">
-        <section className="card overflow-hidden p-0">
-          <div className="border-b border-line bg-deep px-4 py-4 sm:px-5">
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-6">
+        <section aria-label="社群聊天" className="card flex min-h-0 flex-col overflow-hidden p-0">
+          <div className="shrink-0 border-b border-line bg-deep px-4 py-3 sm:px-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-line bg-plum/5 text-mute"><Users size={17} strokeWidth={1.6} /></span>
                 <div className="min-w-0">
-                  <p className="kicker">GROUP CHAT</p>
-                  <p className="mt-0.5 truncate text-[15px] font-semibold leading-5 text-strong">蟹比特官方社群</p>
+                  <h1 className="truncate text-[15px] font-semibold leading-5 text-strong">蟹比特社群</h1>
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] leading-4 text-mute">
                     <Users size={11} className="shrink-0" />
                     <span><span className="num">{loading ? "—" : members.length}</span> 名成员</span>
-                    <span className="text-faint">· 消息由服务器保存</span>
                   </p>
                 </div>
               </div>
@@ -167,8 +185,11 @@ export function CommunityView() {
             </div>
           </div>
 
-          <div className="chat-scroll h-[52vh] min-h-[320px] space-y-3.5 overflow-y-auto bg-well px-4 py-5 sm:px-5 lg:h-[min(560px,calc(100dvh-300px))]">
-            <div className="mx-auto max-w-[520px] rounded-lg border border-line bg-plum/5 px-3 py-2 text-center text-[11px] leading-5 text-faint">友善交流，违规内容会被服务器自动屏蔽</div>
+          <div ref={messagesRef} role="log" aria-label="聊天消息" aria-live="polite" aria-relevant="additions" onScroll={event => {
+            const element = event.currentTarget;
+            followLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 64;
+          }} className="chat-scroll min-h-0 flex-1 space-y-3.5 overflow-y-auto overscroll-contain bg-well px-4 py-4 sm:px-5">
+            <div className="mx-auto max-w-[520px] rounded-lg border border-line bg-plum/5 px-3 py-2 text-center text-[11px] leading-5 text-faint">友善交流，违规内容将被自动屏蔽</div>
             {error ? <p role="alert" className="text-center text-[11px] leading-5 text-down">{error}</p> : null}
             {(data?.messages || []).map(message => {
               const self = Boolean(state.address) && message.address.toLowerCase() === state.address.toLowerCase();
@@ -191,7 +212,7 @@ export function CommunityView() {
             })}
           </div>
 
-          <div className="border-t border-line px-4 py-4 sm:px-5">
+          <div data-chat-composer className="shrink-0 border-t border-line bg-card px-3 py-3 sm:px-5">
             {!state.connected ? (
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[12px] leading-5 text-mute">连接钱包后即可在社群发言</p>
@@ -200,24 +221,24 @@ export function CommunityView() {
             ) : data?.me?.isKicked ? (
               <Notice tone="red" icon={UserX}>
                 <p className="text-[12px] font-medium leading-5 text-strong">你已被移出社群，暂时无法发言</p>
-                <p className="mt-0.5 text-[11px] leading-5 text-mute">历史消息仍保留；如需恢复成员身份，请联系群管理员或后台客服。</p>
+                <p className="mt-0.5 text-[11px] leading-5 text-mute">历史消息仍保留；如需恢复成员身份，请联系群管理员或客服。</p>
               </Notice>
             ) : !data?.me ? (
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-[12px] leading-5 text-mute">首次参与点击加入即可，无需签名</p>
+                <p className="text-[12px] leading-5 text-mute">加入社群，和蟹友聊聊</p>
                 <button onClick={() => void signIn()} disabled={signing} className="btn btn-gold h-9 w-full px-4 text-[12px] sm:w-auto">{signing ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />} {signing ? "加入中…" : "加入社群"}</button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void send(); }} placeholder="友善发言，违规内容将被自动屏蔽…" maxLength={200} className="field h-11 min-w-0 flex-1 rounded-full px-4 text-[13px]" />
+                <input aria-label="消息" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} placeholder="和蟹友聊点什么…" maxLength={200} className="field h-11 min-w-0 flex-1 rounded-full px-4 text-base sm:text-[13px]" />
                 <button onClick={() => void send()} disabled={sending || !input.trim()} className="btn btn-gold h-11 w-11 shrink-0" aria-label="发送消息">{sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}</button>
               </div>
             )}
           </div>
         </section>
 
-        <section className="card hidden p-4 lg:block">
-          <div className="sticky top-24">{memberList}</div>
+        <section aria-label="社群成员" className="card hidden min-h-0 overflow-hidden p-4 lg:block">
+          {memberList}
         </section>
       </div>
 
@@ -239,7 +260,7 @@ export function CommunityView() {
             <div className="well mt-5 space-y-2.5 p-4 text-[12px] leading-5 text-mute">
               <p>· 该成员将从社群成员列表中移除</p>
               <p>· 被移出后无法在群内发言，重新连接钱包也不会自动恢复</p>
-              <p>· 其历史消息全部保留，后台可随时恢复成员身份</p>
+              <p>· 其历史消息全部保留，可随时恢复成员身份</p>
             </div>
             <div className="mt-5 flex gap-2">
               <button onClick={() => setKickTarget(null)} className="btn btn-outline h-11 flex-1 text-[13px]">取消</button>

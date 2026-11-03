@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createPublicClient, fallback, http, parseAbi, type Address } from "viem";
-import { appChain, chainConfig } from "./chain-config";
+import type { Address } from "viem";
 
 export interface SubscribeConfig {
   configured: boolean; enabled: boolean; locked: boolean; message?: string;
@@ -19,8 +18,6 @@ export interface PromotionStats {
 export interface PromotionBranch { address: string; name: string; selfShares: number; teamShares: number; tierIndex: number; tierLabel: string; diffRate: number; reward: number; selfReward: number }
 export interface PromotionResult { stats: PromotionStats; branches: PromotionBranch[] }
 export interface SubscribeSnapshot { status: "loading" | "ready" | "error"; data?: SubscribeConfig; error?: string }
-const erc20 = parseAbi(["function balanceOf(address) view returns (uint256)"]);
-const client = createPublicClient({ chain: appChain, transport: fallback(chainConfig.rpcUrls.map(url => http(url, { timeout: 10_000, retryCount: 0 })), { retryCount: 0 }) });
 
 export async function fetchSubscribeConfig(address?: string): Promise<SubscribeConfig> {
   const url = address ? `/api/subscribe/config?address=${encodeURIComponent(address)}` : "/api/subscribe/config";
@@ -34,9 +31,6 @@ export async function fetchSubscribeOrders(): Promise<SubscribeOrderView[]> {
   if (!response.ok) throw new Error("认购记录暂时无法读取");
   const body = await response.json() as { orders?: SubscribeOrderView[] };
   return Array.isArray(body.orders) ? body.orders : [];
-}
-export async function fetchUsdtBalance(address: string, usdt: Address): Promise<bigint> {
-  return await client.readContract({ address: usdt, abi: erc20, functionName: "balanceOf", args: [address as Address] });
 }
 export function useSubscribeConfig(address?: string) {
   const [snapshot, setSnapshot] = useState<SubscribeSnapshot>({ status: "loading" });

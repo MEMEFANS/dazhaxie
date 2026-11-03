@@ -1,0 +1,51 @@
+.records { min-width: 0; margin-top: 26px; padding-top: 22px; border-top: 1px solid #e9dff1; }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.heading h3 { color: #513363; font-size: 14px; font-weight: 700; line-height: 1.7; }
+.heading > span { color: #796187; font-size: 12px; }
+.list { display: grid; gap: 12px; margin: 15px 0 0; padding: 0; list-style: none; }
+.record { min-width: 0; padding: 16px; border: 1px solid #e9dff0; border-radius: 13px; background: #fcf9ff; }
+.recordHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.recordHeading > strong { color: #64447a; font-size: 19px; font-weight: 750; line-height: 1.5; }
+.recordHeading > strong > span { margin-left: 5px; color: #725680; font-size: 12px; font-weight: 550; }
+.status { display: inline-flex; min-height: 25px; align-items: center; gap: 5px; flex-shrink: 0; padding: 3px 8px; border-radius: 7px; color: #75677c; background: #eee8f3; font-size: 12px; font-weight: 550; line-height: 1.5; }
+.status i { width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+.status[data-tone="success"] { color: #3e6f4b; background: #eaf4ed; }
+.status[data-tone="pending"] { color: #8b632d; background: #fff1db; }
+.status[data-tone="failed"] { color: #a54e4e; background: #ffedeb; }
+.status[data-tone="cancelled"] { color: #72617f; background: #ece6f1; }
+.details { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 7px 12px; margin-top: 9px; }
+.details > time { color: #796187; font-size: 12px; line-height: 1.8; }
+.details > p { display: inline-flex; align-items: baseline; gap: 7px; margin: 0; color: #796187; font-size: 12px; line-height: 1.8; }
+.details strong { color: #644176; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.details small { margin-left: 4px; color: #796187; font-size: 12px; font-weight: 500; }
+.hashRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; padding-top: 10px; border-top: 1px dashed #e6d9ef; }
+.hash { display: block; min-width: 0; flex: 1; }
+.hash > span { display: block; color: #796187; font-size: 12px; line-height: 1.6; }
+.hash > code { display: block; overflow: hidden; margin-top: 3px; color: #6f4d83; font-family: var(--font-geist-mono), monospace; font-size: 12px; line-height: 1.7; text-overflow: ellipsis; white-space: nowrap; }
+.recordActions { display: flex; flex-shrink: 0; align-items: center; gap: 6px; }
+.recordActions > button, .recordActions > a { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; gap: 5px; padding: 8px 10px; border: 1px solid #e0d2e9; border-radius: 9px; color: #765187; background: #fff; font-size: 12px; font-weight: 500; line-height: 1.6; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.recordActions > button:hover:not(:disabled), .recordActions > a:hover { border-color: #b794cc; background: #f4ecfb; }
+.recordActions > button:disabled { color: #927f9c; background: #f4eef8; cursor: not-allowed; }
+.copyFeedback { margin: 8px 0 0; color: #477351; font-size: 12px; line-height: 1.8; }
+.copyError { margin-top: 8px; color: #9c5050; font-size: 12px; line-height: 1.8; }
+.copyError > p { margin: 0; }
+.copyError > code { display: block; margin-top: 5px; color: #745a81; font-size: 12px; overflow-wrap: anywhere; user-select: all; }
+.spinner { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 540px) {
+  .record { padding: 14px 12px; }
+  .details { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .recordActions > button, .recordActions > a { padding-inline: 8px; }
+  .explorerText { display: none; }
+}
+@media (max-width: 360px) {
+  .recordHeading { gap: 6px; }
+  .recordHeading > strong { font-size: 18px; }
+  .recordHeading > strong > span { margin-left: 4px; }
+  .status { padding-inline: 6px; }
+  .hashRow { gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+  .recordActions > button, .recordActions > a { transition: none; }
+}

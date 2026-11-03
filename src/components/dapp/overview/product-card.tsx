@@ -93,7 +93,7 @@ export function ProductCard({
           </Link>
         )}
         <p className="mt-2 text-center text-[10px] leading-4 text-faint">
-          代币转入后台指定收款地址
+          代币转入项目收款地址
         </p>
       </div>
     </article>

@@ -1,18 +1,25 @@
 "use client";
-import { CircleHelp } from "lucide-react";
+
+import Link from "next/link";
+import { ArrowUpRight, BookOpen, ChevronDown, Coins, Headphones, Wallet } from "lucide-react";
 import { useSubscribeConfig } from "@/lib/subscribe-data";
-import { formatAssetAmount } from "@/lib/amounts";
-import { SectionTitle } from "@/components/dapp/ui";
+import styles from "./subscribe.module.css";
+
 export function ProgressCard() {
   const { data } = useSubscribeConfig();
-  const rules = [
-    data ? `转账单价 ${formatAssetAmount(BigInt(data.unitPrice) * 10n ** BigInt(data.usdtDecimals), data.usdtDecimals)} USDT / 份，每份获得 ${data.tokensPerShare.toLocaleString("en-US")} CaBi 配额。` : "认购价格与可用额度以页面显示为准。",
-    data ? `每钱包最多 ${data.maxShares} 份，总份额硬顶 ${data.hardCap} 份；软顶 ${data.softCap} 份只预警、不拦截。` : "认购信息暂未就绪时，无法提交认购。",
-    "认购直接向后台配置的收款地址转入 USDT，不调用任何认购合约；转账成功后提交哈希，由服务器核验并登记认购单。",
-    "进入 DApp 前须用邀请码免费绑定推荐关系；服务器保存，认购自动沿用，绑定后不可更改。",
-    "认购单、直推奖励与团队极差由服务器聚合计算，后台生成可领额度后写入独立领取池。",
-    "领取时二选一：直接领取 50%，剩余 50% 销毁或留池；或领取 70%，剩余 30% 转入 LP 地址并支付 30% USDT 等值。",
-    "同一交易哈希只能登记一次认购单；核验中的转账不会重复记账。",
+  const steps = [
+    { title: "连接钱包", text: "使用 BSC 网络，完成邀请码绑定。", icon: Wallet },
+    { title: "选择份额并支付", text: "核对金额后，在钱包中确认 USDT 转账。", icon: Coins },
+    { title: "查看配额与领取", text: "认购登记完成后，前往代币中心查看。", icon: BookOpen },
   ];
-  return <section className="card p-5 sm:p-6"><SectionTitle icon={CircleHelp} title="认购规则" /><div className="divide-y divide-line">{rules.map((rule, i) => <p key={i} className="py-3 text-xs leading-6 text-mute">{i + 1}. {rule}</p>)}</div></section>;
+
+  return (
+    <aside className={styles.guide} aria-labelledby="subscribe-guide-title">
+      <div className={styles.guideTitle}><span>HOW IT WORKS</span><h2 id="subscribe-guide-title">三步，开启你的份额</h2><p>从参与到领取，每一步都清楚。</p></div>
+      <ol className={styles.steps}>{steps.map(({ title, text, icon: Icon }, index) => <li key={title}><span className={styles.stepNumber}>{String(index + 1).padStart(2, "0")}</span><div><h3>{title}<Icon size={15} /></h3><p>{text}</p></div></li>)}</ol>
+      <div className={styles.claimNote}><div><span>领取方式 · 二选一</span><Link href="/dapp/token">代币中心 <ArrowUpRight size={13} /></Link></div><p>直接领取 <strong>50%</strong><span>或</span>组建流动性领取 <strong>70%</strong></p><small>组建流动性需另付 30% USDT，具体以领取页为准。</small></div>
+      <details className={styles.rules}><summary>认购规则与说明 <ChevronDown size={16} /></summary><ul><li>{data ? `每份 ${data.unitPrice.toLocaleString("en-US")} USDT，对应 ${data.tokensPerShare.toLocaleString("en-US")} CaBi 配额。` : "认购价格与配额以实际配置为准。"}</li><li>{data ? `每个钱包限购 ${data.maxShares} 份，总量 ${data.hardCap.toLocaleString("en-US")} 份，售完即止。` : "配置未就绪时无法提交认购。"}</li><li>仅支持 BSC 网络 USDT 支付，转账确认并登记后完成认购。</li><li>推荐关系绑定后不可更改，请在参与前核对。</li><li>认购获得的是 CaBi 配额，实际到账数量取决于领取方式。</li></ul></details>
+      <Link href="/dapp/support" className={styles.support}><Headphones size={16} /><span>认购遇到问题？<strong>联系支持</strong></span><ArrowUpRight size={15} /></Link>
+    </aside>
+  );
 }

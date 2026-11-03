@@ -8,7 +8,7 @@ const tabs = [
   { href: "#home", label: "首页", icon: House },
   { href: "#ecosystem", label: "生态", icon: Coins },
   { href: "#how-it-works", label: "参与", icon: Route },
-  { href: "#community", label: "蟹友", icon: UsersRound },
+  { href: "#community", label: "社群", icon: UsersRound },
 ];
 
 export function MobileTabs() {

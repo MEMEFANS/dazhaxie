@@ -41,7 +41,7 @@ export function MarketGrid() {
       <SectionHead
         eyebrow="REDEEM MARKET"
         title="兑换商城"
-        desc="使用 CaBi 兑换实物蟹礼，代币转入后台指定收款地址"
+        desc="使用 CaBi 兑换实物蟹礼，代币转入项目收款地址"
         right={
           <span className="num text-[11px] leading-5 text-mute">
             {fmt(EXCHANGE_COST)} CaBi / 份 · 单次 ≤ {MAX_EXCHANGE_PER_TIME} 份

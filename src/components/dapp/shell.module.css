@@ -32,6 +32,10 @@
 .content { width: min(1168px, 100%); min-width: 0; margin-inline: auto; padding: 28px 24px 48px; }
 .inviteShell { background: radial-gradient(ellipse at 50% 0, #e5d1ff 0, transparent 40rem), #f7f2fc; }
 .inviteContent { width: min(520px, 100%); min-width: 0; margin-inline: auto; padding-bottom: 32px; }
+.communityShell { position: fixed; inset-inline: 0; top: var(--chat-viewport-top, 0px); display: flex; height: var(--chat-viewport-height, 100dvh); min-height: 0; flex-direction: column; overflow: hidden; }
+.communityShell .header { flex-shrink: 0; }
+.communityContent { display: flex; width: min(1168px, 100%); min-width: 0; min-height: 0; flex: 1; flex-direction: column; margin-inline: auto; padding: 20px 24px; }
+.communityShell .mobileNav { position: relative; inset: auto; flex-shrink: 0; }
 .mobileNav { display: none; }
 .backdrop { position: fixed; inset: 0; z-index: 60; opacity: 0; background: #24113e55; backdrop-filter: blur(3px); pointer-events: none; transition: opacity 180ms ease; }
 .backdropOpen { opacity: 1; pointer-events: auto; }
@@ -70,6 +74,8 @@
 }
 @media (max-width: 720px) {
   .shell { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .communityShell { padding-bottom: 0; }
+  .communityContent { padding: 12px; }
   .headerInner { width: calc(100% - 32px); min-height: 64px; gap: 10px; }
   .brand { gap: 8px; }
   .brand img { width: 35px; height: 35px; border-radius: 12px; }

@@ -20,8 +20,9 @@ export interface PromotionBranch { address: string; name: string; selfShares: nu
 export interface PromotionResult { stats: PromotionStats; branches: PromotionBranch[] }
 export interface SubscribeSnapshot { status: "loading" | "ready" | "error"; data?: SubscribeConfig; error?: string }
 
-export async function fetchSubscribeConfig(address?: string): Promise<SubscribeConfig> {
-  const url = address ? `/api/subscribe/config?address=${encodeURIComponent(address)}` : "/api/subscribe/config";
+export async function fetchSubscribeConfig(address?: string, fresh = false): Promise<SubscribeConfig> {
+  let url = address ? `/api/subscribe/config?address=${encodeURIComponent(address)}` : "/api/subscribe/config";
+  if (fresh) url += `${url.includes("?") ? "&" : "?"}check=${Date.now()}`;
   return fetchSharedConfig<SubscribeConfig>(url, "认购配置暂时无法读取", false);
 }
 export async function fetchSubscribeOrders(): Promise<SubscribeOrderView[]> {
@@ -41,7 +42,18 @@ export function useSubscribeConfig(address?: string) {
   useEffect(() => {
     const cancel = refresh();
     const timer = window.setInterval(() => { void fetchSubscribeConfig(address).then(data => setSnapshot({ status: "ready", data }), error => setSnapshot(previous => previous.data ? previous : { status: "error", error: error instanceof Error ? error.message : "认购配置暂时无法读取" })); }, 15_000);
-    return () => { cancel(); window.clearInterval(timer); };
+    const sync = () => { if (document.visibilityState === "visible") refresh(); };
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", sync);
+    window.addEventListener("cabi-operational-settings-updated", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      cancel(); window.clearInterval(timer);
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", sync);
+      window.removeEventListener("cabi-operational-settings-updated", sync);
+      window.removeEventListener("storage", sync);
+    };
   }, [address, refresh]);
   return useMemo(() => ({ ...snapshot, refresh }), [snapshot, refresh]);
 }

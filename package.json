@@ -10,6 +10,8 @@
     "test:contracts": "node scripts/verify-trading-fees.cjs",
     "build:launch-contracts": "node scripts/compile-launch-contracts.cjs",
     "test:launch": "node scripts/verify-launch-contracts.cjs",
+    "test:launch-deploy": "node scripts/verify-launch-deployment.cjs",
+    "deploy:launch": "node scripts/serve-launch-deployment.cjs",
     "test:pancake": "node scripts/verify-pancake-tax.cjs && node scripts/verify-pancake-data.cjs && node scripts/verify-pancake-admin.cjs && npm run test:pool-burn",
     "test:wallet": "node scripts/verify-wallet-network.cjs && node scripts/verify-default-network.cjs",
     "test:referral": "node scripts/verify-referral-binding.cjs && node scripts/verify-referral-data.cjs && node scripts/verify-referral-client.cjs && node scripts/verify-referral-gate.cjs && node scripts/verify-subscription-purchase.cjs",

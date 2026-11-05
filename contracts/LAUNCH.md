@@ -55,9 +55,20 @@
 ```powershell
 npm run build:launch-contracts
 npm run test:launch
+npm run test:launch-deploy
 ```
 
 `output/launch-contracts/` 包含两份 ABI/bytecode、完整 standard JSON 源码与编译器版本，可用于部署和 BscScan 源码验证。优化设置为 200 runs，EVM Shanghai；编译器版本以生成的 manifest 为准。测试仅使用本地 Ganache 合成账户、6/18 位测试 USDT 和真实 V2 Factory/Router/Pair 字节码，不读取私钥文件或调用公共 RPC。
+
+## 插件钱包部署页面
+
+运行 `npm run deploy:launch`，预检 BSC 主网、USDT、Router/Factory、管理员余额与旧池参数后，在 `http://127.0.0.1:8789/` 提供本机部署页面。用装有 MetaMask／OKX 的 Chrome 或 Edge 打开，连接公开模板中的 owner，点击「按顺序部署并配置」，依次在钱包确认：部署新代币、创建交易对、绑定交易对、部署新加池／领取合约、绑定专用合约。钱包可以逐步确认，也可以取消后继续；已完成步骤不重复发送。
+
+本页面只完成五步基础部署，不设置开放时间、不调用 `openLiquidity`、不转移旧池资产、不注入新币储备，也不支付初始 15,000 USDT。完成后链上仍是 Setup。预估 GAS 会在每笔签名前更新；所有 JSON-RPC 数量字段，包括 nonce，均转换为十六进制字符串。
+
+部署结果保存在 `output/launch-deployment/result.json`，包含新代币、交易对、新池和逐步交易哈希；完整源码与公开参数分别在同目录的 `standard-input.json`、`manifest.json`。发送后即刻保存哈希，等待两次区块确认，再核对发送人、目标、金额、calldata、运行代码及实际配置。运行代码核验会处理构造时写入的 immutable 字段，随后按公开参数逐项核验。
+
+关闭或刷新页面后可恢复记录。钱包已发送而页面未更新时，在「恢复已有交易」选择步骤并粘贴交易哈希继续核对，不需要重发。只有明确取消或确认钱包未发送且没有哈希时才清除等待记录。不要删除仍有待确认交易的结果文件。
 
 ## 主网部署顺序
 

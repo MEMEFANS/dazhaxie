@@ -13,7 +13,7 @@ function compileLaunch(includeFixtures = false) {
     language: 'Solidity', sources,
     settings: {
       optimizer: { enabled: true, runs: 200 }, evmVersion: 'shanghai',
-      outputSelection: { '*': { '*': ['abi', 'evm.bytecode.object', 'evm.deployedBytecode.object', 'metadata'] } },
+      outputSelection: { '*': { '*': ['abi', 'evm.bytecode.object', 'evm.deployedBytecode.object', 'evm.deployedBytecode.immutableReferences', 'metadata'] } },
     },
   };
   const output = JSON.parse(solc.compile(JSON.stringify(input)));
@@ -37,6 +37,7 @@ if (require.main === module) {
     fs.writeFileSync(path.join(destination, name + '.json'), JSON.stringify({
       contractName: name, compiler: solc.version(), abi: artifact.abi,
       bytecode: '0x' + artifact.evm.bytecode.object, deployedBytecode: '0x' + artifact.evm.deployedBytecode.object,
+      immutableReferences: artifact.evm.deployedBytecode.immutableReferences,
     }, null, 2));
     const bytes = artifact.evm.deployedBytecode.object.length / 2;
     manifest.contracts.push({ name, runtimeBytes: bytes });

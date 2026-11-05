@@ -2,6 +2,10 @@
 
 Next.js 16 / React 19 / Node.js 24 应用。认购、基于认购记录的定时双模式领取、实物兑换及后台管理使用真实合约/API；代币买卖跳转外部交易页面，不在 DApp 内提供买卖表单。
 
+## 新增：分阶段发行方案
+
+`CaBiLaunchToken`＋`CaBiLaunchPool` 支持固定金额真实组 LP、定时领取 70% 和单向开放公开交易。源码与部署说明见 [contracts/LAUNCH.md](contracts/LAUNCH.md)。这是尚未部署和接入网站的新版本，旧链上地址不会自动改变；现有网站领取流程仍按下面的说明运行。
+
 ## 本地运行
 
 ```sh

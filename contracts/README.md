@@ -1,5 +1,7 @@
 # 当前部署请先阅读
 
+分阶段发行新版本 `CaBiLaunchToken.sol` 和 `CaBiLaunchPool.sol` 的规则、构建、测试和部署步骤见 [LAUNCH.md](LAUNCH.md)。支持先实际组 LP，再按管理员预先设定的时间领取和开放交易；尚未部署或切换网站。下文保留现有及历史合约说明。
+
 正式薄饼方案与新版业务合约的完整说明见 [DEPLOYMENT.md](./DEPLOYMENT.md)。下文保留的是历史 XBTToken + 网关方案，不支持薄饼直接买入，请勿混用合约或费率口径。
 
 **当前业务架构（2026-11 起）**：认购改为用户直接向后台配置的收款地址转 USDT，由服务器核验记账，**不再部署或调用认购合约**。奖励额度按认购单 + 直推 + 团队极差由服务器计算，生成 Merkle root 与每人 proof；owner 用自己的钱包调用 `setMerkleRoot(root, epoch)` 发布到独立领取池 `CaBiMerkleClaimPool(token, owner)`，用户带 proof 调用 `claim` 自领（30% USDT 组 LP / 70% 到账）。`XBTSale.sol`、`CaBiClaimPool.sol`、`CaBiSimpleClaimPool.sol` 与旧 EIP-712 签名方案仅留档，不得部署、不得被前端引用。Web 服务不持有任何私钥。

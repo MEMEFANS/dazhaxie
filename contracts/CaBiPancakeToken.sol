@@ -164,7 +164,7 @@ contract CaBiPancakeToken {
         _setExempt(router, true);
         emit TradingConfigured(router, quote, pairAddress);
     }
-    function nextPoolBurnTime() public view returns (uint256) {
+    function nextPoolBurnTime() public view virtual returns (uint256) {
         return tradingPair == address(0) ? 0 : lastPoolBurnTime + POOL_BURN_INTERVAL;
     }
     /// Only clean, liquid reserves can be burned. Pending deposits must be
@@ -179,13 +179,14 @@ contract CaBiPancakeToken {
         bool tokenFirst = ICaBiPair(pool).token0() == address(this);
         uint256 tokenReserve = tokenFirst ? reserve0 : reserve1;
         uint256 quoteReserve = tokenFirst ? reserve1 : reserve0;
-        due = !processing && _status == 1 && block.timestamp >= nextBurnAt && amount > 0
+        due = _poolBurnEnabled() && !processing && _status == 1 && block.timestamp >= nextBurnAt && amount > 0
             && tokenReserve > 0 && quoteReserve > 0 && tokenBalance == tokenReserve
             && ICaBiQuote(usdt).balanceOf(pool) == quoteReserve;
     }
     /// Anyone may execute one due interval. No allowance, swap, quote transfer,
     /// LP withdrawal or extra trading tax. Failed sync reverts the entire burn.
     function burnPool() external nonReentrant returns (uint256 amount) {
+        require(_poolBurnEnabled(), "pool burn not enabled");
         address pool = tradingPair;
         require(pool != address(0), "trading not configured");
         require(block.timestamp >= nextPoolBurnTime(), "pool burn not due");
@@ -217,7 +218,7 @@ contract CaBiPancakeToken {
         emit MaxWalletAmountUpdated(maxWalletAmount, amount); maxWalletAmount = amount;
     }
     /// Holding exemption never exempts trading tax.
-    function setMaxWalletExempt(address account, bool exempt) external onlyOwner nonReentrant {
+    function setMaxWalletExempt(address account, bool exempt) public virtual onlyOwner nonReentrant {
         require(account != address(0), "zero address");
         if (!exempt) require(account != address(this) && account != BURN_ADDRESS && account != tradingPair && account != dexRouter, "system exemption required");
         _setExempt(account, exempt);
@@ -240,7 +241,7 @@ contract CaBiPancakeToken {
         emit OwnershipTransferred(previous, msg.sender);
     }
 
-    function previewTaxSwap(uint256 amount) public view returns (uint256 expectedUsdt, uint256 protectedMinimum) {
+    function previewTaxSwap(uint256 amount) public view virtual returns (uint256 expectedUsdt, uint256 protectedMinimum) {
         require(tradingPair != address(0) && amount > 0 && amount <= maxSwapAmount, "invalid tax swap");
         uint256[] memory quoted = ICaBiRouter(dexRouter).getAmountsOut(amount, _path());
         require(quoted.length == 2 && quoted[1] > 0, "no liquidity");
@@ -311,13 +312,15 @@ contract CaBiPancakeToken {
     function _transfer(address from, address to, uint256 amount) private {
         require(to != address(0), "zero address");
         require(balanceOf[from] >= amount, "balance not enough");
+        _beforeTransfer(from, to);
         if (processing) {
             require(from == address(this) && to == tradingPair && msg.sender == dexRouter, "processing transfer forbidden");
             _move(from, to, amount);
             return;
         }
         // Pair output is never allowed to initiate swapback while the pair is locked.
-        if (amount > 0 && autoSwapEnabled && tradingPair != address(0) && to == tradingPair && from != tradingPair && from != address(this) && balanceOf[address(this)] >= swapThreshold) {
+        bool taxExempt = _liquidityTaxExempt(from, to);
+        if (!taxExempt && amount > 0 && autoSwapEnabled && tradingPair != address(0) && to == tradingPair && from != tradingPair && from != address(this) && balanceOf[address(this)] >= swapThreshold) {
             uint256 accrued = balanceOf[address(this)];
             uint256 amountToSwap = accrued < maxSwapAmount ? accrued : maxSwapAmount;
             uint256 availableGas = gasleft();
@@ -327,8 +330,8 @@ contract CaBiPancakeToken {
                 try this.autoProcessTax{gas: swapGas}(amountToSwap) {} catch { emit TaxProcessingDeferred(amountToSwap); }
             }
         }
-        bool buy = tradingPair != address(0) && from == tradingPair;
-        bool sell = tradingPair != address(0) && to == tradingPair;
+        bool buy = !taxExempt && tradingPair != address(0) && from == tradingPair;
+        bool sell = !taxExempt && tradingPair != address(0) && to == tradingPair;
         uint256 fee = (buy || sell) ? amount * (buy ? BUY_FEE_BPS : SELL_FEE_BPS) / FEE_DENOMINATOR : 0;
         uint256 net = amount - fee;
         if (from != to && net > 0 && !isMaxWalletExempt[to]) require(balanceOf[to] + net <= maxWalletAmount, "max wallet exceeded");
@@ -341,7 +344,12 @@ contract CaBiPancakeToken {
         balanceOf[from] -= amount; balanceOf[to] += amount; emit Transfer(from, to, amount);
     }
     function _path() private view returns (address[] memory path) { path = new address[](2); path[0] = address(this); path[1] = usdt; }
-    function _setExempt(address account, bool exempt) private { isMaxWalletExempt[account] = exempt; emit MaxWalletExemptionSet(account, exempt); }
+    // Default hooks preserve this contract's existing behavior. The launch
+    // variant uses them for its published schedule and dedicated LP operations.
+    function _beforeTransfer(address, address) internal view virtual {}
+    function _liquidityTaxExempt(address, address) internal view virtual returns (bool) { return false; }
+    function _poolBurnEnabled() internal view virtual returns (bool) { return true; }
+    function _setExempt(address account, bool exempt) internal { isMaxWalletExempt[account] = exempt; emit MaxWalletExemptionSet(account, exempt); }
     function _setReceivers(address first, address second) private {
         require(first != address(0) && second != address(0) && first != second && first != address(this) && second != address(this) && first != address(taxReceiver) && second != address(taxReceiver) && first != BURN_ADDRESS && second != BURN_ADDRESS, "invalid receivers");
         if (tradingPair != address(0)) require(first != dexRouter && second != dexRouter && first != usdt && second != usdt && first != tradingPair && second != tradingPair, "invalid receivers");

@@ -1,0 +1,23 @@
+{
+  "status": "template-not-deployed",
+  "chainId": 56,
+  "tokenContract": "CaBiLaunchToken",
+  "claimPoolContract": "CaBiLaunchPool",
+  "owner": "0xf8ada5c5052a47dc6e28a07c8a321fb1ad257d70",
+  "distributionReceiver": "0xff1d3fcbecf2f8c282a63e6c1baa9dff29a68725",
+  "buybackPool": "0xfe59a342d133ccaaa5a11331da32f81bc9ccaefd",
+  "lpReceiver": "0xfd420403066249b1f963ba616c7b6661008fb9df",
+  "signer": "0xaa43f3d7c8a008180bbd478b2591cba4356fa82b",
+  "usdt": "0x55d398326f99059ff775485246999027b3197955",
+  "router": "0x10ed43c718714eb63d5aa57b78b54704e256024e",
+  "factory": "0xca143ce32fe78f1f7019d7d551a6402fc5350c73",
+  "previousClaimPool": "0x315913165c095c7f58f3fd220bccc11c3b322d22",
+  "initialTokenAmount": "10500000",
+  "initialUsdtAmount": "15000",
+  "newTokenClaimReserve": "700000000",
+  "claimStartsAt": null,
+  "tradingStartsAt": null,
+  "newTokenAddress": null,
+  "newPairAddress": null,
+  "newClaimPoolAddress": null
+}

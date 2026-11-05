@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { ChevronLeft, ChevronRight, Download, Gift, Loader2, Package, RefreshCw, Save, Search, ShieldAlert, XCircle } from "lucide-react";
 import { getAddress, isAddress, zeroAddress } from "viem";
 import { useStore } from "@/lib/store";
@@ -151,7 +152,8 @@ export default function ExchangeAdmin() {
   return (
     <div className="space-y-5">
       <Card>
-        <SectionTitle icon={Gift} title="兑换收款地址" extra={<StatusPill tone={config.data?.enabled ? "live" : "paused"}>{config.data?.enabled ? "开放中" : "未开放"}</StatusPill>} />
+        <SectionTitle icon={Gift} title="兑换 CaBi 收款地址" extra={<StatusPill tone={config.data?.enabled ? "live" : "paused"}>{config.data?.enabled ? "开放中" : "未开放"}</StatusPill>} />
+        <p className="mb-3 text-xs leading-6 text-mute">此地址接收实物兑换的 CaBi。认购 USDT 收款请到 <Link href="/admin/subscribe" className="text-purple-deep underline">认购管理</Link> 设置。</p>
         <div className="rounded-lg border border-line bg-well px-4 py-2">
           <DataRow label="当前收款地址" value={currentPayee ? <a href={getExplorerAddressUrl(currentPayee)} target="_blank" rel="noreferrer" className="break-all font-mono text-[11px] text-purple-deep underline">{currentPayee}</a> : "未配置"} />
           <DataRow label="兑换单价" value={`${formatAssetAmount(BigInt(config.data?.unitPrice || "3500000000000000000000"), 18)} CaBi / 份`} />

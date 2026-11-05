@@ -6,7 +6,7 @@ import { ArrowRight, Check, ChevronDown, Coins, Copy, ShoppingBag, Wallet } from
 import { useStore } from "@/lib/store";
 import { chainConfig } from "@/lib/chain-config";
 import { formatAssetAmount } from "@/lib/amounts";
-import { useSubscribeConfig, useSubscribeOrders } from "@/lib/subscribe-data";
+import { fetchSubscribeConfig, useSubscribeConfig, useSubscribeOrders } from "@/lib/subscribe-data";
 import { fetchReferralData, useReferralData } from "@/lib/referral-data";
 import { useContractTransaction } from "@/lib/contract-transactions";
 import { isUserCancelledError } from "@/lib/transaction-cancellation";
@@ -110,17 +110,32 @@ function PurchasePanelForm() {
     if (!fresh?.bound || fresh.code !== relation?.code || fresh.referrer !== relation?.referrer || fresh.root !== relation?.root) throw new Error("邀请码关系已变化或登录失效，请重新核对。");
   }
 
+  async function verifyConfiguration() {
+    const fresh = await fetchSubscribeConfig(state.address, true);
+    if (!mounted.current || current.current !== context) throw new Error("钱包或认购状态已变化，请重新确认。");
+    if (!fresh.configured || !fresh.enabled || fresh.locked) { query.refresh(); throw new Error(fresh.message || "认购暂时关闭"); }
+    if (fresh.payee?.toLowerCase() !== data?.payee?.toLowerCase() || fresh.usdt?.toLowerCase() !== data?.usdt?.toLowerCase()
+      || fresh.chainId !== state.chainId || fresh.unitPrice !== data?.unitPrice || fresh.usdtDecimals !== data?.usdtDecimals
+      || fresh.tokensPerShare !== data?.tokensPerShare || fresh.tokenDecimals !== data?.tokenDecimals) {
+      query.refresh();
+      throw new Error("认购收款地址或金额已更新，页面正在同步，请核对后重新点击认购。");
+    }
+    if (quantity > fresh.remainingPersonal || quantity > fresh.remainingGlobal) { query.refresh(); throw new Error("剩余认购份数已变化，请重新选择。"); }
+  }
+
+  async function verifyPurchase() { await verifyReferral(); await verifyConfiguration(); }
+
   async function submit() {
     if (reason || !data?.payee || !data.usdt || !bound || operation.current || tx.busy || pending || unregisteredHash) return;
     operation.current = true; setChecking(true); setError(""); setCancelled(false); setCompleted(null); setServerState("idle"); setServerMessage(""); tx.clear();
     submitted.current = { shares: quantity, paid: formatAssetAmount(amount, data.usdtDecimals), allocation: formatAssetAmount(quota, data.tokenDecimals) };
     try {
-      await verifyReferral();
+      await verifyPurchase();
       const hash = await tx.run({
         address: data.usdt, abi: erc20Abi, functionName: "transfer",
         args: [data.payee, amount],
         description: `认购 ${quantity} 份，向收款地址转入 ${formatAssetAmount(amount, data.usdtDecimals)} USDT`,
-        beforeSend: verifyReferral,
+        beforeSend: verifyPurchase,
         allowUnsimulated: true,
       });
       if (!hash || !mounted.current) return;

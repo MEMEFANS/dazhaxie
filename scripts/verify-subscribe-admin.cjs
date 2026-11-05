@@ -42,6 +42,7 @@ async function mockFetch(request, init) {
     const items = q ? listData.items.filter(row => row.address.includes(q) || row.txHash.includes(q)) : listData.items;
     return reply({ ...listData, items, total: q ? items.length : listData.total });
   }
+  if (method === 'GET' && url === '/api/subscribe/config') return reply({ payee: listData.subscribePayee, locked: listData.subscribeLocked });
   if (method === 'GET' && url.startsWith('/api/admin/claim-batches?')) return reply(batchesData);
   if (method === 'GET' && url === '/api/admin/claim-pool') return reply(claimPoolData);
   if (method === 'POST' && url === '/api/admin/claim-pool') {

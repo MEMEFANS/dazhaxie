@@ -46,6 +46,7 @@ function load(file, replacements = {}) {
 
 const store = { state: { connected: true, address: A, chainId: 56 }, connect() {} };
 const configQuery = { status: 'ready', data: undefined, refresh() { configRefreshes++; } };
+let freshConfig;
 const ordersQuery = { orders: [], refresh() { orderRefreshes++; } };
 let configRefreshes = 0, orderRefreshes = 0, version = 0, writes = [], requests = [], txResult = hash;
 let balanceValue = 1000n * 10n ** 6n, serverResponse = { status: 200, body: { order: { id: 'o1' } } };
@@ -73,6 +74,7 @@ const Component = load('src/components/dapp/subscribe/purchase-panel.tsx', {
   '@/lib/transaction-cancellation': { isUserCancelledError: error => error instanceof Error && /rejected|denied|4001/i.test(error.message) },
   '@/lib/amounts': { formatAssetAmount: (amount, decimals) => viem.formatUnits(amount, decimals) },
   '@/lib/subscribe-data': {
+    fetchSubscribeConfig: async () => freshConfig || { ...configQuery.data },
     useSubscribeConfig: () => configQuery,
     useSubscribeOrders: () => ordersQuery,
     fetchUsdtBalance: async () => balanceValue,
@@ -93,6 +95,7 @@ async function render() { await React.act(async () => { root.render(React.create
 async function reset() {
   store.state = { connected: true, address: A, chainId: 56 };
   configQuery.status = 'ready'; delete configQuery.error; configQuery.data = fixture();
+  freshConfig = undefined;
   ordersQuery.orders = []; referralQuery.status = 'ready'; referralQuery.data = relation;
   writes.length = 0; requests.length = 0; balanceValue = 1000n * 10n ** 6n; txResult = hash;
   serverResponse = { status: 200, body: { order: { id: 'o1' } } };
@@ -136,6 +139,14 @@ async function click(element, wait = 24) {
     assert.equal(configRefreshes, 1);
     assert.equal(orderRefreshes, 1);
     pass('submission sends USDT directly to the payee and posts the hash to the server ledger without any sale contract');
+
+    await reset(); freshConfig = { ...fixture(), payee: B };
+    await click(action(), 60);
+    assert.equal(writes.length, 0);
+    assert.equal(requests.length, 0);
+    assert(configRefreshes > 0);
+    assert(document.body.textContent.includes('认购收款地址或金额已更新'));
+    pass('an updated server payee refreshes the page before any wallet transfer');
 
     await reset(); serverResponse = { status: 202, body: { error: '等待区块确认' } };
     await click(action(), 60);

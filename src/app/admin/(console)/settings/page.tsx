@@ -68,8 +68,12 @@ export default function OperationalSettingsPage() {
         <SectionTitle icon={Settings2} title="服务设置" />
         <p className="mb-5 text-sm leading-6 text-mute">这里保存运营配置。除兑换开关外，服务开关不会改变合约状态，也不会代替钱包签名。</p>
         {loading ? <p className="py-4 text-sm text-mute" role="status">正在读取服务器设置…</p> : <>
+          <div className="mb-4 space-y-3 rounded-xl border border-line bg-well p-4 text-xs leading-6">
+            <div><strong>认购 USDT 收款地址</strong><p className="break-all font-mono">{result?.settings.subscribePayee || "未配置"}</p><Link href="/admin/subscribe" className="text-purple-deep underline">前往认购管理修改</Link></div>
+            <div><strong>兑换 CaBi 收款地址</strong><p className="break-all font-mono">{result?.settings.exchangePayee || "未配置"}</p><Link href="/admin/exchange" className="text-purple-deep underline">前往兑换管理修改</Link></div>
+          </div>
           <label className="flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-xl border border-line p-4">
-            <span><strong className="text-sm">锁定认购（仅服务端标记）</strong><small className="mt-1 block text-xs leading-5 text-mute">仅保存运营标记，<span className="text-down">不改变链上状态</span>；用户能否认购以认购页的链上开关为准。</small><Link href="/admin/subscribe" className="mt-1 inline-block text-[11px] font-medium text-purple-deep underline">前往链上认购开关</Link></span>
+            <span><strong className="text-sm">暂停认购</strong><small className="mt-1 block text-xs leading-5 text-mute">保存后立即控制认购页面能否发起付款。</small><Link href="/admin/subscribe" className="mt-1 inline-block text-[11px] font-medium text-purple-deep underline">前往认购管理</Link></span>
             <input type="checkbox" checked={subscribeLocked} disabled={!result || saving} onChange={event => setSubscribeLocked(event.target.checked)} className="h-5 w-5 accent-purple" />
           </label>
           <label className="mt-3 flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-xl border border-line p-4">

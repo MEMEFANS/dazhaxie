@@ -98,10 +98,18 @@ export default function SubscribeAdmin() {
     if (busy) return;
     setBusy(key); setError(""); setMessage("");
     try {
-      const response = await fetch("/api/admin/subscriptions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+      const response = await fetch("/api/admin/subscriptions", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
       const body = await response.json().catch(() => ({ error: "保存失败" })) as { error?: string; settings?: { subscribePayee: string; subscribeLocked: boolean } };
       if (!response.ok) throw new Error(body.error || "保存失败");
+      const publicResponse = await fetch("/api/subscribe/config", { credentials: "same-origin", cache: "no-store" });
+      const publicConfig = await publicResponse.json().catch(() => ({})) as { payee?: string; locked?: boolean };
+      if (!publicResponse.ok || (patch.subscribePayee !== undefined && publicConfig.payee?.toLowerCase() !== body.settings?.subscribePayee?.toLowerCase())
+        || (patch.subscribeLocked !== undefined && publicConfig.locked !== body.settings?.subscribeLocked)) {
+        throw new Error("后台已收到保存请求，但公开认购配置未同步。请检查服务器是否使用同一个持久化目录 CABI_DATA_DIR，且只运行单实例。没有显示“已保存”，请先刷新核对当前地址。");
+      }
       if (body.settings) { setPayee(body.settings.subscribePayee || ""); setList(prev => ({ ...prev, subscribePayee: body.settings!.subscribePayee || "", subscribeLocked: body.settings!.subscribeLocked })); }
+      window.dispatchEvent(new Event("cabi-operational-settings-updated"));
+      try { window.localStorage.setItem("cabi-subscribe-config-updated", String(Date.now())); } catch { /* Other tabs also poll. */ }
       setMessage("已保存。");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "保存失败"); }
     finally { setBusy(""); }
@@ -151,9 +159,11 @@ export default function SubscribeAdmin() {
     </Card>
 
     <Card>
-      <SectionHead title="认购收款地址" desc="用户把 USDT 直接转到该地址；服务器核验交易成功、2 次确认、from/to/金额一致后才记账" />
+      <SectionHead title="认购 USDT 收款地址" desc="控制前端认购付款的接收钱包；修改并保存后前端自动同步。兑换 CaBi 收款地址在「兑换管理」单独设置。" />
       <DataRow label="当前地址" value={list.subscribePayee || "未设置"} />
       <div className="mt-3 flex flex-col gap-3 sm:flex-row"><input aria-label="认购收款地址" value={payee} onChange={event => setPayee(event.target.value)} placeholder="0x…（BSC 上的 USDT 收款地址）" className="field min-h-11 w-full min-w-0 px-3 font-mono text-xs" /><button onClick={() => void saveSettings({ subscribePayee: payee }, "payee")} disabled={busy === "payee"} className="btn btn-gold min-h-11 shrink-0 px-4 text-xs">{busy === "payee" ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}保存收款地址</button></div>
+      {message ? <p role="status" className="mt-3 text-xs text-up">{message}</p> : null}
+      {error ? <p role="alert" className="mt-3 text-xs leading-6 text-down">{error}</p> : null}
     </Card>
 
     <Card>

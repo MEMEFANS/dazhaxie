@@ -18,38 +18,38 @@ EIP-712：domain `("CaBiSignedClaimPool","1",chainId,pool)`，结构 `Claim(user
 
 ### 代币与手续费
 
-- 名称/符号 CaBi，18位，总量10亿；constructor(receiver1,receiver2,ownerAddress) 将全部供应量一次性发给 ownerAddress，无增发、自动分配或自动锁仓。
-- 指定 CaBi/USDT V2 pair 输出到买家时：3% CaBi 进入代币合约，97% 到买家。之后将税币兑换 USDT，默认按2:1分账至两个地址。不是精确收取买入付款额的3% USDT。
+- 名称/符号 CaBi，18位，总量10亿；constructor(distributionReceiver,buybackPool,ownerAddress) 将全部供应量一次性发给 ownerAddress，无增发、自动分配或自动锁仓。
+- 指定 CaBi/USDT V2 pair 输出到买家时：3% CaBi 进入代币合约，97% 到买家。之后将税币兑换 USDT，固定按 50% / 50% 分账——一半给分配地址，一半给回购池（奇数最小单位余数归回购池）。不是精确收取买入付款额的3% USDT：V2 pair 直接把代币付给买家，代币合约无法在同一笔交易里额外划走买家 USDT。
 - 转入指定pair卖出时：3% CaBi直接去0x000000000000000000000000000000000000dEaD，97%进入pair。owner同样收卖税。
 - 普通钱包和业务合约转账不收交易税；不自动覆盖其它池、V3或任意多跳路径。
 - 普通持仓默认20万，可 setMaxWalletAmount；setMaxWalletExempt 仅豁免持仓上限，不豁免买卖税。新owner需transferOwnership提名后acceptOwnership接受。
-- 代币合约不承担普通用户奖励分配或领取。claimDividend 仅处理分红地址待领 USDT，不是用户的 CaBi 领取入口；用户通过独立 CaBiSignedClaimPool 领取：支付 30% USDT 组建流动性，30% 代币进 LP 接收地址，70% 到账。
+- 代币合约不承担普通用户奖励分配或领取。claimPayout 仅处理分配地址与回购池待领 USDT，不是用户的 CaBi 领取入口；用户通过独立 CaBiSignedClaimPool 领取：支付 30% USDT 组建流动性，30% 代币进 LP 接收地址，70% 到账。
 
 ### 底池固定周期代币销毁
 
-新版 CaBiPancakeToken 固定 POOL_BURN_INTERVAL=28800 秒、POOL_BURN_BPS=100：配置交易对 configureTrading 后开始计时，每满 8 小时可调用一次 burnPool()，按执行时该交易对 CaBi 实际余额的 1%（最小单位向下取整）转入黑洞。销毁只扣 CaBi，池内 USDT / WBNB 不转出、不卖出；不销毁 LP 凭证，也不额外扣买卖税。随后 pair.sync() 同步储备；总发行量 totalSupply 保持原口径不变，黑洞余额和 totalPoolBurned 增加。只适用于唯一绑定的 V2 交易对，不能泛指所有资金池或其它交易对。当前网站交易、分红和组 LP 方案仍按 CaBi/USDT 配置，不因本功能自动扩展为 BNB 交易方案。
+新版 CaBiPancakeToken 固定 POOL_BURN_INTERVAL=28800 秒、POOL_BURN_BPS=100：配置交易对 configureTrading 后开始计时，每满 8 小时可调用一次 burnPool()，按执行时该交易对 CaBi 实际余额的 1%（最小单位向下取整）转入黑洞。销毁只扣 CaBi，池内 USDT / WBNB 不转出、不卖出；不销毁 LP 凭证，也不额外扣买卖税。随后 pair.sync() 同步储备；总发行量 totalSupply 保持原口径不变，黑洞余额和 totalPoolBurned 增加。只适用于唯一绑定的 V2 交易对，不能泛指所有资金池或其它交易对。当前网站交易、税款分配和组 LP 方案仍按 CaBi/USDT 配置，不因本功能自动扩展为 BNB 交易方案。
 
 按“每次实时余额 1%”执行三次，无交易/增减流动性时累计是 1−0.99³=2.9701%，不是精确按日初余额扣 3%。间隔以实际成功执行时间为准，未按时执行不积累补扣，不能在恢复时连扣多个时段。新方法无管理员可变费率、无强制在转账中抽池逻辑，避免买入、移除 LP、闪电交换期间的 pair 锁及旧报价冲突。空池、余额/储备未同步、最小单位销毁为零、同步失败均拒绝，失败不推进时间、不减少资产。尚未 mint 的加池转账或外部捐款需先由其所有者完成相应操作或 sync；本功能不会替用户处理这些款项。池内代币与报价资产比例改变会影响现货价格、LP 价值与后续交易。
 
-链上合约不会自行发送交易。任何钱包都可触发到期 burnPool，不要求 owner，仅支付执行交易的 BNB 网络费。后台“代币与分红税管理”新增底池销毁状态、北京时间、累计量、实际预估与确认入口。签名前重新校验数量和时段；持币人无需授权。
+链上合约不会自行发送交易。任何钱包都可触发到期 burnPool，不要求 owner，仅支付执行交易的 BNB 网络费。后台“代币与交易税管理”新增底池销毁状态、北京时间、累计量、实际预估与确认入口。签名前重新校验数量和时段；持币人无需授权。
 
 服务器定时执行使用 scripts/pool-burn-keeper.cjs：默认 npm run keeper:pool-burn 只读检查；明确 npm run keeper:pool-burn -- --execute 才广播。进程需配置 NEXT_PUBLIC_CHAIN_ID、NEXT_PUBLIC_TOKEN_ADDRESS、NEXT_PUBLIC_USDT_ADDRESS、POOL_BURN_RPC_URL（或 NEXT_PUBLIC_RPC_URL），执行模式另注入 POOL_BURN_KEEPER_PRIVATE_KEY，使用专用少量 BNB 钱包，不使用 owner 密钥；脚本不会读取 .env.local 或私钥文件。POOL_BURN_MAX_GAS_PRICE_GWEI 默认 5，超限停止等待下次。建议调度器每 1 分钟执行一次，未到时只读；单次运行采用本地锁和持久待确认记录，超时下一次先核对原交易，不重复广播。CABI_DATA_DIR 必须持久化，多个执行器须使用同一目录；进程异常留下 .lock 时先确认无旧进程及原交易状态，再手工清理锁。
 
 当前只实现并本地验证源码、后台和执行器，未启动定时服务、未部署或广播。已部署不可升级的旧代币不会自动增加该机制，必须部署新版并重新配置真实交易对；不可把网站源码变更视为已修改旧链上合约。
 
-### 分红税分账与兑换
+### 交易税分账与兑换
 
-setDividendReceivers(address,address) 设置两个不同非零收款地址；setDividendRates(firstBps,secondBps) 合计必须300。默认200/100，表示税币兑换所得的2:1。允许0/300和300/0。按处理时的收款地址及比例分配，新比例会影响此前积累但尚未兑换的税币。
+setTaxReceivers(address distributionReceiver,address buybackPool) 设置分配地址与回购池地址：必须非零、互不相同，且不能是本合约、CaBiTaxReceiver、黑洞，或在 configureTrading 之后为 router / pair / USDT。分账比例固定为 50% / 50%（`PAYOUT_BPS = 5000` 常量），不提供比例 setter；奇数最小单位余数归回购池。按处理时的收款地址分配，更换地址只影响之后处理的税币。
 
 买入不触发兑换，避免 V2 pair 输出期间的锁；后续卖出按阈值尝试限额兑换。自动兑换失败只回滚该步骤，保留税币，不阻断正常卖出。兑换 USDT 的接收中转合约 CaBiTaxReceiver 由代币构造自动建立，仅代币可从中转出，不是管理网关。
 
 setSwapSettings(threshold,maxAmount,slippageBps,enabled) 可调：threshold>0、threshold<=maxAmount、maxAmount<=10万CaBi、slippageBps<=1000。默认1000/10000枚、5%滑点。previewTaxSwap(amount) 返回现货预估和保护下限；processTax(amount,minUsdtOut,deadline) 允许主动处理，要求minOut不低于即时保护下限和有效deadline。此现货保护不能消除MEV。
 
-自动向接收地址支付失败时，pendingDividends(receiver)保留该地址的待领USDT；receiver可claimDividend(recipient)转至有效地址。更换分红地址不转移旧credit。
+自动向接收地址支付失败时，pendingPayouts(receiver)保留该地址的待领USDT；receiver可claimPayout(recipient)转至有效地址。更换收款地址不转移旧credit。
 
 ### 主网部署顺序
 
-1. 确认两个USDT收款地址和最终owner；部署 CaBiPancakeToken(receiver1,receiver2,ownerAddress)。
+1. 确认分配地址、回购池地址和最终owner；部署 CaBiPancakeToken(distributionReceiver,buybackPool,ownerAddress)。
 2. 核验选定V2 Router/Factory/USDT，在同一Factory创建CaBi/USDT pair。不要使用V3池。
 3. owner先setMaxWalletExempt(pair,true)，持币人授权Router并在尚未绑定交易时添加初始流动性；数量和初始价格由持币人决定。
 4. owner调用一次configureTrading(routerAddress,usdtAddress,pairAddress)。合约验证Factory及资产匹配，绑定后不能随意换池。

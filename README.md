@@ -80,13 +80,13 @@ ADMIN_USERNAME、ADMIN_PASSWORD_HASH、ADMIN_SESSION_SECRET、REDEMPTION_DATA_SE
 
 ## 底池周期销毁
 
-新版 CaBiPancakeToken 已加入固定每 8 小时销毁唯一绑定 V2 池内当前 CaBi 余额 1% 到黑洞，保留报价资产 USDT / WBNB 及 LP 凭证，并同步池子储备。按实时余额三次约 2.9701%，不是日初余额精确 3%；不补扣错过的时段。正常买卖税和认购领取规则独立。后台“代币与分红税管理”提供到期执行与状态；scripts/pool-burn-keeper.cjs 提供默认只读检查和显式 --execute 执行模式。自动执行需要部署新版合约后配置真实地址、专用 keeper 钱包及持久目录，并在服务器调度；当前未部署、未启动定时任务。详见 contracts/DEPLOYMENT.md 的“底池固定周期代币销毁”。
+新版 CaBiPancakeToken 已加入固定每 8 小时销毁唯一绑定 V2 池内当前 CaBi 余额 1% 到黑洞，保留报价资产 USDT / WBNB 及 LP 凭证，并同步池子储备。按实时余额三次约 2.9701%，不是日初余额精确 3%；不补扣错过的时段。正常买卖税和认购领取规则独立。后台“代币与交易税管理”提供到期执行与状态；scripts/pool-burn-keeper.cjs 提供默认只读检查和显式 --execute 执行模式。自动执行需要部署新版合约后配置真实地址、专用 keeper 钱包及持久目录，并在服务器调度；当前未部署、未启动定时任务。详见 contracts/DEPLOYMENT.md 的“底池固定周期代币销毁”。
 
-## 薄饼分红税
+## 薄饼交易税（50% 分配 / 50% 回购池）
 
-新版 CaBiPancakeToken 用于直接 V2 Router 交易：买入输出扣3% CaBi，累积后卖成 USDT，默认按2:1给两个收款地址；卖出3% CaBi直接入黑洞；普通转账0%。这是两个指定地址的分账，不是所有持币人的自动分红，也不等于精确扣买家付款的3% USDT。
+新版 CaBiPancakeToken 用于直接 V2 Router 交易：买入输出扣 3% CaBi，累积后卖成 USDT，固定按 50% / 50% 分发——一半进入分配地址，一半进入回购池；卖出 3% CaBi 直接入黑洞；普通转账 0%。这是两个指定地址的固定分账，不是所有持币人的自动分红，也不等于精确扣买家付款的 3% USDT（V2 pair 直接把代币付给买家，代币合约无法在同一笔交易里额外划走买家 USDT）。
 
-分配权重合计300 BPS，可设置200/100、150/150或0/300。税币不会在买入时兑换，避免 pair 锁冲突；后续卖出时尝试限额兑换，失败保留税币且不阻断卖出。USDT 支付失败保留原收款地址的待领额度，可由该地址提取到其它地址。更换收款地址不会迁移旧额度。
+分发比例固定为 50% / 50%（`PAYOUT_BPS = 5000` 常量，无比例 setter）；奇数最小单位余数归回购池。两个地址由 owner 通过 setTaxReceivers 配置，必须非零、互不相同，且不能是本合约、taxReceiver、黑洞或已配置的 router/pair/USDT。税币不会在买入时兑换，避免 pair 锁冲突；后续卖出时尝试限额兑换，失败保留税币且不阻断卖出。USDT 支付失败保留原收款地址的待领额度（pendingPayouts），可由该地址 claimPayout 提取到其它地址。更换收款地址不会迁移旧额度。
 
 只覆盖绑定的 CaBi/USDT V2 池；V3、其它池和任意路由不在本实现保证范围内。外链只有在代币版本正确、已绑定且有流动性时开放。手续费滑点需在薄饼核对；自动税币兑换使用现货报价保护，不能消除MEV。
 
@@ -94,7 +94,7 @@ ADMIN_USERNAME、ADMIN_PASSWORD_HASH、ADMIN_SESSION_SECRET、REDEMPTION_DATA_SE
 
 ## 独立领取池（签名自领）
 
-代币合约不包含普通用户奖励名单、个人可领额度或认购领取逻辑。CaBiPancakeToken.claimDividend 只处理两个分红收款地址未成功到账的 USDT。领取使用独立合约 CaBiSignedClaimPool(tokenAddress, signerAddress, ownerAddress)，**不依赖任何认购合约**，也不需要逐人写入额度；token 部署后不可更换，USDT 由 owner 调用 setUsdt 配置（自动读取 6/18 位精度），LP 接收地址由 setLpReceiver 设置。
+代币合约不包含普通用户奖励名单、个人可领额度或认购领取逻辑。CaBiPancakeToken.claimPayout 只处理两个税款收款地址（分配地址与回购池）未成功到账的 USDT。领取使用独立合约 CaBiSignedClaimPool(tokenAddress, signerAddress, ownerAddress)，**不依赖任何认购合约**，也不需要逐人写入额度；token 部署后不可更换，USDT 由 owner 调用 setUsdt 配置（自动读取 6/18 位精度），LP 接收地址由 setLpReceiver 设置。
 
 owner 先 approve 领取池再调用 deposit(amount) 注入 CaBi；withdrawUnused(amount) 只能取回 poolBalance 超过 allocatedUnclaimed 的未分配部分，已分配未领额度不能被取走。大额注资前，由代币 owner 设置 setMaxWalletExempt(pool,true)；这只豁免池子的持仓上限，不豁免买卖税，普通用户仍受当前持仓上限约束。
 
@@ -114,7 +114,7 @@ owner 先 approve 领取池再调用 deposit(amount) 注入 CaBi；withdrawUnuse
 
 ## 上线顺序
 
-1. 确认管理员、两个分红收款地址及项目 LP 接收地址。LP 接收地址不是代币/USDT/交易对/路由等系统地址，不得假设它已锁仓。新版代币 constructor(receiver1,receiver2,ownerAddress) 全量发给 ownerAddress，后续分配由持币人决定。领取池构造参数为 (token, owner)；owner 初始为部署钱包，如最终管理员不同用两步 transferOwnership。
+1. 确认管理员、分配地址、回购池地址及项目 LP 接收地址。LP 接收地址不是代币/USDT/交易对/路由等系统地址，不得假设它已锁仓。新版代币 constructor(distributionReceiver,buybackPool,ownerAddress) 全量发给 ownerAddress，后续分配由持币人决定。领取池构造参数为 (token, owner)；owner 初始为部署钱包，如最终管理员不同用两步 transferOwnership。
 2. 创建并配置官方 V2 流动性及一次性交易绑定，核验所选 Router/USDT/Factory/pair。
 3. 部署 CaBiSignedClaimPool(token, signer, owner)，随后由 owner 调用 setUsdt(USDT)、setLpReceiver(项目 LP 地址)。两者缺一用户就无法领取。CaBiSimpleClaimPool / XBTSale.sol / CaBiClaimPool.sol 仅留档，不再部署、不再被前端引用。
 4. 代币 owner 先为领取池设置持仓豁免，再 approve + deposit 实际所需的 CaBi；withdrawUnused 只能取回未被 owner 设定限额的未分配部分。其它大额业务合约或金库按需单独豁免。

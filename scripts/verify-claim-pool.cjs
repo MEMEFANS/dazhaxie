@@ -94,7 +94,7 @@ async function setup(artifact, decimals, ctx, feeOn = false, fixtureQuote = fals
   tokens: await Promise.all([user, pool.address, DEAD, token.address, pair.address, project].map(address => balance(token, address))),
   quote: await Promise.all([user, pool.address, pair.address, token.address, receiver1, receiver2, project, fund].map(address => balance(quote, address))),
   quoteAllowance: await read(quote, 'allowance', [user, pool.address]),
-  tax: await Promise.all([read(token, 'totalPendingDividends'), read(token, 'pendingDividends', [receiver1]), read(token, 'pendingDividends', [receiver2]), read(token, 'allowance', [token.address, router.address])]),
+  tax: await Promise.all([read(token, 'totalPendingPayouts'), read(token, 'pendingPayouts', [receiver1]), read(token, 'pendingPayouts', [receiver2]), read(token, 'allowance', [token.address, router.address])]),
   lp: await Promise.all([read(pair, 'getReserves'), read(pair, 'totalSupply'), read(pair, 'kLast'), balance(pair, project), balance(pair, user), balance(pair, feeTo)]),
  });
  const revertedClaim = async (user, args, reason) => { const before = await snapshot(user); await ctx.fail(pool, 'claimChecked', args, user); assert.deepEqual(await snapshot(user), before, reason + ' must restore sale/pool/tax/USDT/LP state'); };
@@ -195,7 +195,7 @@ async function verifyFeeOnSwapback(artifact, decimals) {
   assert.equal(e.usdtPaid, expectedPaid); assert(e.usdtPaid < q[4], 'uses post-swapback price rather than stale pre-transfer reserves'); assert.equal(e.liquidity, expectedLiquidity);
   assert.equal(await balance(quote, bob), quoteBefore - expectedPaid); assert.equal(await balance(pair, project), projectBefore + expectedLiquidity); assert.equal(await balance(pair, feeTo), feeBefore + protocolFee); assert.equal(await balance(pair, bob), 0n); assert.equal(await read(pool, 'claimable', [bob]), 0n); assert.equal(await read(token, 'taxTokenBalance'), 0n);
   pass(label + 'sell-time tax swapback reprices USDT and LP from actual changed reserves, including fee-on supply growth');
-  pass(label + 'failed post-swapback protections atomically restore accrued tax, dividends, sale rights, USDT, reserves and all LP balances');
+  pass(label + 'failed post-swapback protections atomically restore accrued tax, payout credits, sale rights, USDT, reserves and all LP balances');
  });
 }
 async function verifyQuoteFailures(artifact) {

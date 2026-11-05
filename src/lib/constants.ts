@@ -19,9 +19,8 @@ export const MAX_EXCHANGE_PER_TIME = 20; // 单次兑换最多份数
 export const MAX_WALLET_BALANCE = 200000; // 默认单地址持仓上限（枚）；owner 可在代币合约中调整
 
 // 三、代币交易机制
-export const BUY_FEE_BPS = 300; // pancake: 买入扣3% CaBi累积换USDT；legacy gateway: 支付额3% USDT
-export const DEFAULT_DIVIDEND_RATE1_BPS = 200; // pancake分账权重200/300；legacy gateway占买入额2%
-export const DEFAULT_DIVIDEND_RATE2_BPS = 100; // pancake分账权重100/300；legacy gateway占买入额1%
+export const BUY_FEE_BPS = 300; // pancake: 买入扣3% CaBi，换USDT后固定50/50分账；legacy gateway: 支付额3% USDT
+export const PAYOUT_SPLIT_BPS = 5000; // 税款兑换所得分发比例：5000 给分配地址，其余给回购池（余数归回购池）
 export const SELL_FEE_BPS = 300; // 卖出数量的 3% CaBi -> 黑洞地址
 export const BUY_FEE_RATE = BUY_FEE_BPS / 10000;
 export const SELL_FEE_RATE = SELL_FEE_BPS / 10000;

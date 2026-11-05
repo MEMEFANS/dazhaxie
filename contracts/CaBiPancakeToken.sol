@@ -34,7 +34,11 @@ contract CaBiTaxReceiver {
 /**
  * CaBi for direct V2 router swaps. All supply is minted once to ownerAddress.
  * BUY: 3% of output CaBi accrues here; SELL: 3% CaBi goes to dead; wallet: 0%.
- * Accrued CaBi is sold later for USDT, split 2:1 by default, not 3% of buy USDT.
+ * Accrued CaBi is sold later for USDT and split 50/50: half to the configured
+ * distribution receiver, half to the configured buyback pool. Odd smallest-unit
+ * remainders from the split belong to the buyback pool. The tax is 3% of CaBi
+ * on buys, not 3% of the buyer's USDT: the V2 pair pays the buyer directly and
+ * the token contract cannot pull extra USDT inside that swap.
  * No swapback occurs during pair output (the V2 pair is locked then).
  * Opportunistic sell-time swapback is bounded and failure-isolated. An explicit
  * processTax call is also available. USDT recipient failures retain pull credits.
@@ -57,6 +61,7 @@ contract CaBiPancakeToken {
     uint256 public constant BUY_FEE_BPS = 300;
     uint256 public constant SELL_FEE_BPS = 300;
     uint256 public constant FEE_DENOMINATOR = 10_000;
+    uint256 public constant PAYOUT_BPS = 5_000;
     uint256 public constant POOL_BURN_INTERVAL = 8 hours;
     uint256 public constant POOL_BURN_BPS = 100;
     uint256 public constant MAX_SWAP_AMOUNT = 100_000 * 1e18;
@@ -72,17 +77,17 @@ contract CaBiPancakeToken {
     address public tradingPair;
     // Retained for consumers of the legacy read ABI; there is no gateway here.
     address public constant tradingGateway = address(0);
-    address public dividendReceiver1;
-    address public dividendReceiver2;
-    uint256 public dividendRate1Bps = 200;
-    uint256 public dividendRate2Bps = 100;
+    // Split destinations of tax proceeds. Both are set by the owner and must
+    // stay distinct; PAYOUT_BPS applies to the distribution receiver.
+    address public distributionReceiver;
+    address public buybackPool;
     uint256 public maxWalletAmount = 200_000 * 1e18;
     uint256 public swapThreshold = 1_000 * 1e18;
     uint256 public maxSwapAmount = 10_000 * 1e18;
     uint256 public swapSlippageBps = 500;
     bool public autoSwapEnabled = true;
     bool public processing;
-    uint256 public totalPendingDividends;
+    uint256 public totalPendingPayouts;
     uint256 public lastPoolBurnTime;
     uint256 public totalPoolBurned;
     uint256 private _status = 1;
@@ -90,7 +95,7 @@ contract CaBiPancakeToken {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
     mapping(address => bool) public isMaxWalletExempt;
-    mapping(address => uint256) public pendingDividends;
+    mapping(address => uint256) public pendingPayouts;
 
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
@@ -103,23 +108,22 @@ contract CaBiPancakeToken {
     event PoolBurned(address indexed pair, uint256 amount, uint256 poolBalanceBefore, uint256 executedAt);
     event MaxWalletAmountUpdated(uint256 previousAmount, uint256 newAmount);
     event MaxWalletExemptionSet(address indexed account, bool exempt);
-    event DividendRatesUpdated(uint256 rate1Bps, uint256 rate2Bps);
-    event DividendReceiversUpdated(address indexed receiver1, address indexed receiver2);
+    event TaxReceiversUpdated(address indexed distributionReceiver, address indexed buybackPool);
     event SwapSettingsUpdated(uint256 threshold, uint256 maxAmount, uint256 slippageBps, bool enabled);
-    event TaxProcessed(uint256 tokensSold, uint256 usdtReceived, address indexed receiver1, address indexed receiver2, uint256 amount1, uint256 amount2);
+    event TaxProcessed(uint256 tokensSold, uint256 usdtReceived, address indexed distributionReceiver, address indexed buybackPool, uint256 distributionAmount, uint256 buybackAmount);
     event TaxProcessingDeferred(uint256 attemptedTokens);
-    event DividendPaid(address indexed receiver, address indexed recipient, uint256 amount);
-    event DividendPaymentDeferred(address indexed receiver, uint256 pendingAmount);
+    event PayoutPaid(address indexed receiver, address indexed recipient, uint256 amount);
+    event PayoutDeferred(address indexed receiver, uint256 pendingAmount);
 
     modifier onlyOwner() { require(msg.sender == owner, "not owner"); _; }
     modifier nonReentrant() { require(_status == 1 && !processing, "operation active"); _status = 2; _; _status = 1; }
     modifier onlySelf() { require(msg.sender == address(this), "only self"); _; }
 
-    constructor(address receiver1, address receiver2, address ownerAddress) {
+    constructor(address distributionReceiver_, address buybackPool_, address ownerAddress) {
         require(ownerAddress != address(0) && ownerAddress != address(this), "invalid owner");
         owner = ownerAddress;
         taxReceiver = new CaBiTaxReceiver();
-        _setReceivers(receiver1, receiver2);
+        _setReceivers(distributionReceiver_, buybackPool_);
         _setExempt(ownerAddress, true);
         _setExempt(address(this), true);
         _setExempt(BURN_ADDRESS, true);
@@ -153,7 +157,7 @@ contract CaBiPancakeToken {
         address first = ICaBiPair(pairAddress).token0();
         address second = ICaBiPair(pairAddress).token1();
         require((first == address(this) && second == quote) || (first == quote && second == address(this)), "wrong assets");
-        require(dividendReceiver1 != router && dividendReceiver2 != router && dividendReceiver1 != pairAddress && dividendReceiver2 != pairAddress && dividendReceiver1 != quote && dividendReceiver2 != quote, "invalid receivers");
+        require(distributionReceiver != router && buybackPool != router && distributionReceiver != pairAddress && buybackPool != pairAddress && distributionReceiver != quote && buybackPool != quote, "invalid receivers");
         dexRouter = router; usdt = quote; tradingPair = pairAddress;
         lastPoolBurnTime = block.timestamp;
         _setExempt(pairAddress, true);
@@ -218,12 +222,7 @@ contract CaBiPancakeToken {
         if (!exempt) require(account != address(this) && account != BURN_ADDRESS && account != tradingPair && account != dexRouter, "system exemption required");
         _setExempt(account, exempt);
     }
-    function setDividendReceivers(address receiver1, address receiver2) external onlyOwner nonReentrant { _setReceivers(receiver1, receiver2); }
-    /// Shares of the fixed 300 bps token buy tax. Applies when tax is processed.
-    function setDividendRates(uint256 first, uint256 second) external onlyOwner nonReentrant {
-        require(first + second == BUY_FEE_BPS && first <= BUY_FEE_BPS && second <= BUY_FEE_BPS, "rates must total 300");
-        dividendRate1Bps = first; dividendRate2Bps = second; emit DividendRatesUpdated(first, second);
-    }
+    function setTaxReceivers(address distributionReceiver_, address buybackPool_) external onlyOwner nonReentrant { _setReceivers(distributionReceiver_, buybackPool_); }
     function setSwapSettings(uint256 threshold, uint256 maxAmount, uint256 slippageBps, bool enabled) external onlyOwner nonReentrant {
         require(threshold > 0 && threshold <= maxAmount && maxAmount <= MAX_SWAP_AMOUNT, "invalid swap bounds");
         require(slippageBps <= 1000, "slippage above 10 percent");
@@ -262,14 +261,14 @@ contract CaBiPancakeToken {
         received = _swapTax(amount, floor, block.timestamp + 120);
     }
     /// Receiver can redirect its own pending USDT credit if its address rejects payments.
-    function claimDividend(address recipient) external nonReentrant {
+    function claimPayout(address recipient) external nonReentrant {
         require(recipient != address(0) && recipient != address(this) && recipient != tradingPair, "invalid recipient");
-        uint256 amount = pendingDividends[msg.sender];
+        uint256 amount = pendingPayouts[msg.sender];
         require(amount > 0, "nothing pending");
-        _payDividend(msg.sender, recipient, amount);
+        _payPayout(msg.sender, recipient, amount);
     }
-    function payDividend(address receiver) external onlySelf {
-        _payDividend(receiver, receiver, pendingDividends[receiver]);
+    function payPayout(address receiver) external onlySelf {
+        _payPayout(receiver, receiver, pendingPayouts[receiver]);
     }
 
     function _swapTax(uint256 amount, uint256 minOut, uint256 deadline) private returns (uint256 received) {
@@ -277,7 +276,7 @@ contract CaBiPancakeToken {
         processing = true;
         uint256 beforeUsdt = ICaBiQuote(usdt).balanceOf(address(this));
         uint256 beforeReceiver = ICaBiQuote(usdt).balanceOf(address(taxReceiver));
-        require(beforeUsdt >= totalPendingDividends, "dividend balance deficit");
+        require(beforeUsdt >= totalPendingPayouts, "payout balance deficit");
         allowance[address(this)][dexRouter] = amount;
         emit Approval(address(this), dexRouter, amount);
         ICaBiRouter(dexRouter).swapExactTokensForTokensSupportingFeeOnTransferTokens(amount, minOut, _path(), address(taxReceiver), deadline);
@@ -287,26 +286,27 @@ contract CaBiPancakeToken {
         taxReceiver.release(usdt, receiverDelta);
         received = ICaBiQuote(usdt).balanceOf(address(this)) - beforeUsdt;
         require(received > 0 && received >= minOut, "insufficient tax output");
-        address first = dividendReceiver1;
-        address second = dividendReceiver2;
-        uint256 amount1 = received * dividendRate1Bps / BUY_FEE_BPS;
-        uint256 amount2 = received - amount1;
-        pendingDividends[first] += amount1; pendingDividends[second] += amount2; totalPendingDividends += received;
-        emit TaxProcessed(amount, received, first, second, amount1, amount2);
-        _attemptPayout(first); _attemptPayout(second);
+        address distribution = distributionReceiver;
+        address buyback = buybackPool;
+        // Fixed 50/50 split; the odd smallest-unit remainder goes to the buyback pool.
+        uint256 distributionAmount = received * PAYOUT_BPS / FEE_DENOMINATOR;
+        uint256 buybackAmount = received - distributionAmount;
+        pendingPayouts[distribution] += distributionAmount; pendingPayouts[buyback] += buybackAmount; totalPendingPayouts += received;
+        emit TaxProcessed(amount, received, distribution, buyback, distributionAmount, buybackAmount);
+        _attemptPayout(distribution); _attemptPayout(buyback);
         processing = false;
     }
     function _attemptPayout(address receiver) private {
-        if (pendingDividends[receiver] == 0) return;
+        if (pendingPayouts[receiver] == 0) return;
         // A separate subcall rolls back even a nonstandard token that transfers then returns false.
-        try this.payDividend{gas: 70_000}(receiver) {} catch { emit DividendPaymentDeferred(receiver, pendingDividends[receiver]); }
+        try this.payPayout{gas: 70_000}(receiver) {} catch { emit PayoutDeferred(receiver, pendingPayouts[receiver]); }
     }
-    function _payDividend(address receiver, address recipient, uint256 amount) private {
+    function _payPayout(address receiver, address recipient, uint256 amount) private {
         if (amount == 0) return;
-        pendingDividends[receiver] -= amount; totalPendingDividends -= amount;
+        pendingPayouts[receiver] -= amount; totalPendingPayouts -= amount;
         (bool ok, bytes memory data) = usdt.call(abi.encodeWithSelector(ICaBiQuote.transfer.selector, recipient, amount));
         require(ok && (data.length == 0 || abi.decode(data, (bool))), "USDT payment failed");
-        emit DividendPaid(receiver, recipient, amount);
+        emit PayoutPaid(receiver, recipient, amount);
     }
     function _transfer(address from, address to, uint256 amount) private {
         require(to != address(0), "zero address");
@@ -345,7 +345,7 @@ contract CaBiPancakeToken {
     function _setReceivers(address first, address second) private {
         require(first != address(0) && second != address(0) && first != second && first != address(this) && second != address(this) && first != address(taxReceiver) && second != address(taxReceiver) && first != BURN_ADDRESS && second != BURN_ADDRESS, "invalid receivers");
         if (tradingPair != address(0)) require(first != dexRouter && second != dexRouter && first != usdt && second != usdt && first != tradingPair && second != tradingPair, "invalid receivers");
-        dividendReceiver1 = first; dividendReceiver2 = second; emit DividendReceiversUpdated(first, second);
+        distributionReceiver = first; buybackPool = second; emit TaxReceiversUpdated(first, second);
     }
 }
 

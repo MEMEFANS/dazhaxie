@@ -19,6 +19,7 @@ const CLAIM_TYPES = {
   Claim: [
     { name: "user", type: "address" },
     { name: "amount", type: "uint256" },
+    { name: "cumulativeLimit", type: "uint256" },
     { name: "nonce", type: "uint256" },
     { name: "deadline", type: "uint256" },
   ],
@@ -129,7 +130,7 @@ function domainOf(pool: Address) {
 }
 
 export interface ClaimAuthorizationResponse {
-  amount: string; nonce: string; deadline: number; signature: string;
+  amount: string; cumulativeLimit: string; nonce: string; deadline: number; signature: string;
   usdtRequired: string;
   claimPool: Address; chainId: number; signer: Address;
   domain: { name: string; version: string };
@@ -156,6 +157,9 @@ async function assertClaimPrerequisites(pool: Address, address: string, amount: 
   if (!usdt || usdt.toLowerCase() === "0x0000000000000000000000000000000000000000") {
     throw new AdminRequestError("领取池未配置 USDT，暂不能领取", 503);
   }
+  if (!contracts.usdt || usdt.toLowerCase() !== contracts.usdt.toLowerCase()) {
+    throw new AdminRequestError("领取池 USDT 与网站配置不一致，已暂停领取", 503);
+  }
   const required = amount * UNIT_PRICE * LP_USDT_RATIO * (10n ** BigInt(usdtDecimals)) / (TOKENS_PER_SHARE * RATIO_DENOMINATOR);
   if (required === 0n) throw new AdminRequestError("领取额度不足以组建流动性", 400);
   let balance: bigint, allowance: bigint;
@@ -174,10 +178,22 @@ async function assertClaimPrerequisites(pool: Address, address: string, amount: 
 }
 
 /** 签发（或复用）一张领取授权；同一额度的重复请求返回同一张未使用签名。 */
-export async function issueClaimAuthorization(address: string): Promise<ClaimAuthorizationResponse> {
+export async function issueClaimAuthorization(address: string, amountInput?: unknown): Promise<ClaimAuthorizationResponse> {
   const pool = await ensurePool();
   const account = claimSigner();
   if (!account) throw new AdminRequestError("未配置签名服务，暂不能领取", 503);
+  let actualChainId: number, actualToken: Address;
+  try {
+    [actualChainId, actualToken] = await Promise.all([
+      claimPoolClient.getChainId(),
+      claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "token" }),
+    ]);
+  } catch {
+    throw new AdminRequestError("暂时无法核对领取池，请稍后重试", 503);
+  }
+  if (actualChainId !== chainConfig.id || !contracts.token || actualToken.toLowerCase() !== contracts.token.toLowerCase()) {
+    throw new AdminRequestError("领取池与当前 CaBi 合约或网络不一致，已暂停领取", 503);
+  }
   if (countAuthorizationsSince(address, Date.now() - 60_000) >= rateLimitPerMinute()) {
     throw new AdminRequestError("签名请求过于频繁，请稍后再试", 429);
   }
@@ -187,20 +203,23 @@ export async function issueClaimAuthorization(address: string): Promise<ClaimAut
     throw new AdminRequestError("签名服务与链上 signer 不一致，请联系管理员", 503);
   }
   if (state.outstanding === 0n) throw new AdminRequestError("当前没有可领取额度", 400);
-  const prerequisites = await assertClaimPrerequisites(pool, address, state.outstanding);
+  const amount = amountInput === undefined ? state.outstanding :
+    typeof amountInput === "string" && /^\d{1,78}$/.test(amountInput) ? BigInt(amountInput) : 0n;
+  if (amount <= 0n || amount > state.outstanding) throw new AdminRequestError("本次领取数量超过可领额度", 400);
+  const prerequisites = await assertClaimPrerequisites(pool, address, amount);
 
   const deadline = Math.floor(Date.now() / 1000) + ttlSeconds(), now = Math.floor(Date.now() / 1000);
   const reuse = latestOpenAuthorization(address);
-  if (reuse && reuse.amount === state.outstanding.toString() && reuse.deadline > now + 60) {
+  if (reuse && reuse.amount === amount.toString() && reuse.deadline > now + 60) {
     // 换过 signer 后旧记录仍可能留在库里：只有当前私钥能复现的签名才允许复用。
     const recovered = await recoverTypedDataAddress({
       domain: domainOf(pool), types: CLAIM_TYPES, primaryType: "Claim",
-      message: { user: address as Address, amount: BigInt(reuse.amount), nonce: BigInt(reuse.nonce), deadline: BigInt(reuse.deadline) },
+      message: { user: address as Address, amount: BigInt(reuse.amount), cumulativeLimit: state.entitlement, nonce: BigInt(reuse.nonce), deadline: BigInt(reuse.deadline) },
       signature: reuse.signature as Hex,
     }).catch(() => null);
     if (recovered && recovered.toLowerCase() === account.address.toLowerCase()) {
       return {
-        amount: reuse.amount, nonce: reuse.nonce, deadline: reuse.deadline, signature: reuse.signature,
+        amount: reuse.amount, cumulativeLimit: state.entitlement.toString(), nonce: reuse.nonce, deadline: reuse.deadline, signature: reuse.signature,
         usdtRequired: prerequisites.required.toString(),
         claimPool: pool, chainId: chainConfig.id, signer: account.address, domain: domainOf(pool),
       };
@@ -208,11 +227,11 @@ export async function issueClaimAuthorization(address: string): Promise<ClaimAut
   }
 
   const nonce = nextAuthorizationNonce(address);
-  const message = { user: address as Address, amount: state.outstanding, nonce: BigInt(nonce), deadline: BigInt(deadline) };
+  const message = { user: address as Address, amount, cumulativeLimit: state.entitlement, nonce: BigInt(nonce), deadline: BigInt(deadline) };
   const signature = await account.signTypedData({ domain: domainOf(pool), types: CLAIM_TYPES, primaryType: "Claim", message });
-  saveClaimAuthorization({ address, nonce, amount: state.outstanding, mode: 0, deadline, signature });
+  saveClaimAuthorization({ address, nonce, amount, mode: 0, deadline, signature });
   return {
-    amount: state.outstanding.toString(), nonce, deadline, signature,
+    amount: amount.toString(), cumulativeLimit: state.entitlement.toString(), nonce, deadline, signature,
     usdtRequired: prerequisites.required.toString(),
     claimPool: pool, chainId: chainConfig.id, signer: account.address, domain: domainOf(pool),
   };
@@ -223,7 +242,8 @@ export async function recordClaimReceipt(address: string, nonceInput: unknown, h
   const nonce = typeof nonceInput === "string" || typeof nonceInput === "number" ? String(nonceInput) : "";
   const txHash = typeof hashInput === "string" && /^0x[0-9a-fA-F]{64}$/.test(hashInput) ? hashInput : "";
   if (!/^\d{1,78}$/.test(nonce) || !txHash) throw new AdminRequestError("回执参数无效", 400);
-  if (!getClaimAuthorization(address, nonce)) throw new AdminRequestError("授权记录不存在", 404);
+  const authorization = getClaimAuthorization(address, nonce);
+  if (!authorization) throw new AdminRequestError("授权记录不存在", 404);
   const pool = await ensurePool();
   const receipt = await claimPoolClient.getTransactionReceipt({ hash: txHash as Hex }).catch(() => null);
   if (!receipt || receipt.status !== "success") throw new AdminRequestError("链上交易尚未成功，回执未登记", 400);
@@ -231,7 +251,8 @@ export async function recordClaimReceipt(address: string, nonceInput: unknown, h
     if (log.address.toLowerCase() !== pool.toLowerCase()) return false;
     try {
       const event = decodeEventLog({ abi: claimPoolAbi, eventName: "Claimed", data: log.data, topics: log.topics as [Hex, ...Hex[]] });
-      return (event.args.user as Address).toLowerCase() === address.toLowerCase() && String(event.args.nonce) === nonce;
+      return (event.args.user as Address).toLowerCase() === address.toLowerCase()
+        && String(event.args.nonce) === nonce && String(event.args.amount) === authorization.amount;
     } catch { return false; }
   });
   if (!matched) throw new AdminRequestError("交易中没有对应的领取记录", 400);

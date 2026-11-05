@@ -4,7 +4,7 @@
 
 用户要求在外部薄饼买卖，网站默认 NEXT_PUBLIC_TRADING_MODE=pancake。正式代币使用 CaBiPancakeToken.sol，不使用下方 legacy XBTToken + XBTTradingGateway 方案。两个方案的经济口径不同，不能把旧已部署地址当成新版。
 
-**当前业务架构（2026-11 起）**：认购不再使用 XBTSale，用户直接向后台配置的认购收款地址转 USDT，服务端核验记账；奖励额度由服务器按认购单 + 直推 + 团队极差计算，用仅签名权限的 CLAIM_SIGNER 签发 EIP-712 授权，用户自己调用 `CaBiSignedClaimPool(token, signer, owner)` 领取。领取只有一条路径：支付 30% USDT 等值，30% CaBi 与这笔 USDT 一并进入 lpReceiver，70% CaBi 到账用户。`XBTSale.sol` / `CaBiClaimPool.sol` / `CaBiSimpleClaimPool.sol` 仅留档，不部署、不被前端引用。部署顺序：代币 → CaBiSignedClaimPool(token, signer, owner) → setUsdt / setLpReceiver → 代币 approve + deposit → 后台设置收款地址并开启认购 → 配置 CLAIM_SIGNER_PRIVATE_KEY（需与链上 signer 一致）→ 用户签名登录自领。owner 私钥不得进入 Web 进程。
+**当前业务架构（2026-11 起）**：认购不再使用 XBTSale，用户直接向后台配置的认购收款地址转 USDT，服务端核验记账；奖励额度由服务器按认购单 + 直推 + 团队极差计算，用仅签名权限的 CLAIM_SIGNER 签发绑定本次金额与累计上限的 EIP-712 授权，用户自己调用 `CaBiSignedClaimPool(token, signer, owner)` 领取，可分次领且不能超过累计额度。领取只有一条路径：支付 30% USDT 等值，30% CaBi 与这笔 USDT 一并转入 lpReceiver，70% CaBi 到账用户；合约不会自动铸造 LP。`XBTSale.sol` / `CaBiClaimPool.sol` / `CaBiSimpleClaimPool.sol` 仅留档，不部署、不被前端引用。部署顺序：代币 → CaBiSignedClaimPool(token, signer, owner) → setUsdt / setLpReceiver → 为领取池设置持仓豁免并直接转入 CaBi → 后台设置收款地址并开启认购 → 配置 CLAIM_SIGNER_PRIVATE_KEY（需与链上 signer 一致）→ 用户签名登录自领。owner 私钥不得进入 Web 进程。
 
 ### 签名自领领取池：CaBiSignedClaimPool
 

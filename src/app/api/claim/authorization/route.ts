@@ -32,6 +32,6 @@ export async function POST(request: Request) {
     if (body.action === "receipt") {
       return Response.json({ receipt: await recordClaimReceipt(wallet.address, body.nonce, body.hash) }, { headers: { "Cache-Control": "no-store" } });
     }
-    return Response.json(await issueClaimAuthorization(wallet.address), { headers: { "Cache-Control": "no-store" } });
+    return Response.json(await issueClaimAuthorization(wallet.address, body.amount), { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return adminErrorResponse(error); }
 }

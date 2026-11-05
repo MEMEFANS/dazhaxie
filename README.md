@@ -96,15 +96,15 @@ ADMIN_USERNAME、ADMIN_PASSWORD_HASH、ADMIN_SESSION_SECRET、REDEMPTION_DATA_SE
 
 代币合约不包含普通用户奖励名单、个人可领额度或认购领取逻辑。CaBiPancakeToken.claimPayout 只处理两个税款收款地址（分配地址与回购池）未成功到账的 USDT。领取使用独立合约 CaBiSignedClaimPool(tokenAddress, signerAddress, ownerAddress)，**不依赖任何认购合约**，也不需要逐人写入额度；token 部署后不可更换，USDT 由 owner 调用 setUsdt 配置（自动读取 6/18 位精度），LP 接收地址由 setLpReceiver 设置。
 
-owner 先 approve 领取池再调用 deposit(amount) 注入 CaBi；withdrawUnused(amount) 只能取回 poolBalance 超过 allocatedUnclaimed 的未分配部分，已分配未领额度不能被取走。大额注资前，由代币 owner 设置 setMaxWalletExempt(pool,true)；这只豁免池子的持仓上限，不豁免买卖税，普通用户仍受当前持仓上限约束。
+owner 可以直接 transfer CaBi 至领取池，不需要额外授权或调用 deposit；也可选择 approve + deposit。大额注资前，由代币 owner 设置 setMaxWalletExempt(pool,true)；普通用户仍受当前持仓上限约束。签名额度仅存于服务器，链上 allocatedUnclaimed 不会自动保留对应资金；owner 可调用 withdrawUnused 取回未设定链上限额的池余额，运营方须保持池中有足够余额覆盖待领额度。
 
-额度由服务器聚合，链上不计算：后台按认购单 + 直推（每满 3 份 = 1 份）+ 团队极差算出每人累计额度，读取链上 claimedOf 与本地回执后得到待领余额；用户签名登录后由服务器用 CLAIM_SIGNER 私钥签发一次性 EIP-712 授权（nonce + deadline），用户自己去池里领取。签名私钥只具备签发权限，不能转移池内资金。
+额度由服务器聚合，链上不计算：后台按认购单 + 直推（每满 3 份 = 1 份）+ 团队极差算出每人累计额度，读取链上 claimedOf 与本地回执后得到待领余额；用户签名登录后由服务器用 CLAIM_SIGNER 私钥签发 EIP-712 授权（本次金额、累计上限、nonce、deadline），用户可分次领取。合约同时检查累计已领不超过签名额度上限；即使短时间签发多张授权，也不能重复领取同一额度。签名私钥只具备签发权限，不能转移池内资金。
 
-私钥隔离：Web 服务只保存 CLAIM_SIGNER 私钥（仅签名权限），owner 私钥不进 Web 进程；池内资金只能由 owner 通过 deposit / withdrawUnused 管理。签发前服务端会校验 lpReceiver 已配置、用户 USDT 余额与授权足以支付本次 30% USDT，不足时直接返回明确错误而不签发。
+私钥隔离：Web 服务只保存 CLAIM_SIGNER 私钥（仅签名权限），owner 私钥不进 Web 进程；池内代币由 owner 直接转入或通过 deposit 注入。签发前服务端会校验 lpReceiver 已配置、用户 USDT 余额与授权足以支付本次 30% USDT，不足时直接返回明确错误而不签发。
 
 每个地址按服务器聚合额度分次领取，只有一条路径：
 
-- 组 LP 领取：到账 70%，30% CaBi 转入 owner 配置的 lpReceiver；同时通过 transferFrom 收取 30% USDT 等值（额度 × 50 × 30% × 10^usdtDecimals ÷ 35000），用户需先授权 USDT 给领取池。USDT 归 lpReceiver。
+- 组 LP 领取：到账 70%，30% CaBi 转入 owner 配置的 lpReceiver；同时通过 transferFrom 收取 30% USDT 等值（本次领取额度 × 50 × 30% × 10^usdtDecimals ÷ 35000），用户需先授权 USDT 给领取池。两项资产只是转至 lpReceiver，领取合约不会在 DEX 自动铸造 LP。
 
 比例固定为 70 / 30 / 30（`PAYOUT_RATIO` / `LP_TOKEN_RATIO` / `LP_USDT_RATIO` 常量，无 setter）。lpReceiver 为 0 或 USDT 未配置时领取直接 revert。领取前重新读取链上快照，额度、LP 地址或余额变化会整体 revert。
 
@@ -114,10 +114,10 @@ owner 先 approve 领取池再调用 deposit(amount) 注入 CaBi；withdrawUnuse
 
 ## 上线顺序
 
-1. 确认管理员、分配地址、回购池地址及项目 LP 接收地址。LP 接收地址不是代币/USDT/交易对/路由等系统地址，不得假设它已锁仓。新版代币 constructor(distributionReceiver,buybackPool,ownerAddress) 全量发给 ownerAddress，后续分配由持币人决定。领取池构造参数为 (token, owner)；owner 初始为部署钱包，如最终管理员不同用两步 transferOwnership。
+1. 确认管理员、分配地址、回购池地址、领取签名地址及项目 LP 接收地址。LP 接收地址不是代币/USDT/交易对/路由等系统地址，不得假设它已锁仓。新版代币 constructor(distributionReceiver,buybackPool,ownerAddress) 全量发给 ownerAddress，后续分配由持币人决定。领取池构造参数为 (token, signer, owner)；owner 初始为配置的钱包，如最终管理员不同用两步 transferOwnership。
 2. 创建并配置官方 V2 流动性及一次性交易绑定，核验所选 Router/USDT/Factory/pair。
 3. 部署 CaBiSignedClaimPool(token, signer, owner)，随后由 owner 调用 setUsdt(USDT)、setLpReceiver(项目 LP 地址)。两者缺一用户就无法领取。CaBiSimpleClaimPool / XBTSale.sol / CaBiClaimPool.sol 仅留档，不再部署、不再被前端引用。
-4. 代币 owner 先为领取池设置持仓豁免，再 approve + deposit 实际所需的 CaBi；withdrawUnused 只能取回未被 owner 设定限额的未分配部分。其它大额业务合约或金库按需单独豁免。
+4. 代币 owner 先为领取池设置持仓豁免，再直接转入足额 CaBi（或 approve + deposit）。运营方需持续确保池余额覆盖服务器待领总额；其它大额业务合约或金库按需单独豁免。
 5. 后台设置认购收款地址并开启认购：用户直接转 USDT → 服务端核验并生成认购单 → 按认购单 + 直推 + 极差聚合额度 → 配置 CLAIM_SIGNER_PRIVATE_KEY 后用户签名登录并自领 70%（支付 30% USDT 组建流动性）。核验小额全流程后再正式开放；实物兑换默认库存 0 且关闭，需设置真实价格/库存并开启运营开关。
 6. 填写公开地址，保存固定服务器加密key和持久数据目录，重新构建；核对小额完整流程后再正式开放。
 

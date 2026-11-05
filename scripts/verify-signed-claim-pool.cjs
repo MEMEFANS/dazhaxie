@@ -11,7 +11,7 @@ function pass(name) { results.push(name); console.log('PASS ' + name); }
 
 function compile() {
   const sources = {};
-  for (const file of ['CaBiSignedClaimPool.sol', 'test/TestUSDT.sol']) sources[file] = { content: fs.readFileSync(path.join(ROOT, 'contracts', file), 'utf8') };
+  for (const file of ['CaBiSignedClaimPool.sol', 'CaBiPancakeToken.sol', 'test/TestUSDT.sol']) sources[file] = { content: fs.readFileSync(path.join(ROOT, 'contracts', file), 'utf8') };
   const output = JSON.parse(solc.compile(JSON.stringify({ language: 'Solidity', sources,
     settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: 'shanghai', outputSelection: { '*': { '*': ['abi', 'evm.bytecode.object', 'evm.deployedBytecode.object'] } } } })));
   const errors = (output.errors || []).filter(item => item.severity === 'error');
@@ -32,7 +32,7 @@ function compile() {
 
 const CLAIM_TYPES = {
   Claim: [
-    { name: 'user', type: 'address' }, { name: 'amount', type: 'uint256' }, { name: 'nonce', type: 'uint256' },
+    { name: 'user', type: 'address' }, { name: 'amount', type: 'uint256' }, { name: 'cumulativeLimit', type: 'uint256' }, { name: 'nonce', type: 'uint256' },
     { name: 'deadline', type: 'uint256' },
   ],
 };
@@ -66,16 +66,17 @@ async function scenario(usdtDecimals) {
   let nonceSeed = 1;
   async function sign(signerAccount, user, amount, options = {}) {
     const currentSigner = options.signer || signerAccount;
+    const cumulativeLimit = options.cumulativeLimit ?? (await read(pool, 'claimedOf', [user])) + amount;
     const nonce = options.nonce !== undefined ? options.nonce : BigInt(nonceSeed++);
     const deadline = options.deadline !== undefined ? options.deadline : BigInt(await now() + 600);
     const signature = await currentSigner.signTypedData({
       domain: { name: 'CaBiSignedClaimPool', version: '1', chainId: 31337, verifyingContract: pool.address },
-      types: CLAIM_TYPES, primaryType: 'Claim', message: { user, amount, nonce, deadline },
+      types: CLAIM_TYPES, primaryType: 'Claim', message: { user, amount, cumulativeLimit, nonce, deadline },
     });
-    return { amount, nonce, deadline, signature };
+    return { amount, cumulativeLimit, nonce, deadline, signature };
   }
   const claim = (account, authorization, expectedAmount) => send(pool, 'claim',
-    [expectedAmount ?? authorization.amount, authorization.nonce, authorization.deadline, authorization.signature], account);
+    [expectedAmount ?? authorization.amount, authorization.cumulativeLimit, authorization.nonce, authorization.deadline, authorization.signature], account);
 
   assert.equal((await read(pool, 'owner')).toLowerCase(), owner.toLowerCase());
   assert.equal((await read(pool, 'signer')).toLowerCase(), signer.address.toLowerCase());
@@ -114,12 +115,16 @@ async function scenario(usdtDecimals) {
   assert.equal(await read(pool, 'poolBalance'), units(1000000));
   assert.equal(await read(pool, 'unusedBalance'), units(1000000));
   pass(label + 'deposit pulls CaBi after approval and counts as unused before any signed claim');
+  await send(token, 'mint', [owner, units(1000)]);
+  await send(token, 'transfer', [pool.address, units(1000)]);
+  assert.equal(await read(pool, 'poolBalance'), units(1001000));
+  pass(label + 'the owner can fund the pool with a direct token transfer, without calling deposit');
 
   // 摘要与 viem 的 EIP-712 实现一致（不含 mode）。
-  const digest = await read(pool, 'claimDigest', [alice, units(35000), 7n, 1000000n]);
+  const digest = await read(pool, 'claimDigest', [alice, units(35000), units(35000), 7n, 1000000n]);
   assert.equal(digest, hashTypedData({
     domain: { name: 'CaBiSignedClaimPool', version: '1', chainId: 31337, verifyingContract: pool.address },
-    types: CLAIM_TYPES, primaryType: 'Claim', message: { user: alice, amount: units(35000), nonce: 7n, deadline: 1000000n },
+    types: CLAIM_TYPES, primaryType: 'Claim', message: { user: alice, amount: units(35000), cumulativeLimit: units(35000), nonce: 7n, deadline: 1000000n },
   }));
   pass(label + 'on-chain EIP-712 digest matches standard typed-data hashing without a mode field');
 
@@ -132,9 +137,9 @@ async function scenario(usdtDecimals) {
   const lpUnsetDeadline = BigInt(await now() + 600);
   const lpAuthorization = await signer.signTypedData({
     domain: { name: 'CaBiSignedClaimPool', version: '1', chainId: 31337, verifyingContract: lpUnsetPool.address },
-    types: CLAIM_TYPES, primaryType: 'Claim', message: { user: alice, amount: units(1000), nonce: 1n, deadline: lpUnsetDeadline },
+    types: CLAIM_TYPES, primaryType: 'Claim', message: { user: alice, amount: units(1000), cumulativeLimit: units(1000), nonce: 1n, deadline: lpUnsetDeadline },
   });
-  await assert.rejects(() => send(lpUnsetPool, 'claim', [units(1000), 1n, lpUnsetDeadline, lpAuthorization], alice), undefined, 'lp receiver unset');
+  await assert.rejects(() => send(lpUnsetPool, 'claim', [units(1000), units(1000), 1n, lpUnsetDeadline, lpAuthorization], alice), undefined, 'lp receiver unset');
   assert.equal(await read(lpUnsetPool, 'claimedOf', [alice]), 0n);
   pass(label + 'a claim reverts when lpReceiver is unconfigured instead of falling back to a 50% path');
 
@@ -198,6 +203,18 @@ async function scenario(usdtDecimals) {
   assert.deepEqual(Array.from(preview), [units(49000), units(21000), units(30, usdtDecimals)]);
   pass(label + 'previewClaim reports the 70/30 split and the exact 30% USDT equivalent');
 
+  // 两张未上链授权即使 nonce 不同，也不能突破同一累计额度。
+  const simultaneousCap = units(3500);
+  const first = await sign(signer, carol, units(3500), { cumulativeLimit: simultaneousCap });
+  const second = await sign(signer, carol, units(3500), { cumulativeLimit: simultaneousCap });
+  await send(usdt, 'mint', [carol, units(3, usdtDecimals)]);
+  await send(usdt, 'approve', [pool.address, units(3, usdtDecimals)], carol);
+  await claim(carol, first);
+  await assert.rejects(() => claim(carol, second), undefined, 'concurrent authorizations cannot exceed the cumulative cap');
+  assert.equal(await read(pool, 'claimedOf', [carol]), simultaneousCap);
+  assert.equal(await read(pool, 'nonceUsed', [carol, second.nonce]), false);
+  pass(label + 'overlapping signatures cannot overclaim the same cumulative entitlement');
+
   // 池内余额不足整体 revert，不写入 nonce / 已领取。
   await send(pool, 'withdrawUnused', [await read(pool, 'unusedBalance')]);
   assert.equal(await read(pool, 'poolBalance'), 0n);
@@ -242,10 +259,69 @@ async function scenario(usdtDecimals) {
   pass(label + 'funding, claim, signer and ownership events are emitted without legacy ratio events');
 }
 
+async function realTokenScenario() {
+  const provider = ganache.provider({ logging: { quiet: true }, wallet: { deterministic: true, totalAccounts: 8 }, chain: { chainId: 31337, hardfork: 'shanghai' } });
+  const chain = { id: 31337, name: 'Isolated CaBi test', nativeCurrency: { name: 'Test', symbol: 'TEST', decimals: 18 }, rpcUrls: { default: { http: [] } } };
+  const client = createPublicClient({ chain, transport: custom(provider), pollingInterval: 10 });
+  const wallet = createWalletClient({ chain, transport: custom(provider) });
+  const [owner, alice, lp, outsider, distribution, buyback] = await wallet.getAddresses();
+  const signer = privateKeyToAccount(generatePrivateKey());
+  const build = compile();
+  const deploy = async (file, name, args) => {
+    const artifact = build(file, name);
+    const hash = await wallet.deployContract({ ...artifact, args, account: owner, gas: 12000000n });
+    const receipt = await client.waitForTransactionReceipt({ hash });
+    assert.equal(receipt.status, 'success');
+    return { address: receipt.contractAddress, abi: artifact.abi };
+  };
+  const send = async (contract, functionName, args = [], account = owner, status = 'success') => {
+    const hash = await wallet.writeContract({ ...contract, functionName, args, account, gas: 12000000n });
+    const receipt = await client.waitForTransactionReceipt({ hash });
+    assert.equal(receipt.status, status, functionName);
+  };
+  const read = (contract, functionName, args = []) => client.readContract({ ...contract, functionName, args });
+  const token = await deploy('CaBiPancakeToken.sol', 'CaBiPancakeToken', [distribution, buyback, owner]);
+  const usdt = await deploy('test/TestUSDT.sol', 'TestUSDT', [18]);
+  const pool = await deploy('CaBiSignedClaimPool.sol', 'CaBiSignedClaimPool', [token.address, signer.address, owner]);
+  await send(pool, 'setUsdt', [usdt.address]);
+  await send(pool, 'setLpReceiver', [lp]);
+  await send(token, 'transfer', [pool.address, units(300000)], owner, 'reverted');
+  await send(token, 'setMaxWalletExempt', [pool.address, true]);
+  await send(token, 'transfer', [pool.address, units(300000)]);
+  assert.equal(await read(pool, 'poolBalance'), units(300000));
+  pass('real CaBi: pool can receive 300,000 tokens directly after owner grants holding exemption');
+
+  await send(usdt, 'mint', [alice, units(130)]);
+  await send(usdt, 'approve', [pool.address, units(130)], alice);
+  const cap = units(300000);
+  async function claimPart(nonce, expectedStatus = 'success') {
+    const amount = units(100000);
+    const deadline = BigInt(Number((await client.getBlock()).timestamp) + 600);
+    const signature = await signer.signTypedData({
+      domain: { name: 'CaBiSignedClaimPool', version: '1', chainId: 31337, verifyingContract: pool.address },
+      types: CLAIM_TYPES, primaryType: 'Claim',
+      message: { user: alice, amount, cumulativeLimit: cap, nonce, deadline },
+    });
+    await send(pool, 'claim', [amount, cap, nonce, deadline, signature], alice, expectedStatus);
+  }
+  await claimPart(1n);
+  await claimPart(2n);
+  assert.equal(await read(token, 'balanceOf', [alice]), units(140000));
+  await claimPart(3n, 'reverted');
+  assert.equal(await read(pool, 'claimedOf', [alice]), units(200000));
+  await send(token, 'transfer', [outsider, units(70000)], alice);
+  await claimPart(3n);
+  assert.equal(await read(pool, 'claimedOf', [alice]), cap);
+  assert.equal(await read(token, 'balanceOf', [lp]), units(90000));
+  assert.equal(await read(token, 'balanceOf', [alice]), units(140000));
+  pass('real CaBi: partial self-claims respect the 200,000 holding cap and settle 70/30 after a transfer out');
+}
+
 (async () => {
   try {
     await scenario(6);
     await scenario(18);
+    await realTokenScenario();
     console.log(results.length + ' signed claim pool checks passed.');
   } catch (error) {
     console.error(error);

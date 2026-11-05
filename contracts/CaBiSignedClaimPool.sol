@@ -7,6 +7,7 @@ pragma solidity ^0.8.20;
  *
  * 流程：Web 服务按「认购单 + 直推奖励 + 极差结算」聚合出每个地址的待领额度，
  * 用只具备签名权限的 CLAIM_SIGNER 私钥签发 EIP-712 授权；用户拿签名调用 claim 自己去领。
+ * owner 可直接将 CaBi 转入本合约；合约不能仅凭入金得知每个用户的认购额度。
  *
  * 权限边界：
  * - signer：只能签发领取授权，不能转移池内资金、不能换 owner。
@@ -19,7 +20,7 @@ pragma solidity ^0.8.20;
  * - LP 接收地址或 USDT 未配置、USDT 余额或授权不足时，整笔领取直接 revert。
  *
  * 安全要点：EIP-712 结构化摘要（含 chainId 与合约地址，防跨链/跨合约重放）、
- * nonce 一次性（防同链重放）、deadline 过期、金额与额度上限校验、nonReentrant、
+ * nonce 一次性（防同链重放）、deadline 过期、签名绑定累计额度上限、nonReentrant、
  * 迷你 SafeERC20、零地址校验、余额不足整体 revert、owner 两步交接。
  */
 interface IERC20 {
@@ -57,9 +58,9 @@ contract CaBiSignedClaimPool {
     uint256 public constant LP_TOKEN_RATIO = 30; // 进入 LP 接收地址的代币比例
     uint256 public constant LP_USDT_RATIO = 30; // 用户另付的 USDT 等值比例
 
-    // EIP-712：Claim(address user,uint256 amount,uint256 nonce,uint256 deadline)
+    // EIP-712：累计上限绑定每张授权，防止多张尚未确认的授权重复领取。
     bytes32 public constant CLAIM_TYPEHASH =
-        keccak256("Claim(address user,uint256 amount,uint256 nonce,uint256 deadline)");
+        keccak256("Claim(address user,uint256 amount,uint256 cumulativeLimit,uint256 nonce,uint256 deadline)");
     bytes32 public constant DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 public constant DOMAIN_NAME_HASH = keccak256(bytes("CaBiSignedClaimPool"));
@@ -143,7 +144,7 @@ contract CaBiSignedClaimPool {
     }
 
     /// 供服务端/前端核对：返回某个授权参数组合的摘要（不校验签名）。
-    function claimDigest(address user, uint256 amount, uint256 nonce, uint256 deadline)
+    function claimDigest(address user, uint256 amount, uint256 cumulativeLimit, uint256 nonce, uint256 deadline)
         public
         view
         returns (bytes32)
@@ -152,7 +153,7 @@ contract CaBiSignedClaimPool {
             abi.encodePacked(
                 "\x19\x01",
                 domainSeparator(),
-                keccak256(abi.encode(CLAIM_TYPEHASH, user, amount, nonce, deadline))
+                keccak256(abi.encode(CLAIM_TYPEHASH, user, amount, cumulativeLimit, nonce, deadline))
             )
         );
     }
@@ -223,7 +224,7 @@ contract CaBiSignedClaimPool {
     }
 
     // ---------------------------------------------------------------- claim
-    function claim(uint256 amount, uint256 nonce, uint256 deadline, bytes calldata signature)
+    function claim(uint256 amount, uint256 cumulativeLimit, uint256 nonce, uint256 deadline, bytes calldata signature)
         external
         nonReentrant
     {
@@ -232,9 +233,10 @@ contract CaBiSignedClaimPool {
         if (nonceUsed[msg.sender][nonce]) revert NonceUsed();
         address currentSigner = signer;
         if (currentSigner == address(0)) revert SignerUnset();
-        if (_recover(claimDigest(msg.sender, amount, nonce, deadline), signature) != currentSigner) {
+        if (_recover(claimDigest(msg.sender, amount, cumulativeLimit, nonce, deadline), signature) != currentSigner) {
             revert InvalidSignature();
         }
+        if (claimedOf[msg.sender] + amount > cumulativeLimit) revert ClaimLimitExceeded();
         _checkLimit(msg.sender, amount);
 
         nonceUsed[msg.sender][nonce] = true;

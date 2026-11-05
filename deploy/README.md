@@ -60,7 +60,7 @@ docker run -d --name cabi --restart unless-stopped \
 ```
 
 - `NEXT_PUBLIC_*` 是**构建期**变量；换地址必须重新 `docker build`，不能只改 `--env-file`。
-- `/etc/cabi.env` 只放运行时密钥：`ADMIN_USERNAME`、`ADMIN_PASSWORD_HASH`、`ADMIN_SESSION_SECRET`、`REDEMPTION_DATA_SECRET`、`APP_ORIGIN`、`CABI_DATA_DIR=/data`、`REDEMPTION_CONFIG_CACHE_MS`。
+- `/etc/cabi.env` 只放运行时密钥：`ADMIN_USERNAME`、`ADMIN_PASSWORD_HASH`、`ADMIN_SESSION_SECRET`、`REDEMPTION_DATA_SECRET`、`APP_ORIGIN`、`CABI_DATA_DIR=/data`、`REDEMPTION_CONFIG_CACHE_MS`。部署签名领取池后还需 `CLAIM_SIGNER_PRIVATE_KEY`：它是独立的服务签名密钥，不是管理员钱包私钥，不需要 BNB，也不发链上交易。它只用于自动签发用户领取授权，不能直接提走池内 CaBi。
 - `.dockerignore` 已排除 `.env*`、`.next`、`node_modules`、`deploy`、本地数据目录，密钥不会进入镜像。
 
 ## 3. systemd

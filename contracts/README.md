@@ -2,7 +2,7 @@
 
 正式薄饼方案与新版业务合约的完整说明见 [DEPLOYMENT.md](./DEPLOYMENT.md)。下文保留的是历史 XBTToken + 网关方案，不支持薄饼直接买入，请勿混用合约或费率口径。
 
-**当前业务架构（2026-11 起）**：认购改为用户直接向后台配置的收款地址转 USDT，由服务器核验记账，**不再部署或调用认购合约**。奖励额度按认购单 + 直推 + 团队极差由服务器计算，再写入独立领取池 `CaBiSimpleClaimPool(token,owner)`，用户自选直接 50% / 组 LP 70% 领取。`XBTSale.sol` 与 `CaBiClaimPool.sol` 仅留档，不得部署、不得被前端引用。owner 私钥不进 Web 服务，推荐离线签名或独立写入进程 + `scripts/push-claimable.cjs`。
+**当前业务架构（2026-11 起）**：认购由用户直接向后台配置的收款地址转 USDT，服务器核验记账，**不部署认购合约**。额度按已核验认购单 + 直推 + 团队极差计算；独立领取池 `CaBiSignedClaimPool(token,signer,owner)` 接收 owner 直接转入的 CaBi，服务器的专用 signer 签发绑定累计额度上限的授权，用户可自行分次领取。70% CaBi 到用户，30% CaBi 和另付的 USDT 转入 LP 接收地址，不自动生成 LP。`XBTSale.sol`、`CaBiClaimPool.sol`、`CaBiSimpleClaimPool.sol` 仅留档，不部署；owner 私钥不进入 Web 服务。
 
 ---
 

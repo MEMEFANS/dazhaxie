@@ -17,7 +17,7 @@ export const claimPoolAbi = parseAbi([
   "function claimedOf(address) view returns (uint256)", "function claimLimitOf(address) view returns (uint256)",
   "function nonceUsed(address,uint256) view returns (bool)",
   "function previewClaim(uint256) view returns (uint256 payout,uint256 lpTokens,uint256 usdtRequired)",
-  "function claim(uint256,uint256,uint256,bytes)",
+  "function claim(uint256,uint256,uint256,uint256,bytes)",
   "function deposit(uint256)", "function withdrawUnused(uint256)", "function setSigner(address)",
   "function setLpReceiver(address)", "function setUsdt(address)", "function transferOwnership(address)", "function acceptOwnership()",
 ]);
@@ -30,7 +30,7 @@ export const serviceClient = claimPoolClient;
 export interface ClaimPreview { amount: bigint; payout: bigint; lpTokens: bigint; usdtRequired: bigint; }
 export interface ClaimPoolWallet { tokenBalance: bigint; usdtBalance?: bigint; allowance?: bigint; maxWalletAmount: bigint; exempt: boolean; }
 /** 服务器签发的领取额度；未登录时 claimable 为空，needsSignIn=true。 */
-export interface ClaimServerState { configured: boolean; authenticated: boolean; needsSignIn: boolean; claimable?: bigint; error?: string; signer?: Address; }
+export interface ClaimServerState { configured: boolean; authenticated: boolean; needsSignIn: boolean; claimable?: bigint; entitlement?: bigint; error?: string; signer?: Address; }
 export interface ClaimPoolData {
   token: Address; usdt: Address; owner: Address; pendingOwner: Address; lpReceiver: Address; signer: Address;
   usdtDecimals: number; tokenDecimals: number;
@@ -59,6 +59,7 @@ async function fetchServerState(): Promise<ClaimServerState> {
     authenticated: Boolean(body.authenticated),
     needsSignIn: !body.authenticated,
     claimable: body.claimable === null || body.claimable === undefined ? undefined : BigInt(String(body.claimable)),
+    entitlement: body.entitlement === null || body.entitlement === undefined ? undefined : BigInt(String(body.entitlement)),
     error: typeof body.error === "string" ? body.error : (configured ? undefined : "服务器未配置签名服务，暂时无法领取。"),
     signer: typeof body.signer === "string" && isAddress(body.signer, { strict: false }) ? getAddress(body.signer.toLowerCase()) : undefined,
   };
@@ -153,16 +154,19 @@ export function useClaimPoolData(address?: string): ClaimPoolQuery {
 export function refreshClaimPoolData() { entries.forEach(entry => entry.refresh()); }
 
 /** 向签名服务申请领取授权；返回 amount/nonce/deadline/signature（唯一领取路径，无 mode）。 */
-export async function requestClaimAuthorization(): Promise<{ amount: bigint; nonce: bigint; deadline: bigint; signature: `0x${string}` }> {
+export async function requestClaimAuthorization(amount: bigint): Promise<{ amount: bigint; cumulativeLimit: bigint; nonce: bigint; deadline: bigint; signature: `0x${string}` }> {
   const response = await fetch("/api/claim/authorization", {
-    method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+    method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount: amount.toString() }),
   });
   const body = await response.json().catch(() => ({} as Record<string, unknown>));
   if (!response.ok || typeof body.error === "string") throw new Error(typeof body.error === "string" ? body.error : "领取授权申请失败，请稍后重试。");
-  if (!/^0x[0-9a-fA-F]{130}$/.test(String(body.signature)) || !/^\d+$/.test(String(body.amount)) || !/^\d+$/.test(String(body.nonce))) {
+  if (!/^0x[0-9a-fA-F]{130}$/.test(String(body.signature)) || !/^\d+$/.test(String(body.amount)) || !/^\d+$/.test(String(body.cumulativeLimit)) || !/^\d+$/.test(String(body.nonce))) {
     throw new Error("领取授权格式异常，请稍后重试。");
   }
-  return { amount: BigInt(String(body.amount)), nonce: BigInt(String(body.nonce)), deadline: BigInt(Number(body.deadline)), signature: String(body.signature) as `0x${string}` };
+  if (typeof body.claimPool !== "string" || body.claimPool.toLowerCase() !== contracts.claimPool?.toLowerCase() || body.chainId !== chainConfig.id) {
+    throw new Error("领取授权与当前领取池或网络不一致，请刷新后重试。");
+  }
+  return { amount: BigInt(String(body.amount)), cumulativeLimit: BigInt(String(body.cumulativeLimit)), nonce: BigInt(String(body.nonce)), deadline: BigInt(Number(body.deadline)), signature: String(body.signature) as `0x${string}` };
 }
 
 /** 领取成功后把交易哈希登记到服务器，用于本地已领记录与审计（失败不阻塞前端流程）。 */

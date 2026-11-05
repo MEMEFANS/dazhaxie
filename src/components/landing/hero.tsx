@@ -21,7 +21,7 @@ import {
   fmt,
 } from "@/lib/constants";
 import styles from "./landing.module.css";
-import { DeferredOverview } from "./deferred-overview";
+import { OverviewStatus } from "./overview-status";
 
 const shortcuts = [
   {
@@ -141,7 +141,7 @@ export function Hero() {
         ))}
       </nav>
 
-      <DeferredOverview />
+      <OverviewStatus />
 
       <section id="ecosystem" className={styles.section} aria-labelledby="ecosystem-title">
         <div className={styles.sectionLabel}>

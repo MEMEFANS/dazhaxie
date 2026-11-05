@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test:contracts": "node scripts/verify-trading-fees.cjs",
     "test:pancake": "node scripts/verify-pancake-tax.cjs && node scripts/verify-pancake-data.cjs && node scripts/verify-pancake-admin.cjs && npm run test:pool-burn",
-    "test:wallet": "node scripts/verify-wallet-network.cjs",
+    "test:wallet": "node scripts/verify-wallet-network.cjs && node scripts/verify-default-network.cjs",
     "test:referral": "node scripts/verify-referral-binding.cjs && node scripts/verify-referral-data.cjs && node scripts/verify-referral-client.cjs && node scripts/verify-referral-gate.cjs && node scripts/verify-subscription-purchase.cjs",
     "test:referral-navigation": "node scripts/verify-referral-gate-navigation.cjs",
     "test:referral-return": "node scripts/verify-referral-status.cjs && node scripts/verify-referral-return.cjs",

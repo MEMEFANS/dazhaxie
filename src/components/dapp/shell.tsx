@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronRight, Coins, Headphones, House,
   Check, CircleAlert, LoaderCircle, MessageCircle, MoreHorizontal, Network, ShoppingBag, Users, Wallet, X,
@@ -52,11 +52,14 @@ export function DAppShell({ children }: { children: React.ReactNode }) {
   const [previousPath, setPreviousPath] = useState(pathname);
   const drawerRef = useRef<HTMLElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
+  const switchPending = useRef(false);
+  const automaticAttempt = useRef<string | null>(null);
   const connected = hydrated && state.connected;
   const wrongNetwork = connected && state.chainId !== chainConfig.id;
 
-  async function switchNetwork() {
-    if (switching) return;
+  const switchNetwork = useCallback(async () => {
+    if (switchPending.current) return;
+    switchPending.current = true;
     setSwitching(true);
     try {
       const actualChain = await wallet.switchChain(chainConfig.id);
@@ -65,9 +68,23 @@ export function DAppShell({ children }: { children: React.ReactNode }) {
     } catch (error) {
       showToast(error instanceof Error ? error.message : "切换未完成，请在钱包中检查网络");
     } finally {
+      switchPending.current = false;
       setSwitching(false);
     }
-  }
+  }, [showToast]);
+
+  useEffect(() => {
+    if (!connected) { automaticAttempt.current = null; return; }
+    if (!state.address || !state.chainId || state.chainId === chainConfig.id) return;
+    const key = `${state.address.toLowerCase()}:${chainConfig.id}`;
+    if (automaticAttempt.current === key) return;
+    const timer = window.setTimeout(() => {
+      if (switchPending.current) return;
+      automaticAttempt.current = key;
+      void switchNetwork();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [connected, state.address, state.chainId, switchNetwork]);
 
   if (previousPath !== pathname) {
     setPreviousPath(pathname);
@@ -158,7 +175,7 @@ export function DAppShell({ children }: { children: React.ReactNode }) {
           {wrongNetwork ? (
             <button onClick={switchNetwork} disabled={switching} className={styles.switchNetwork}>
               {switching ? <LoaderCircle size={13} className="animate-spin" /> : <CircleAlert size={13} />}
-              {switching ? "等待钱包确认" : "切换到正确网络"}
+              {switching ? "等待钱包确认" : `切换至 ${chainConfig.shortName}`}
             </button>
           ) : <span className={styles.networkState}>{connected ? <><Check size={12} /> 网络已匹配</> : "连接钱包查看个人资产"}</span>}
         </div>

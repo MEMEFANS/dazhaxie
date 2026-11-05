@@ -4,7 +4,9 @@ pragma solidity ^0.8.20;
 /**
  * CaBiSimpleClaimPool
  * 独立领取池：不依赖任何认购合约。服务器/运营钱包通过 batchSetClaimable 写入额度，
- * 用户自行领取。私钥不应进入 Web 服务；推荐使用 scripts/push-claimable.cjs 离线签名广播。
+ * 用户自行领取。私钥不应进入 Web 服务。
+ * 注意：本合约已被 CaBiMerkleClaimPool 取代，仅作历史存档；当前前端与后台不再引用，
+ * 原 scripts/push-claimable.cjs 写入脚本已删除。
  *
  * 领取规则（与现行业务口径一致）：
  * - mode 0：领取可领额度的 50%；剩余 50% 在 burnRemainder=true 时销毁，否则留在池内。

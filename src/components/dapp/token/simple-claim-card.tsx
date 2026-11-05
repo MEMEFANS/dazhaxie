@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { getAddress } from "viem";
 import { useStore } from "@/lib/store";
 import { chainConfig, contracts } from "@/lib/chain-config";
-import { claimPoolAbi, fetchClaimPoolData, refreshClaimPoolData, requestClaimAuthorization, submitClaimReceipt, useClaimPoolData } from "@/lib/claim-pool-data";
+import { claimPoolAbi, claimErrorText, fetchClaimPoolData, refreshClaimPoolData, useClaimPoolData } from "@/lib/claim-pool-data";
 import { useContractTransaction, TransactionFeedback } from "@/lib/contract-transactions";
 import { signInCommunity } from "@/lib/community-client";
 import { formatAssetAmount } from "@/lib/amounts";
@@ -26,7 +26,7 @@ function ClaimForm() {
   const active = useRef(true), operation = useRef(false), latest = useRef("");
   const quote = data?.preview;
   const claimable = data?.server.claimable;
-  const consentKey = [state.address.toLowerCase(), state.chainId, contracts.claimPool, claimable, quote?.payout, quote?.lpTokens, quote?.usdtRequired, data?.lpReceiver, data?.usdt, data?.signer].join(":");
+  const consentKey = [state.address.toLowerCase(), state.chainId, contracts.claimPool, data?.merkleRoot, data?.server.amount, claimable, quote?.payout, quote?.lpTokens, quote?.usdtRequired, data?.lpReceiver, data?.usdt].join(":");
   const confirmed = accepted === consentKey;
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => { latest.current = consentKey; }, [consentKey]);
@@ -40,6 +40,7 @@ function ClaimForm() {
   else if (server.needsSignIn) reason = "";
   else if (server.error) reason = server.error;
   else if (claimable === undefined) reason = "正在读取可领额度";
+  else if (!server.proof?.length || server.amount === undefined) reason = "正在生成领取凭证";
   else if (claimable === 0n) reason = "当前没有可领取额度";
   else if (data.poolBalance < claimable) reason = "领取储备不足，请联系管理员补足池余额";
   else if (!data.lpReady || !quote) reason = data.lpError || "LP 接收地址尚未配置，请等待管理员完成配置";
@@ -61,32 +62,30 @@ function ClaimForm() {
     try {
       const fresh = await fetchClaimPoolData(getAddress(state.address.toLowerCase()));
       if (!active.current || latest.current !== reviewed) return;
-      if (fresh.server.claimable !== claimable || (fresh.lpReceiver || "").toLowerCase() !== (data.lpReceiver || "").toLowerCase() || (fresh.usdt || "").toLowerCase() !== (data.usdt || "").toLowerCase()) throw new Error("可领额度或领取配置已变化，请刷新后重新确认。");
+      if (fresh.server.claimable !== claimable || fresh.server.amount !== data.server.amount || fresh.merkleRoot.toLowerCase() !== data.merkleRoot.toLowerCase()) throw new Error("可领额度或领取批次已变化，请刷新后重新确认。");
+      if ((fresh.server.proof || []).join(";") !== (data.server.proof || []).join(";")) throw new Error("领取凭证已更新，请刷新后重新确认。");
+      if ((fresh.lpReceiver || "").toLowerCase() !== (data.lpReceiver || "").toLowerCase() || (fresh.usdt || "").toLowerCase() !== (data.usdt || "").toLowerCase()) throw new Error("领取配置已变化，请刷新后重新确认。");
       const freshQuote = fresh.preview;
       if (!freshQuote || freshQuote.amount !== claimable || freshQuote.payout !== quote.payout) throw new Error("领取额度已变化，请重新确认。");
       if (!fresh.wallet || !holdingAllows(fresh.wallet.tokenBalance, freshQuote.payout, fresh.wallet.maxWalletAmount, fresh.wallet.exempt)) throw new Error("领取后将超过当前持仓上限。");
       if (!fresh.lpReady || freshQuote.usdtRequired !== quote.usdtRequired || (fresh.wallet.usdtBalance || 0n) < quote.usdtRequired) throw new Error("LP 报价或 USDT 余额已变化，请刷新后重新确认。");
-
-      const authorization = await requestClaimAuthorization();
-      if (!active.current || latest.current !== reviewed) return;
-      if (authorization.amount !== claimable) throw new Error("授权额度已变化，请刷新后重新确认。");
-      if (authorization.deadline <= BigInt(Math.floor(Date.now() / 1000))) throw new Error("领取授权已过期，请重新发起。");
+      const cumulative = fresh.server.amount, proof = fresh.server.proof;
+      if (cumulative === undefined || !proof?.length) throw new Error("领取凭证尚未就绪，请刷新后重试。");
 
       const hash = await controller.run({
         address: contracts.claimPool,
         abi: claimPoolAbi,
         functionName: "claim",
-        args: [authorization.amount, authorization.nonce, authorization.deadline, authorization.signature],
-        description: "签名领取 70% CaBi，并支付 " + formatAssetAmount(freshQuote.usdtRequired, fresh.usdtDecimals) + " USDT 组建流动性；30% 代币转入 LP 地址",
+        args: [cumulative, proof],
+        description: "领取 70% CaBi，并支付 " + formatAssetAmount(freshQuote.usdtRequired, fresh.usdtDecimals) + " USDT 组建流动性；30% 代币转入 LP 地址",
         approval: { token: fresh.usdt, amount: freshQuote.usdtRequired },
       });
       if (active.current && hash) {
         setAccepted("");
         setLastClaim({ payout: freshQuote.payout.toString() });
-        void submitClaimReceipt(authorization.nonce, hash);
         refreshClaimPoolData();
       }
-    } catch (cause) { if (active.current) { setAccepted(""); setError(cause instanceof Error ? cause.message : "领取检查失败，请重试。"); refreshClaimPoolData(); } }
+    } catch (cause) { if (active.current) { setAccepted(""); setError(claimErrorText(cause)); refreshClaimPoolData(); } }
     finally { if (active.current) { operation.current = false; setChecking(false); } }
   }
 
@@ -115,7 +114,7 @@ function ClaimForm() {
     <p className="mt-3 text-xs leading-6 text-mute">70% CaBi 到账钱包，同时支付 30% USDT 用于组建流动性；未配置 LP 接收地址时暂不能领取。额度按认购与奖励自动累计，可分多次领取。</p>
     {!data?.lpReady ? <p className="mt-2 text-xs leading-6 text-mute">{data?.lpError || "LP 接收地址尚未配置，请等待管理员完成配置。"}</p> : null}
     {!server?.configured ? <p className="mt-2 text-xs leading-6 text-mute">领取通道暂未开放，请稍后再试或联系客服。</p> : null}
-    {server?.configured && data && data.signer.toLowerCase() !== (server.signer || "").toLowerCase() ? <p className="mt-2 text-xs leading-6 text-down">领取通道维护中，请稍后再试。</p> : null}
+    {!server?.needsSignIn && server?.configured && data && !data.merkleRoot.startsWith("0x000000") ? <p className="mt-2 text-xs leading-6 text-mute">当前领取批次 #{data.epoch}，额度由项目方钱包发布，领取由你自己的钱包发起。</p> : null}
     <label className="mt-3 flex items-start gap-2 text-xs leading-6 text-mute"><input aria-label="确认本次 CaBi 领取" type="checkbox" checked={confirmed} onChange={event => setAccepted(event.target.checked ? consentKey : "")} disabled={Boolean(reason) || controller.busy || checking} className="mt-1.5 h-4 w-4 shrink-0" />我已核对到账数量与支付金额，同意支付 30% USDT 组建流动性。</label>
     {!state.connected ? <button onClick={connect} className="btn btn-outline mt-3 min-h-11 px-4 text-sm">连接钱包</button> : null}
     {state.connected && server?.needsSignIn && server.configured ? <button onClick={() => void signIn()} disabled={signingIn} className="btn btn-outline mt-3 min-h-11 w-full text-sm">{signingIn ? "正在登录…" : "登录后查看可领额度"}</button> : null}

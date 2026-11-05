@@ -1,10 +1,12 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Isolated real React DOM checks; no RPC, private files, or owner signing. */
-// 用假 fetch 验证新认购后台：收款地址、开关、认购单、批次生成与登记，全程不接触私钥。
+// 用假 fetch 验证认购后台：收款地址、开关、认购单、Merkle root 生成与发布登记，全程不接触私钥。
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), ts = require('typescript'), viem = require('viem');
 const { JSDOM } = require('jsdom');
 const ROOT = path.resolve(__dirname, '..');
 const A = '0x1111111111111111111111111111111111111111', B = '0x2222222222222222222222222222222222222222';
 const PAYEE = '0x3333333333333333333333333333333333333333', TX = '0x' + 'ab'.repeat(32), unit = 10n ** 18n;
+const ROOT_1 = '0x' + 'ab'.repeat(32), ROOT_2 = '0x' + 'cd'.repeat(32);
+const ZERO_ADDRESS = '0x' + '0'.repeat(40);
 const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://localhost:3000/admin/subscribe' });
 global.window = dom.window; global.document = dom.window.document; global.IS_REACT_ACT_ENVIRONMENT = true;
 Object.defineProperty(global, 'navigator', { configurable: true, value: dom.window.navigator });
@@ -23,31 +25,36 @@ function load(file, replacements = {}) {
   return runtimeModule.exports;
 }
 
-let calls = [], listData, batchesData, generateResponse, applyResponse, claimPoolData;
+let calls = [], listData, batchesData, generateResponse, applyResponse, claimPoolData, publishResponse;
 function order(id, address, shares, txHash) { return { id, address, shares, amount: String(BigInt(shares) * 50n * 10n ** 6n), txHash, status: 'confirmed', createdAt: 1700000000000 }; }
+function batch(id, epoch, root, addresses, total) { return { id, epoch, root, status: 'pending', addresses, total: String(total), txHash: null, note: null, createdAt: 1700000000000, appliedAt: null }; }
 function resetData() {
   listData = { items: [order('o1', A, 2, TX), order('o2', B, 1, '0x' + 'cd'.repeat(32))], total: 12, page: 1, pageSize: 10, globalSold: 15000, hardCap: 20000, subscribeLocked: true, subscribePayee: PAYEE };
-  batchesData = { items: [{ id: 'batch-1', status: 'pending', addresses: 2, total: String(70000n * unit), txHash: null, note: null, createdAt: 1700000000000, appliedAt: null }], total: 1, page: 1, pageSize: 10 };
-  generateResponse = { status: 200, body: { batch: { id: 'batch-2', status: 'pending', addresses: 3, total: String(105000n * unit), txHash: null, note: null, createdAt: 1700000000000, appliedAt: null }, skipped: [A] } };
+  batchesData = { items: [batch('batch-1', 1, ROOT_1, 2, 70000n * unit)], total: 1, page: 1, pageSize: 10 };
+  generateResponse = { status: 200, body: { batch: batch('batch-2', 2, ROOT_2, 3, 105000n * unit), epoch: 2, root: ROOT_2, calldata: '0x' + 'ef'.repeat(40), instruction: '由当前 owner 钱包调用 setMerkleRoot(root, epoch)。', exportUrl: '/api/admin/claim-batches/batch-2/export', total: String(105000n * unit) } };
   applyResponse = { status: 200, body: { idempotent: false } };
-  claimPoolData = { mode: 'legacy', pool: '0x4444444444444444444444444444444444444444', signing: { configured: false, signer: null, claimPool: null, chainId: 56, ttlSeconds: 600, rateLimitPerMinute: 5 }, entitlements: { total: '0', outstanding: '0', addresses: 0, rows: [] } };
+  publishResponse = { status: 200, body: { claimPool: A, calldata: '0x' + 'ef'.repeat(40), instruction: '由当前 owner 钱包在 BscScan / 硬件钱包对领取池合约调用 setMerkleRoot(root, epoch)。' } };
+  claimPoolData = {
+    mode: 'merkle', pool: '0x4444444444444444444444444444444444444444',
+    chain: { owner: B, pendingOwner: ZERO_ADDRESS, usdt: PAYEE, lpReceiver: PAYEE, usdtDecimals: 6, merkleRoot: ROOT_1, epoch: 1, lpReady: true, poolBalance: String(500000n * unit), totalClaimed: '0', totalLpTokens: String(10500n * unit), totalUsdtCharged: String(15n * 10n ** 6n) },
+    batch: { ...batch('batch-1', 1, ROOT_1, 2, 70000n * unit), matchesChain: true },
+    entitlements: { total: String(70000n * unit), outstanding: String(70000n * unit), addresses: 2, rows: [{ address: A, tokens: String(35000n * unit), chainClaimed: '0', outstanding: String(35000n * unit), reason: ['认购单', '直推奖励'] }, { address: B, tokens: String(35000n * unit), chainClaimed: '0', outstanding: String(35000n * unit), reason: ['极差结算'] }] },
+  };
   calls = [];
 }
 async function mockFetch(request, init) {
   const url = String(request), method = (init && init.method) || 'GET';
-  calls.push({ url, method, body: init?.body ? JSON.parse(init.body) : undefined });
+  calls.push({ url, method, body: init?.body ? JSON.parse(init.body) : undefined, options: init });
   const reply = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
   if (method === 'GET' && url.startsWith('/api/admin/subscriptions?')) {
     const q = new URLSearchParams(url.split('?')[1]).get('q') || '';
     const items = q ? listData.items.filter(row => row.address.includes(q) || row.txHash.includes(q)) : listData.items;
     return reply({ ...listData, items, total: q ? items.length : listData.total });
   }
-  if (method === 'GET' && url.startsWith('/api/admin/claim-batches?')) return reply(batchesData);
+  if (method === 'GET' && url === '/api/subscribe/config') return reply({ payee: listData.subscribePayee, locked: listData.subscribeLocked });
+  if (method === 'GET' && url.startsWith('/api/admin/claim-batches')) return reply(batchesData);
   if (method === 'GET' && url === '/api/admin/claim-pool') return reply(claimPoolData);
-  if (method === 'POST' && url === '/api/admin/claim-pool') {
-    const signer = JSON.parse(init.body).signer;
-    return reply({ signer, calldata: '0x' + 'ab'.repeat(20), instruction: '由 owner 钱包调用 setSigner', audit: true });
-  }
+  if (method === 'POST' && url === '/api/admin/claim-pool') return reply(publishResponse.body, publishResponse.status);
   if (method === 'POST' && url === '/api/admin/subscriptions') {
     const patch = JSON.parse(init.body);
     if (patch.subscribePayee !== undefined) listData.subscribePayee = patch.subscribePayee;
@@ -93,14 +100,19 @@ async function type(element, value) {
     assert(row('当前地址').includes(PAYEE));
     assert(document.body.textContent.includes(A));
     assert(document.body.textContent.includes('batch-1'));
-    assert.equal(calls[0].method, 'GET');
-    pass('admin loads subscription totals, hard-cap progress, payee and claim batches from the server');
+    assert(row('链上批次 / epoch').includes('#1'));
+    assert(row('待领额度（服务器聚合）').includes('70000'));
+    assert(document.body.textContent.includes('认购单') && document.body.textContent.includes('极差结算'));
+    pass('admin loads subscription totals, payee, the Merkle root batch and auto-aggregated entitlements');
 
     const payeeInput = document.querySelector('[aria-label="认购收款地址"]');
     await type(payeeInput, B);
     await click(byText('保存收款地址'), 40);
     const save = calls.find(call => call.method === 'POST' && call.url === '/api/admin/subscriptions');
     assert.equal(save.body.subscribePayee, B);
+    assert.equal(save.options.credentials, 'same-origin');
+    assert.equal(save.options.cache, 'no-store');
+    assert(calls.some(call => call.method === 'GET' && call.url === '/api/subscribe/config'), 'saved payee must be checked against the public configuration');
     assert(document.body.textContent.includes('已保存。'));
     assert(row('当前地址').includes(B));
     pass('payee is saved through the server and the displayed value follows the saved settings');
@@ -122,24 +134,26 @@ async function type(element, value) {
     await React.act(async () => { document.querySelector('form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await pause(30); });
     const queryCall = calls.filter(call => call.method === 'GET' && call.url.includes('q=')).at(-1);
     assert(queryCall.url.includes('q=0x1111'));
-    assert.equal(document.querySelectorAll('tbody tr').length, 1);
+    assert.equal(document.querySelectorAll('table')[0].querySelectorAll('tbody tr').length, 1);
     const exportLink = byText('导出 CSV');
     assert(exportLink.getAttribute('href').includes('q=0x1111'));
     pass('search filters the server-side list and the CSV export keeps the same query');
 
-    await click(byText('生成增量批次'), 60);
+    await click(byText('生成 root 与 proof'), 60);
     const generated = calls.find(call => call.method === 'POST' && call.url === '/api/admin/claim-batches');
     assert.equal(generated.body.action, 'generate');
-    assert(document.body.textContent.includes('batch-2'));
-    assert(document.body.textContent.includes('已领取跳过 1 个'));
+    assert(document.body.textContent.includes('已生成批次 #2'));
+    assert(document.body.textContent.includes(ROOT_2));
+    assert(document.body.textContent.includes('setMerkleRoot'));
+    assert(document.body.textContent.includes('下载 address / tokens / proof CSV'));
     assert(calls.some(call => call.method === 'GET' && call.url.includes('/api/admin/claim-batches?page=')), 'batch list must refresh after generating');
-    pass('generating an incremental batch shows address count, total, skipped wallets and refreshes the list');
+    pass('generating a Merkle batch shows root, epoch, calldata and a proof CSV download, then refreshes the list');
 
     const batchInput = document.querySelector('[aria-label="批次 batch-1 交易哈希"]');
     assert(batchInput, 'pending batch should offer a hash input');
     await click(byText('登记哈希'), 30);
-    assert(document.querySelector('[role="alert"]').textContent.includes('有效的写入交易哈希'));
-    assert(!calls.some(call => call.url.includes('/apply')) , 'invalid hash must not be posted');
+    assert(document.querySelector('[role="alert"]').textContent.includes('有效的上链交易哈希'));
+    assert(!calls.some(call => call.url.includes('/apply')), 'invalid hash must not be posted');
     await type(batchInput, TX);
     await click(byText('登记哈希'), 50);
     const applied = calls.find(call => call.url.includes('/apply'));
@@ -154,43 +168,21 @@ async function type(element, value) {
     assert(document.body.textContent.includes('可重新生成批次'));
     applyResponse = { status: 200, body: { idempotent: true } };
     await click(byText('登记哈希'), 50);
-    assert(document.body.textContent.includes('未产生重复发放'));
+    assert(document.body.textContent.includes('未重复发布'));
     pass('failed batches are recorded for retry, and idempotent re-registration is reported');
 
-    generateResponse = { status: 409, body: { error: '没有需要新增的额度' } };
-    await click(byText('生成增量批次'), 50);
-    assert(document.querySelector('[role="alert"]').textContent.includes('没有需要新增的额度'));
+    generateResponse = { status: 409, body: { error: '没有需要生成可领额度的地址' } };
+    await click(byText('生成 root 与 proof'), 50);
+    assert(document.querySelector('[role="alert"]').textContent.includes('没有需要生成可领额度的地址'));
     pass('batch generation errors surface the server reason instead of silently succeeding');
 
-    // 签名自领模式：显示领取池指标、签名服务状态与自动聚合的待领额度，并提供带审计的权限交接。
-    claimPoolData = {
-      mode: 'signed', pool: A,
-      chain: { owner: B, signer: '0x5555555555555555555555555555555555555555', usdt: PAYEE, lpReceiver: PAYEE, usdtDecimals: 6, poolBalance: String(500000n * unit), totalClaimed: '0', totalLpTokens: String(10500n * unit), totalUsdtCharged: String(15n * 10n ** 6n), allocatedUnclaimed: '0', unusedBalance: String(500000n * unit), lpReady: true },
-      signing: { configured: true, signer: '0x5555555555555555555555555555555555555555', claimPool: A, chainId: 56, ttlSeconds: 600, rateLimitPerMinute: 5, signerMatches: true },
-      entitlements: { total: String(70000n * unit), outstanding: String(70000n * unit), addresses: 2, rows: [{ address: A, tokens: String(35000n * unit), chainClaimed: '0', outstanding: String(35000n * unit), reason: ['认购单', '直推奖励'] }, { address: B, tokens: String(35000n * unit), chainClaimed: '0', outstanding: String(35000n * unit), reason: ['极差结算'] }] },
-    };
-    await React.act(async () => { rootHolder.root.unmount(); rootHolder.root = createRoot(document.getElementById('root')); await pause(40); });
-    await render();
-    assert(row('签名服务').includes('已配置'));
-    assert(row('待领额度（服务器聚合）').includes('70000'));
-    assert(row('链上 signer').includes('0x5555555555555555555555555555555555555555'));
-    assert(document.body.textContent.includes('认购单') && document.body.textContent.includes('极差结算'));
-    assert(!byText('生成增量批次'), 'signed mode must hide the legacy batch writer');
-    pass('signed mode shows pool metrics, signer status and auto-aggregated entitlements without the legacy batch writer');
-
-    const handoverInput = document.querySelector('[aria-label="新的 signer 地址"]');
-    await type(handoverInput, '0x6666666666666666666666666666666666666666');
-    const handoverButton = byText('提交交接');
-    assert(handoverButton.disabled, 'handover requires explicit confirmation');
-    await click(document.querySelector('[aria-label="确认权限交接"]'));
-    assert(!byText('提交交接').disabled);
-    await click(byText('提交交接'), 50);
-    const handoverCall = calls.find(call => call.method === 'POST' && call.url === '/api/admin/claim-pool');
-    assert.equal(handoverCall.body.action, 'handover');
-    assert.equal(handoverCall.body.signer, '0x6666666666666666666666666666666666666666');
-    assert(document.body.textContent.includes('已记录审计'));
-    assert(document.body.textContent.includes('setSigner'));
-    pass('signer handover requires a second confirmation, writes an audit and only returns calldata for the owner wallet');
+    await click(byText('生成发布 calldata'), 50);
+    const publishCall = calls.find(call => call.method === 'POST' && call.url === '/api/admin/claim-pool');
+    assert.equal(publishCall.body.action, 'publish');
+    assert.equal(publishCall.body.batchId, 'batch-1');
+    assert(document.body.textContent.includes('setMerkleRoot(root, epoch)'));
+    assert(document.body.textContent.includes('owner 钱包'));
+    pass('publishing only returns setMerkleRoot calldata for the owner wallet and records an audit');
 
     console.log(results.length + ' subscribe admin checks passed.');
   } catch (error) {

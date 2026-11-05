@@ -56,7 +56,8 @@ async function main(){
  const expired=auth.createReferralChallenge(req(),other.address);db.referralDatabase().prepare('UPDATE referral_challenges SET expires_at=0 WHERE id=?').run(expired.id);await assert.rejects(auth.verifyReferralChallenge(req(),expired.id,signature),/失效/);
  const foreign=auth.createReferralChallenge(req(),other.address),foreignSig=await other.signMessage({message:foreign.message});delete process.env.APP_ORIGIN;await assert.rejects(auth.verifyReferralChallenge(new Request('http://foreign.invalid/api'),foreign.id,foreignSig),/失效/);process.env.APP_ORIGIN='http://localhost:3000';
  security.assertSameOrigin(req());assert.throws(()=>security.assertSameOrigin(req('/api/referral',{},'http://foreign.invalid')),/本站/);
- pass('expired nonces, signatures replayed on another domain and cross-origin requests reject');
+ process.env.APP_ORIGIN='http://localhost:3000/';security.assertSameOrigin(req());process.env.APP_ORIGIN='http://localhost:3000';
+ pass('expired nonces, signatures replayed on another domain and cross-origin requests reject; origin config accepts a trailing slash');
  const throttled=account();for(let i=0;i<5;i++)auth.createReferralChallenge(req(),throttled.address);assert.throws(()=>auth.createReferralChallenge(req(),throttled.address),/频繁/);
  const expiry=db.referralDatabase().prepare('UPDATE referral_sessions SET expires_at=0 WHERE address=?');expiry.run(user.address.toLowerCase());assert.equal(await auth.currentReferralWallet(),null);await assert.rejects(auth.requireReferralWallet(),/登录/);
  pass('challenge throttling and expired server sessions fail closed');

@@ -25,6 +25,7 @@ export default function AdminDashboardPage() {
   const reward = useClaimPoolData();
   const redemption = useRedemptionConfig();
   const [pendingTickets, setPendingTickets] = useState<number | null>(null);
+  const [outstandingState, setOutstandingState] = useState<bigint | null>(null);
   const [keeper, setKeeper] = useState<KeeperState>(() => isAddress(keeperAddress, { strict: false }) ? { status: "loading" } : { status: "unconfigured" });
 
   useEffect(() => {
@@ -33,6 +34,15 @@ export default function AdminDashboardPage() {
       .then(response => response.ok ? response.json() : null)
       .then(body => { if (!cancelled && body && typeof body.total === "number") setPendingTickets(body.total); })
       .catch(() => { /* 仪表盘统计失败时保持占位，不阻塞其他数据 */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/claim-pool", { cache: "no-store" })
+      .then(response => response.ok ? response.json() : null)
+      .then(body => { if (!cancelled && body?.entitlements?.outstanding !== undefined) setOutstandingState(BigInt(String(body.entitlements.outstanding))); })
+      .catch(() => { /* 待领总额读取失败时保持未知，不阻断页面 */ });
     return () => { cancelled = true; };
   }, []);
 
@@ -53,8 +63,8 @@ export default function AdminDashboardPage() {
   const remaining = Math.max(0, hardCap - sold);
   const softReached = sold >= SOFT_CAP;
   const softRemaining = Math.max(SOFT_CAP - sold, 0);
-  const outstanding = reward.data?.allocatedUnclaimed ?? 0n;
-  const poolShort = Boolean(reward.data && reward.data.poolBalance < outstanding);
+  const outstanding = outstandingState ?? 0n;
+  const poolShort = Boolean(reward.data && outstandingState !== null && reward.data.poolBalance < outstandingState);
   const keeperLow = keeper.status === "ready" && keeper.balance !== undefined && keeper.balance < parseEther(String(keeperThreshold));
 
   return (
@@ -64,7 +74,7 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="全局已认购" value={subscribe.data ? subscribe.data.globalSold.toLocaleString("en-US") : "—"} unit="份" hint={subscribe.data ? `硬顶 ${subscribe.data.hardCap.toLocaleString("en-US")} 份 · 服务器记账` : subscribe.error || "等待认购配置"} />
         <StatCard label="实物兑换" value={redemption.data?.configured ? (redemption.data.enabled ? "开放" : "停用") : "—"} hint={redemption.error || "订单与发货在「兑换管理」查看"} />
-        <StatCard label="领取池余额" value={reward.data ? formatAssetAmount(reward.data.poolBalance,reward.data.tokenDecimals) : "—"} unit="CaBi" hint={reward.error || "服务器签名授权 · 强制 30% USDT 组 LP / 70% 到账"} />
+        <StatCard label="领取池余额" value={reward.data ? formatAssetAmount(reward.data.poolBalance,reward.data.tokenDecimals) : "—"} unit="CaBi" hint={reward.error || "Merkle 自领 · 强制 30% USDT 组 LP / 70% 到账"} />
         <StatCard label="待处理工单" value={pendingTickets === null ? "—" : fmt(pendingTickets)} unit="条" hint={pendingTickets === null ? "正在读取工单统计" : "在「工单处理」回复或完结"} />
       </div>
 
@@ -79,7 +89,7 @@ export default function AdminDashboardPage() {
           </div>
           <div>
             {!reward.data ? <p className="text-faint">领取池：{reward.status === "unconfigured" ? "未配置领取池" : reward.error || "链上读取失败"}</p>
-              : <p className={poolShort ? "text-down" : "text-mute"}>领取池余额 {formatAssetAmount(reward.data.poolBalance, reward.data.tokenDecimals)} CaBi · 已分配未领取 {formatAssetAmount(outstanding, reward.data.tokenDecimals)} CaBi{poolShort ? " · 池内余额不足以覆盖待领，请尽快注资" : " · 覆盖充足"}</p>}
+              : <p className={poolShort ? "text-down" : "text-mute"}>领取池余额 {formatAssetAmount(reward.data.poolBalance, reward.data.tokenDecimals)} CaBi · 待领总额 {outstandingState === null ? "读取中" : formatAssetAmount(outstanding, reward.data.tokenDecimals) + " CaBi"}{poolShort ? " · 池内余额不足以覆盖待领，请尽快注资" : outstandingState === null ? "" : " · 覆盖充足"}</p>}
           </div>
           <div>
             {keeper.status === "unconfigured" ? <p className="text-faint">keeper 钱包：未配置（设置 NEXT_PUBLIC_KEEPER_ADDRESS 后才会显示 BNB 余额）</p>

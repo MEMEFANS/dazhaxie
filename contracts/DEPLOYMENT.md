@@ -4,17 +4,27 @@
 
 用户要求在外部薄饼买卖，网站默认 NEXT_PUBLIC_TRADING_MODE=pancake。正式代币使用 CaBiPancakeToken.sol，不使用下方 legacy XBTToken + XBTTradingGateway 方案。两个方案的经济口径不同，不能把旧已部署地址当成新版。
 
-**当前业务架构（2026-11 起）**：认购不再使用 XBTSale，用户直接向后台配置的认购收款地址转 USDT，服务端核验记账；奖励额度由服务器按认购单 + 直推 + 团队极差计算，用仅签名权限的 CLAIM_SIGNER 签发 EIP-712 授权，用户自己调用 `CaBiSignedClaimPool(token, signer, owner)` 领取。领取只有一条路径：支付 30% USDT 等值，30% CaBi 与这笔 USDT 一并进入 lpReceiver，70% CaBi 到账用户。`XBTSale.sol` / `CaBiClaimPool.sol` / `CaBiSimpleClaimPool.sol` 仅留档，不部署、不被前端引用。部署顺序：代币 → CaBiSignedClaimPool(token, signer, owner) → setUsdt / setLpReceiver → 代币 approve + deposit → 后台设置收款地址并开启认购 → 配置 CLAIM_SIGNER_PRIVATE_KEY（需与链上 signer 一致）→ 用户签名登录自领。owner 私钥不得进入 Web 进程。
+**当前业务架构（2026-11 起）**：认购不使用 XBTSale，用户直接向后台配置的认购收款地址转 USDT，服务端按 txHash 去重并核验 from / to / 金额 / 至少 2 次确认。领取使用 `CaBiMerkleClaimPool(token, owner)`：owner 先把 CaBi 直接转入池子，再由 owner 自己的钱包调用 `setMerkleRoot(root, epoch)` 发布批次；用户带 proof 调用 `claim(累计额度, proof)` 自领。服务器不持有任何私钥，只生成 root / proof 与导出名单。领取只有一条路径：支付 30% USDT 等值，30% CaBi 与这笔 USDT 一并进入 lpReceiver，70% CaBi 到账用户。`XBTSale.sol` / `CaBiClaimPool.sol` / `CaBiSimpleClaimPool.sol` 与旧 EIP-712 签名方案仅留档，不部署、不被前端引用。
 
-### 签名自领领取池：CaBiSignedClaimPool
+部署顺序：代币 → `CaBiMerkleClaimPool(token, owner)` → `setUsdt` / `setLpReceiver` → owner 直接转入足额 CaBi → 后台设置认购收款地址并开启认购 → 后台生成 root + 每人 proof → owner 钱包 `setMerkleRoot(root, epoch)` → 后台登记上链交易哈希 → 配置 `NEXT_PUBLIC_CLAIM_POOL_ADDRESS` 并重新构建。owner 私钥不得进入 Web 进程，也不需要任何写入私钥。
 
-constructor(tokenAddress, signerAddress, ownerAddress) 三参数；token/signer 可换（setSigner 由 owner 调用，换后旧签名立即失效），owner 两步交接。
+### 为什么认购不用 approve + transferFrom
 
-固定比例（常量，无 setter）：`PAYOUT_RATIO=70`、`LP_TOKEN_RATIO=30`、`LP_USDT_RATIO=30`；USDT 金额 = 额度 × 50 × 30% × 10^usdtDecimals ÷ 35000，与认购单价口径一致。`lpReceiver` 或 `usdt` 未配置、用户 USDT 余额或授权不足时，整笔领取 revert，不存在 50% 兜底。
+`XBTSale.sol` 的 approve + transferFrom 路线要求用户先授权、再调用合约方法，多一笔授权交易、多一个合约信任面，而且服务器还要额外维护认购合约绑定关系。当前业务只需要“用户把 USDT 付给项目收款地址 + 服务器核验回执”，用普通 ERC20 `transfer` 即可完成，因此 XBTSale 仅留档、停止使用。核验规则全部在服务端：只认成功回执、至少 2 次确认、`Transfer` 事件 from = 用户、to = 配置的收款地址、金额 = 份数 × 50 USDT；同一 txHash 只能生成一张认购单。
 
-接口：`previewClaim(amount)`、`claim(amount, nonce, deadline, signature)`、`claimDigest(...)`、`deposit`、`withdrawUnused`、`setSigner`、`setLpReceiver`、`setUsdt`、`setClaimLimit`、`transferOwnership` / `acceptOwnership`；只读 `claimedOf`、`nonceUsed`、`poolBalance`、`allocatedUnclaimed`、`totalClaimed`、`totalLpTokens`、`totalUsdtCharged`。
+### Merkle 自领领取池：CaBiMerkleClaimPool
 
-EIP-712：domain `("CaBiSignedClaimPool","1",chainId,pool)`，结构 `Claim(user,amount,nonce,deadline)`；nonce 一次性、deadline 限时，服务端签发前会校验 USDT 支付能力。
+constructor(tokenAddress, ownerAddress) 两参数；owner 两步交接（transferOwnership / acceptOwnership）。服务器与浏览器都不需要 signer。
+
+固定比例（常量，无 setter）：`PAYOUT_RATIO=70`、`LP_TOKEN_RATIO=30`、`LP_USDT_RATIO=30`；USDT 金额 = 本次差额 × 50 × 30% × 10^usdtDecimals ÷ 35000，与认购单价口径一致。`lpReceiver` 或 `usdt` 未配置、用户 USDT 余额或授权不足、池余额不足时，整笔领取 revert，不存在 50% 兜底。
+
+接口：`setMerkleRoot(root, epoch)`、`setUsdt`、`setLpReceiver`、`transferOwnership` / `acceptOwnership`；用户入口 `claim(累计额度, proof)`；只读 `merkleRoot`、`epoch`、`claimedOf`、`previewClaim(user, 累计额度)`、`poolBalance`、`totalClaimed`、`totalLpTokens`、`totalUsdtCharged`。
+
+Merkle 口径：`leaf = keccak256(abi.encode(address account, uint256 cumulativeAmount, uint256 epoch))`，节点为排序后的 `keccak256(a || b)`。`cumulativeAmount` 是该地址在当批的**累计应得**，合约只发放 `cumulativeAmount - claimedOf[user]`；因此重复提交同一额度会回滚，重新生成更高累计额度时只补差额，不会重复发放。epoch 必须严格递增，旧批次 proof 随 root 更新立即失效。
+
+失败原因：`InvalidProof`（proof 不对）、`AlreadyClaimed`（已领过或额度未增加）、`LpPaymentFailed`（USDT 余额 / 授权不足）、`InsufficientPoolBalance`（池子余额不足）、`LpReceiverUnset` / `UsdtUnset`（配置缺失）。前端会把这些错误翻译成可操作提示。
+
+后台流程：按已核验认购单 + 直推 + 团队极差聚合每人累计额度，生成 root 与每人 proof 并落库；owner 在钱包中发布 root 后，后台登记交易哈希。`/api/claim/proof` 只返回 proof 与累计额度，不签发任何授权。
 
 ### 代币与手续费
 
@@ -23,7 +33,7 @@ EIP-712：domain `("CaBiSignedClaimPool","1",chainId,pool)`，结构 `Claim(user
 - 转入指定pair卖出时：3% CaBi直接去0x000000000000000000000000000000000000dEaD，97%进入pair。owner同样收卖税。
 - 普通钱包和业务合约转账不收交易税；不自动覆盖其它池、V3或任意多跳路径。
 - 普通持仓默认20万，可 setMaxWalletAmount；setMaxWalletExempt 仅豁免持仓上限，不豁免买卖税。新owner需transferOwnership提名后acceptOwnership接受。
-- 代币合约不承担普通用户奖励分配或领取。claimPayout 仅处理分配地址与回购池待领 USDT，不是用户的 CaBi 领取入口；用户通过独立 CaBiSignedClaimPool 领取：支付 30% USDT 组建流动性，30% 代币进 LP 接收地址，70% 到账。
+- 代币合约不承担普通用户奖励分配或领取。claimPayout 仅处理分配地址与回购池待领 USDT，不是用户的 CaBi 领取入口；用户通过独立 CaBiMerkleClaimPool 领取：支付 30% USDT 组建流动性，30% 代币进 LP 接收地址，70% 到账。
 
 ### 底池固定周期代币销毁
 
@@ -94,7 +104,9 @@ reward(u,c) = rate(teamShares(u)) × purchased(c) + max(rate(teamShares(u)) − 
 
 团队关系事件索引和自动核算服务尚未接入；目前是核实计算结果后 owner 入账，认购资格及直推自动记账不等于团队自动核算。新累计接口必须部署新版 XBTSale；旧已部署地址不能靠修改 DApp 自动增加接口，查询不支持时停止，不自动切换增量发放。已有认购、团队累计和已领取义务不迁移、不重复导入；旧合约继续结算原有业务，新部署须在任何正额度产生前一次绑定领取池。
 
-## 自动识别资格的定时双模式领取：CaBiClaimPool
+## 历史方案（已停用）：CaBiClaimPool + XBTSale 双模式领取
+
+> 本方案已停用，仅作历史留档。认购不再使用 XBTSale 的 approve + transferFrom，领取也不再绑定 Sale 账本或读取 Sale.claimableOf。当前方案见上文 CaBiMerkleClaimPool（Merkle proof 自领 + 30% LP 单一路径），请勿按本节部署。
 
 constructor(tokenAddress,saleAddress,ownerAddress) 仍为三个参数。token 与 Sale 不可更换，USDT 从 Sale.usdt() 读取并固定；构造时核验相同 CaBi、尚未绑定的 Sale 及有效 USDT。资格与完整待结算额度来自 Sale 链上账本，不维护领取钱包名单或个人配额，没有 batchSetClaimable。50% / 70% 为合约常量，不提供比例 setter。
 
@@ -140,11 +152,11 @@ claimable(user) 在双向绑定正确时读取 Sale.claimableOf(user)：认购�
 
 totalAllocated() 等于 Sale.reservedTokens()。withdrawUnused(amount,to) 只允许 owner 提取 poolBalance() 超过全部保留额的未分配部分，不能提走认购待领储备；领取结束仍检查覆盖。Sale.finalize() 不使用领取池资金，已产生的资格继续按池规则与时间领取。transferOwnership(nextOwner) 提名后须由新地址 acceptOwnership() 接受。
 
-网站设置 NEXT_PUBLIC_TOKEN_ADDRESS、NEXT_PUBLIC_USDT_ADDRESS、NEXT_PUBLIC_SALE_ADDRESS 与 NEXT_PUBLIC_CLAIM_POOL_ADDRESS，修改后重建；不使用旧奖励池时，NEXT_PUBLIC_REWARD_POOL_ADDRESS 留空。开放前核验 token()/sale()/usdt()/owner()、Sale.claimPool() 双向绑定、poolBalance()/totalAllocated()/unusedBalance()/claimStartsAt()，并检查固定 50 / 70 比例、lpReceiver 及交易配置。用户页面不展示内部接收地址，后台提供 LP 接收地址管理。
+网站设置 NEXT_PUBLIC_TOKEN_ADDRESS、NEXT_PUBLIC_USDT_ADDRESS 与 NEXT_PUBLIC_CLAIM_POOL_ADDRESS，修改后重建；不使用旧奖励池时，NEXT_PUBLIC_REWARD_POOL_ADDRESS 留空。开放前核验 token()/usdt()/owner()/lpReceiver()、merkleRoot()/epoch() 与池余额，并检查固定 70 / 30 比例；后台提供 root / proof 生成与导出。用户页面不展示内部接收地址。
 
 本次仅修改代码与文档，未部署或升级链上合约。历史 Sale 一旦产生过正额度不能直接绑定新池，旧部署没有新接口也不能靠改网站获得双模式。现实现不迁移旧 Sale 或 XBTRewardPool 的资产和义务，不应把历史额度再次导入新池。旧业务继续按原合约结算。
 
-## 历史独立奖励：XBTRewardPool（可选）
+## 历史独立奖励：XBTRewardPool（已停用，可选存档）
 
 constructor(token,usdt,vault)。owner 初始为 msg.sender（部署钱包）；与最终管理员不同时，部署后单独 transferOwnership(finalOwner)。vault 必须为独立普通收款地址或专用 vault，不能填 AMM pair，否则业务转账会触发卖税且不会铸造 LP。owner先approve CaBi并deposit，batchSetClaimable(users,amounts,incremental)只能分配池内可覆盖金额，已领地址不能重新分配。withdrawUnused仅提未分配部分。
 

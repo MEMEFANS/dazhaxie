@@ -104,23 +104,4 @@ export async function verifySubscriptionTransfer(input: { address: string; hash:
   if (!matched) throw new AdminRequestError("未找到与认购单一致的转账记录", 400);
   return amount;
 }
-
-const claimPoolAbi = [{ type: "function", name: "hasClaimed", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "bool" }] }] as const;
-
-/** 已领取地址集合：用于生成批次时跳过；未配置领取池时返回空集合。 */
-export async function readClaimedAddresses(addresses: readonly string[]): Promise<Set<string>> {
-  const pool = contracts.claimPool;
-  if (!pool || !addresses.length) return new Set();
-  if (!chainConfigurationValid) throw new AdminRequestError("当前网络配置无效", 503);
-  try {
-    const results = await client.multicall({
-      contracts: addresses.map(address => ({ address: pool, abi: claimPoolAbi, functionName: "hasClaimed", args: [getAddress(address.toLowerCase())] })),
-      allowFailure: false,
-    });
-    const claimed = new Set<string>();
-    results.forEach((value, index) => { if (value) claimed.add(addresses[index].toLowerCase()); });
-    return claimed;
-  } catch {
-    throw new AdminRequestError("暂时无法读取领取状态，请稍后重试", 503);
-  }
-}
+/** 服务端只做认购转账核验；领取不再需要服务器签名或读取旧领取池状态。 */

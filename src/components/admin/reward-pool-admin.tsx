@@ -10,7 +10,7 @@ import { TransactionFeedback,useContractTransaction } from "@/lib/contract-trans
 import { Card,DataRow,Metric,SectionHead } from "@/components/dapp/ui";
 import { ServiceQueryNotice } from "@/components/dapp/service-query-notice";
 const field="field min-h-11 w-full min-w-0 px-3 text-xs";
-export default function RewardPoolAdmin(){return contracts.rewardPool?<><Card><SectionHead title="旧版奖励池（仅存档）" desc="该合约不参与新的认购/领取链路；新额度请到「认购管理」生成并写入 CaBiSimpleClaimPool"/></Card><LegacyRewardPoolAdmin/></>:<Card><SectionHead title="旧版奖励池未配置" desc="新的领取流程使用 NEXT_PUBLIC_CLAIM_POOL_ADDRESS 指向 CaBiSimpleClaimPool"/></Card>;}
+export default function RewardPoolAdmin(){return contracts.rewardPool?<><Card><SectionHead title="旧版奖励池（仅存档）" desc="该合约不参与新的认购/领取链路；新额度请到「认购管理」生成 Merkle root 并由 owner 钱包发布"/></Card><LegacyRewardPoolAdmin/></>:<Card><SectionHead title="旧版奖励池未配置" desc="新的领取流程使用 NEXT_PUBLIC_CLAIM_POOL_ADDRESS 指向 CaBiMerkleClaimPool"/></Card>;}
 function LegacyRewardPoolAdmin(){
  const {state,connect}=useStore(),query=useRewardPoolData(state.connected?state.address:undefined),d=query.data,tx=useContractTransaction("admin-reward-pool", { audit: true });
  const [amount,setAmount]=useState(""),[batch,setBatch]=useState(""),[incremental,setIncremental]=useState(false),[confirmed,setConfirmed]=useState(false),[vault,setVault]=useState(""),[ratio,setRatio]=useState(""),[ratioKind,setRatioKind]=useState("setDirectRatio"),[error,setError]=useState(""),[checking,setChecking]=useState(false);

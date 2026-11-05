@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Isolated fixture reads; no RPC or private files. */
-// 用合成只读客户端 + 假签名服务响应验证签名自领的数据读取与一致性校验，不连接任何真实节点。
+// 用合成只读客户端 + 假 proof 接口验证 Merkle 自领的数据读取与一致性校验，不连接任何真实节点。
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), ts = require('typescript'), viem = require('viem');
 const ROOT = path.resolve(__dirname, '..');
 const POOL = '0x1111111111111111111111111111111111111111', TOKEN = '0x2222222222222222222222222222222222222222';
 const USDT = '0x3333333333333333333333333333333333333333', OWNER = '0x4444444444444444444444444444444444444444';
 const LP = '0x5555555555555555555555555555555555555555', A = '0x6666666666666666666666666666666666666666';
-const SIGNER = '0x7777777777777777777777777777777777777777';
+const ROOT_HASH = '0x' + 'ab'.repeat(32), PROOF = ['0x' + 'cd'.repeat(32)];
 const ZERO = viem.zeroAddress, unit = 10n ** 18n;
 const results = [];
 function pass(name) { results.push(name); console.log('PASS ' + name); }
@@ -14,7 +14,8 @@ function resetState() {
   state = {
     chainId: 56, block: 100n, code: '0x6000', mismatchToken: false, mismatchPreview: false,
     lpReady: true, configured: true, authenticated: true, serverError: undefined,
-    claimable: 35000n * unit, claimed: 0n, poolBalance: 1000000n * unit, actualBalance: 1000000n * unit,
+    amount: 35000n * unit, claimable: 35000n * unit, proof: PROOF, root: ROOT_HASH, epoch: 1,
+    claimed: 0n, poolBalance: 1000000n * unit, actualBalance: 1000000n * unit,
   };
   requests = [];
 }
@@ -30,24 +31,23 @@ const client = {
       case 'owner': return OWNER;
       case 'pendingOwner': return ZERO;
       case 'lpReceiver': return state.lpReady ? LP : ZERO;
-      case 'signer': return SIGNER;
+      case 'merkleRoot': return state.root;
+      case 'epoch': return BigInt(state.epoch);
       case 'usdtDecimals': return 6;
       case 'decimals': return 18;
       case 'poolBalance': return state.poolBalance;
       case 'totalClaimed': return 35000n * unit;
       case 'totalLpTokens': return 10500n * unit;
       case 'totalUsdtCharged': return 15n * 10n ** 6n;
-      case 'allocatedUnclaimed': return 0n;
-      case 'unusedBalance': return state.poolBalance;
       case 'balanceOf': return args[0].toLowerCase() === POOL.toLowerCase() ? state.actualBalance : 123n * unit;
       case 'claimedOf': return state.claimed;
       case 'allowance': return 0n;
       case 'maxWalletAmount': return 200000n * unit;
       case 'isMaxWalletExempt': return false;
       case 'previewClaim': {
-        const amount = args[0];
-        if (state.mismatchPreview) return [amount * 60n / 100n, amount * 40n / 100n, 15n * 10n ** 6n];
-        return [amount * 70n / 100n, amount * 30n / 100n, 15n * 10n ** 6n];
+        const cumulative = args[1], delta = cumulative > state.claimed ? cumulative - state.claimed : 0n;
+        if (state.mismatchPreview) return [delta, delta * 60n / 100n, delta * 40n / 100n, 15n * 10n ** 6n];
+        return [delta, delta * 70n / 100n, delta * 30n / 100n, delta * 50n * 30n * 10n ** 6n / (35000n * unit * 100n)];
       }
       default: throw new Error('unexpected ' + functionName);
     }
@@ -57,8 +57,8 @@ function mockFetch(request, init) {
   requests.push({ url: String(request), init });
   const body = state.serverError ? { error: state.serverError }
     : state.authenticated
-      ? { configured: state.configured, claimPool: POOL, signer: SIGNER, chainId: 56, authenticated: true, claimable: state.claimable === undefined ? null : String(state.claimable) }
-      : { configured: state.configured, claimPool: POOL, signer: SIGNER, chainId: 56, authenticated: false, claimable: null };
+      ? { configured: state.configured, claimPool: POOL, chainId: 56, authenticated: true, root: state.root, epoch: state.epoch, amount: state.amount === undefined ? null : String(state.amount), claimable: state.claimable === undefined ? null : String(state.claimable), proof: state.proof }
+      : { configured: state.configured, claimPool: POOL, chainId: 56, authenticated: false, root: state.root, epoch: state.epoch, amount: "0", claimable: "0", proof: [] };
   return Promise.resolve({ ok: true, status: 200, json: async () => body });
 }
 const chainConfig = {
@@ -88,14 +88,18 @@ function load() {
     const data = await module_.fetchClaimPoolData(A);
     assert.equal(data.token.toLowerCase(), TOKEN.toLowerCase());
     assert.equal(data.usdt.toLowerCase(), USDT.toLowerCase());
-    assert.equal(data.signer.toLowerCase(), SIGNER.toLowerCase());
     assert.equal(data.lpReady, true);
     assert.equal(data.usdtDecimals, 6);
     assert.equal(data.tokenDecimals, 18);
     assert.equal(data.poolBalance, 1000000n * unit);
+    assert.equal(data.merkleRoot.toLowerCase(), ROOT_HASH);
+    assert.equal(data.epoch, 1);
     assert.equal(data.server.configured, true);
+    assert.equal(data.server.amount, 35000n * unit);
     assert.equal(data.server.claimable, 35000n * unit);
+    assert.equal(data.server.proof.length, 1);
     assert.equal(data.claimed, 0n);
+    assert.equal(data.preview.amount, 35000n * unit);
     assert.equal(data.preview.payout, 24500n * unit);
     assert.equal(data.preview.lpTokens, 10500n * unit);
     assert.equal(data.preview.usdtRequired, 15n * 10n ** 6n);
@@ -104,42 +108,44 @@ function load() {
     assert.equal(data.wallet.usdtBalance, 123n * unit);
     assert.equal(data.wallet.tokenBalance, 123n * unit);
     assert.equal(data.wallet.maxWalletAmount, 200000n * unit);
-    assert.equal(requests[0].url, '/api/claim/authorization');
-    pass('reads pool rules, wallet balances and the single 70/30 preview, with the claimable amount coming from the signing service');
+    assert.equal(requests[0].url, '/api/claim/proof');
+    pass('reads the Merkle root/epoch, proof and the single 70/30 preview');
 
     const publicData = await module_.fetchClaimPoolData();
     assert.equal(publicData.wallet, undefined);
     assert.equal(publicData.preview, undefined);
     assert.equal(publicData.lpReady, true);
-    assert.equal(publicData.server.claimable, 35000n * unit);
-    pass('public reads expose pool totals and server configuration without wallet-specific previews');
+    pass('public reads expose pool totals and the current root without wallet-specific previews');
 
     resetState(); state.authenticated = false;
     const signedOut = await module_.fetchClaimPoolData(A);
     assert.equal(signedOut.server.needsSignIn, true);
-    assert.equal(signedOut.server.claimable, undefined);
+    assert.equal(signedOut.server.claimable, 0n);
     assert.equal(signedOut.preview, undefined);
-    pass('a wallet without a signed session sees a sign-in requirement instead of a claimable amount');
+    pass('a wallet without a signed session sees a sign-in requirement instead of a proof preview');
 
-    resetState(); state.configured = false; state.claimable = undefined;
+    resetState(); state.configured = false; state.amount = undefined; state.claimable = undefined;
     const unconfigured = await module_.fetchClaimPoolData(A);
     assert.equal(unconfigured.server.configured, false);
-    assert.match(unconfigured.server.error, /未配置签名服务/);
-    assert.equal(unconfigured.server.claimable, undefined);
+    assert.equal(unconfigured.server.amount, undefined);
     assert.equal(unconfigured.preview, undefined);
-    pass('a missing signer key disables the claim card with an explicit reason');
+    pass('a missing claim pool disables the claim card');
 
-    resetState(); state.serverError = '当前没有可领取额度';
-    const exhausted = await module_.fetchClaimPoolData(A);
-    assert.equal(exhausted.server.error, '当前没有可领取额度');
-    assert.equal(exhausted.preview, undefined);
-    pass('a zero-entitlement response from the server surfaces its message and skips the preview');
+    resetState(); state.serverError = '管理员尚未发布领取批次，暂不能领取';
+    const unpublished = await module_.fetchClaimPoolData(A);
+    assert.match(unpublished.server.error, /尚未发布领取批次/);
+    assert.equal(unpublished.server.claimable, undefined);
+    assert.equal(unpublished.preview, undefined);
+    pass('an unpublished Merkle root surfaces its message and skips the preview');
 
     resetState(); state.claimed = 17500n * unit; state.claimable = 17500n * unit;
     const partial = await module_.fetchClaimPoolData(A);
     assert.equal(partial.claimed, 17500n * unit);
+    assert.equal(partial.server.amount, 35000n * unit);
     assert.equal(partial.server.claimable, 17500n * unit);
-    pass('a partially claimed wallet shows both its on-chain claimed total and the remaining server entitlement');
+    assert.equal(partial.preview.amount, 17500n * unit);
+    assert.equal(partial.preview.payout, 12250n * unit);
+    pass('a partially claimed wallet shows cumulative entitlement, on-chain claimed and the remaining delta');
 
     resetState(); state.mismatchPreview = true;
     await assert.rejects(() => module_.fetchClaimPoolData(A), /领取预览与额度不一致/);
@@ -152,7 +158,7 @@ function load() {
     resetState(); state.lpReady = false;
     const lpMissing = await module_.fetchClaimPoolData(A);
     assert.equal(lpMissing.lpReady, false);
-    assert.match(lpMissing.lpError, /LP 接收地址尚未配置/);
+    assert.match(lpMissing.lpError, /LP 接收地址/);
     assert.equal(lpMissing.preview, undefined);
     pass('missing USDT or LP receiver blocks claiming entirely with an explicit reason');
 

@@ -34,6 +34,7 @@ fs.mkdirSync(dataDir, { recursive: true });
 
 const constants = load('src/lib/constants.ts');
 const teamTree = load('src/lib/team-tree.ts', { './constants.ts': constants });
+const merkle = load('src/lib/merkle.ts');
 const referralRows = [
   { address: R, parent: null }, { address: A, parent: R }, { address: B, parent: R }, { address: C, parent: A },
 ];
@@ -41,6 +42,7 @@ const dbModule = load('src/lib/server/subscription-db.ts', {
   'server-only': {},
   '../constants': constants,
   '../team-tree': teamTree,
+  '../merkle': merkle,
   '../chain-config': { chainConfig: { id: 56 } },
   './admin-db': { adminDataDirectory: () => dataDir },
   './admin-session': { AdminRequestError },
@@ -111,46 +113,42 @@ function order(address, shares, index) {
     assert.equal(byAddress.get(R).shares, 1); // 直推 3 份 = 1 份；无极差
     assert.equal(byAddress.get(A).tokens, 3n * 35000n * unit);
     assert.equal(byAddress.get(A).reason.length, 3);
-    const preview = dbModule.previewClaimBatch();
-    assert.equal(preview.items.length, 4);
-    assert.equal(preview.total, 8n * 35000n * unit);
+    const created = dbModule.createClaimRootBatch({ note: 'first' });
+    assert.equal(created.items.length, 4);
+    assert.equal(created.total, 8n * 35000n * unit);
+    const itemA = created.items.find(item => item.address.toLowerCase() === A.toLowerCase());
+    assert(itemA, 'Merkle batch contains the subscriber entitlement');
+    assert(merkle.verifyMerkleProof(itemA.proof, created.root, merkle.claimLeaf(BigInt(created.epoch), itemA.address, BigInt(itemA.amount))));
     pass('claim targets are derived from orders + every-three-share direct reward + team differential');
-
-    const created = dbModule.createClaimBatch({ note: 'first' });
     assert.equal(created.batch.status, 'pending');
     assert.equal(created.batch.addresses, 4);
-    assert.equal(created.batch.total, (8n * 35000n * unit).toString());
-    assert.equal(dbModule.previewClaimBatch().items.length, 0);
-    await assertStatus(async () => dbModule.createClaimBatch(), 409, 'empty batch');
-    pass('generating a batch records pending rows and prevents the same entitlement from being generated twice');
+    assert.equal(dbModule.listClaimRootItems(created.batch.id).length, 4);
+    pass('Merkle root batch persists cumulative allocations and valid per-address proofs');
 
-    await assertStatus(async () => dbModule.markClaimBatch(created.batch.id, 'applied', '0x1234'), 400, 'bad hash');
-    const applied = dbModule.markClaimBatch(created.batch.id, 'applied', hash(9));
+    await assertStatus(async () => dbModule.markClaimRootBatch(created.batch.id, 'applied', '0x1234'), 400, 'bad hash');
+    const applied = dbModule.markClaimRootBatch(created.batch.id, 'applied', hash(9));
     assert.equal(applied.status, 'applied');
     assert.equal(applied.txHash, hash(9));
-    const replay = dbModule.markClaimBatch(created.batch.id, 'applied', hash(10));
+    const replay = dbModule.markClaimRootBatch(created.batch.id, 'applied', hash(10));
     assert.equal(replay.status, 'applied');
     assert.equal(replay.txHash, hash(9), 're-applying must be idempotent');
-    pass('batch application requires a valid transaction hash and repeated application is idempotent');
+    assert.equal(dbModule.nextClaimRootEpoch(), 2);
+    pass('root publication registration requires a valid transaction hash and repeated application is idempotent');
 
-    // 新认购 D 后只产生增量；失败批次可重试。
+    // 新认购 D 后生成下一版累计额度 root；失败批次可重新登记。
     referralRows.push({ address: D, parent: R });
     order(D, 2, 5);
-    const delta = dbModule.previewClaimBatch();
-    assert.equal(delta.items.length, 1);
-    assert.equal(delta.items[0].address.toLowerCase(), D);
-    assert.equal(delta.items[0].amount, 2n * 35000n * unit);
-    const retry = dbModule.createClaimBatch();
-    dbModule.markClaimBatch(retry.batch.id, 'failed');
-    const regenerated = dbModule.previewClaimBatch();
-    assert.equal(regenerated.items.length, 1);
-    assert.equal(regenerated.items[0].address.toLowerCase(), D);
-    const skipped = dbModule.previewClaimBatch({ skipClaimed: new Set([D.toLowerCase()]) });
-    assert.equal(skipped.items.length, 0);
-    assert.equal(skipped.skipped.length, 1);
-    const pendingD = dbModule.createClaimBatch();
-    assert.equal(dbModule.getClaimBatch(pendingD.batch.id).status, 'pending');
-    pass('new orders produce only deltas, failed batches can be regenerated, claimed addresses are skipped');
+    const nextRoot = dbModule.createClaimRootBatch();
+    assert.equal(nextRoot.epoch, 2);
+    assert.equal(nextRoot.items.length, 5);
+    assert.equal(nextRoot.items.find(item => item.address.toLowerCase() === D.toLowerCase()).amount, (2n * 35000n * unit).toString());
+    const retry = dbModule.createClaimRootBatch({ skipClaimed: new Set([D.toLowerCase()]) });
+    dbModule.markClaimRootBatch(retry.batch.id, 'failed');
+    const pendingD = dbModule.createClaimRootBatch();
+    assert.equal(pendingD.batch.status, 'pending');
+    assert.equal(pendingD.epoch, 4);
+    await assertStatus(async () => dbModule.createClaimRootBatch({ skipClaimed: new Set([A.toLowerCase(), B.toLowerCase(), C.toLowerCase(), D.toLowerCase(), R.toLowerCase()]) }), 409, 'all recipients skipped');
+    pass('new orders enter a fresh cumulative epoch, proofs can omit claimed wallets, and failed batches can be retried');
 
     // 硬顶在同一个写事务内复核。
     dbModule.subscriptionDatabase().prepare('INSERT INTO subscription_orders (id, chain_id, address, shares, amount, tx_hash, status, created_at) VALUES (?,?,?,?,?,?,?,?)')
@@ -220,11 +218,11 @@ function order(address, shares, index) {
     settings.subscribePayee = PAYEE;
     pass('USDT transfer verification requires success, 2 confirmations, from/to/amount and a matching Transfer event');
 
-    chainState.multicall = [true, false];
-    const claimed = await chainModule.readClaimedAddresses([A, B]);
-    assert(claimed.has(A.toLowerCase()));
-    assert(!claimed.has(B.toLowerCase()));
-    pass('claimed addresses are read from the claim pool and used to skip already-claimed wallets');
+    const persistedItem = dbModule.claimRootItem(pendingD.batch.id, D);
+    assert(persistedItem);
+    assert(merkle.verifyMerkleProof(persistedItem.proof, pendingD.root, merkle.claimLeaf(BigInt(pendingD.epoch), D, BigInt(persistedItem.amount))));
+    assert.equal(dbModule.claimRootBatchByRoot(pendingD.root, pendingD.epoch).id, pendingD.batch.id);
+    pass('current root lookups return the persisted wallet proof and match its epoch');
 
     console.log(results.length + ' subscription server checks passed.');
   } catch (error) {

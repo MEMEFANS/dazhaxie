@@ -5,14 +5,19 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Lock, ShieldCheck, User } from "lucide-react";
+import { Eye, EyeOff, Lock, ShieldCheck, User } from "lucide-react";
 import { adminLogin, useAdminAuth } from "@/lib/admin-auth";
+
+function cleanAccountInput(value: string) {
+  return value.trim().replace(/^(`+)([a-zA-Z0-9._-]+)\1$/, "$2");
+}
 
 export default function AdminLoginPage() {
   const router = useRouter();
   const { authed, ready, configured, error: sessionError } = useAdminAuth();
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -25,7 +30,9 @@ export default function AdminLoginPage() {
     setPending(true);
     setError("");
     try {
-      await adminLogin(account.trim(), password);
+      const cleanedAccount = cleanAccountInput(account);
+      setAccount(cleanedAccount);
+      await adminLogin(cleanedAccount, password);
       setPassword("");
       router.replace("/admin");
       router.refresh();
@@ -35,7 +42,7 @@ export default function AdminLoginPage() {
 
   return (
     <div className="grid min-h-screen place-items-center bg-abyss px-4">
-      <div className="card w-full max-w-sm p-8">
+      <div className="card w-full min-w-0 max-w-sm p-6 sm:p-8">
         <div className="flex flex-col items-center">
           <Image src="/logo.png" alt="蟹比特" width={52} height={52} priority className="h-[52px] w-[52px] rounded-xl object-cover ring-1 ring-line" />
           <h1 className="mt-4 text-lg font-semibold leading-7 tracking-tight">蟹比特 · 管理后台</h1>
@@ -56,25 +63,55 @@ export default function AdminLoginPage() {
               maxLength={100}
               value={account}
               onChange={(e) => { setAccount(e.target.value); setError(""); }}
+              onPaste={(e) => {
+                const pasted = e.clipboardData.getData("text");
+                const cleaned = cleanAccountInput(pasted);
+                if (cleaned === pasted) return;
+                e.preventDefault();
+                const start = e.currentTarget.selectionStart ?? account.length;
+                const end = e.currentTarget.selectionEnd ?? start;
+                setAccount(account.slice(0, start) + cleaned + account.slice(end));
+                setError("");
+              }}
               placeholder="管理员账号"
+              name="username"
               autoComplete="username"
-              className="w-full bg-transparent text-sm outline-none placeholder:text-faint"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
             />
           </label>
-          <label className="field flex h-12 items-center gap-2 px-4">
+          <div className="field flex h-12 items-center gap-2 pl-4 pr-1">
             <Lock size={14} className="shrink-0 text-faint" />
             <input
               aria-label="登录密码"
               required
               maxLength={512}
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => { setPassword(e.target.value); setError(""); }}
               placeholder="登录密码"
+              name="password"
               autoComplete="current-password"
-              className="w-full bg-transparent text-sm outline-none placeholder:text-faint"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              aria-describedby={password !== password.trim() ? "password-whitespace" : undefined}
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
             />
-          </label>
+            <button
+              type="button"
+              aria-label={showPassword ? "隐藏密码" : "显示密码"}
+              title={showPassword ? "隐藏密码" : "显示密码"}
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((visible) => !visible)}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-mute hover:text-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
+            >
+              {showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+            </button>
+          </div>
+          {password !== password.trim() ? <p id="password-whitespace" className="text-xs leading-5 text-mute" role="status">密码首尾含有空格，请确认是否在复制时多选了空格。</p> : null}
           {error && <p className="text-center text-xs leading-5 text-down" role="alert">{error}</p>}
           <button type="submit" disabled={!ready || !configured || pending} className="btn btn-gold h-12 w-full text-sm font-semibold">
             {pending ? "正在验证…" : "登录后台"}

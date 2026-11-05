@@ -7,6 +7,7 @@ import { getAddress } from "viem";
 import { HARD_CAP, TOKENS_PER_SHARE, floorShares, round2, teamDifferential, teamRate, teamTierIndex, teamTierLabel } from "../constants";
 import { differentialOf, teamSharesOf, type TeamNode } from "../team-tree";
 import { chainConfig } from "../chain-config";
+import { buildMerkleTree } from "../merkle";
 import { adminDataDirectory } from "./admin-db";
 import { AdminRequestError } from "./admin-session";
 import { referralTreeRows } from "./referral-db";
@@ -27,22 +28,18 @@ export function subscriptionDatabase() {
       UNIQUE(chain_id, tx_hash)
     );
     CREATE INDEX IF NOT EXISTS subscription_orders_address ON subscription_orders(chain_id, address, created_at DESC);
-    CREATE TABLE IF NOT EXISTS claim_batches (
-      id TEXT PRIMARY KEY, chain_id INTEGER NOT NULL, status TEXT NOT NULL, addresses INTEGER NOT NULL,
-      total TEXT NOT NULL, tx_hash TEXT, note TEXT, created_at INTEGER NOT NULL, applied_at INTEGER
+    CREATE TABLE IF NOT EXISTS claim_root_batches (
+      id TEXT PRIMARY KEY, chain_id INTEGER NOT NULL, epoch INTEGER NOT NULL, root TEXT NOT NULL,
+      status TEXT NOT NULL, addresses INTEGER NOT NULL, total TEXT NOT NULL,
+      tx_hash TEXT, note TEXT, created_at INTEGER NOT NULL, applied_at INTEGER,
+      UNIQUE(chain_id, epoch)
     );
-    CREATE TABLE IF NOT EXISTS claim_batch_items (
-      batch_id TEXT NOT NULL, address TEXT NOT NULL, amount TEXT NOT NULL,
+    CREATE INDEX IF NOT EXISTS claim_root_batches_root ON claim_root_batches(chain_id, root);
+    CREATE TABLE IF NOT EXISTS claim_root_items (
+      batch_id TEXT NOT NULL, address TEXT NOT NULL, amount TEXT NOT NULL, proof TEXT NOT NULL,
       PRIMARY KEY(batch_id, address)
     );
-    CREATE INDEX IF NOT EXISTS claim_batch_items_address ON claim_batch_items(address);
-    CREATE TABLE IF NOT EXISTS claim_authorizations (
-      id TEXT PRIMARY KEY, chain_id INTEGER NOT NULL, address TEXT NOT NULL, nonce TEXT NOT NULL,
-      amount TEXT NOT NULL, mode INTEGER NOT NULL, deadline INTEGER NOT NULL, signature TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'signed', tx_hash TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-      UNIQUE(chain_id, address, nonce)
-    );
-    CREATE INDEX IF NOT EXISTS claim_authorizations_address ON claim_authorizations(chain_id, address, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS claim_root_items_address ON claim_root_items(address);
   `);
   cache.cabiSubscriptionDb = { file, db };
   return db;
@@ -114,33 +111,18 @@ export function allSubscriptionShares(): Map<string, number> {
   return new Map(rows.map(row => [String(row.address).toLowerCase(), Number(row.shares)]));
 }
 
-// ---------------------------------------------------------------- 额度批次
-export interface ClaimBatch {
-  id: string; status: string; addresses: number; total: string; txHash: string | null; note: string | null;
-  createdAt: number; appliedAt: number | null;
+// ----------------------------------------------------------- Merkle 领取批次
+export interface ClaimRootBatch {
+  id: string; epoch: number; root: string; status: string; addresses: number; total: string;
+  txHash: string | null; note: string | null; createdAt: number; appliedAt: number | null;
 }
-function serializeBatch(row: Row): ClaimBatch {
+function serializeRootBatch(row: Row): ClaimRootBatch {
   return {
-    id: String(row.id), status: String(row.status), addresses: Number(row.addresses), total: String(row.total),
+    id: String(row.id), epoch: Number(row.epoch), root: String(row.root), status: String(row.status),
+    addresses: Number(row.addresses), total: String(row.total),
     txHash: row.tx_hash ? String(row.tx_hash) : null, note: row.note ? String(row.note) : null,
     createdAt: Number(row.created_at), appliedAt: row.applied_at ? Number(row.applied_at) : null,
   };
-}
-function writtenAmounts(): Map<string, bigint> {
-  // pending 与 applied 都计入已写入，防止重复生成同一份额度；failed 视为未写，可重新生成。
-  const rows = subscriptionDatabase().prepare(`
-    SELECT i.address AS address, i.amount AS amount
-    FROM claim_batch_items i JOIN claim_batches b ON b.id=i.batch_id
-    WHERE b.chain_id=? AND b.status IN ('pending','applied')
-  `).all(chainConfig.id);
-  const result = new Map<string, bigint>();
-  for (const row of rows) {
-    try {
-      const address = String(row.address).toLowerCase();
-      result.set(address, (result.get(address) || 0n) + BigInt(String(row.amount)));
-    } catch { /* 忽略损坏的旧记录 */ }
-  }
-  return result;
 }
 
 function buildTeamNodes(shares: Map<string, number>): TeamNode[] {
@@ -244,151 +226,87 @@ export function promotionBranches(address: string): PromotionBranch[] {
 }
 
 /**
- * 生成增量批次；已领取地址（由调用方传入）跳过；已写入金额（pending/applied）不重复计入。
+ * 生成 Merkle 批次：按当前已核验认购单 + 直推奖励 + 团队极差计算出每个地址的累计应得额度，
+ * 构建 Merkle 树并持久化 root 与每人 proof。epoch 为批次序号，root 由 owner 用自己的钱包上链。
  */
-function buildClaimItems(skipClaimed: Set<string>) {
-  const written = writtenAmounts(), items: Array<{ address: string; amount: bigint }> = [], skipped: string[] = [];
-  for (const target of computeClaimTargets()) {
-    if (skipClaimed.has(target.address.toLowerCase())) { skipped.push(target.address); continue; }
-    const already = written.get(target.address.toLowerCase()) || 0n;
-    const delta = target.tokens - already;
-    if (delta <= 0n) continue;
-    items.push({ address: target.address, amount: delta });
-  }
-  return { items, skipped, total: items.reduce((sum, item) => sum + item.amount, 0n) };
-}
-
-export function previewClaimBatch(options: { skipClaimed?: Set<string> } = {}) {
-  return buildClaimItems(options.skipClaimed || new Set<string>());
-}
-
-export function createClaimBatch(options: { skipClaimed?: Set<string>; note?: string } = {}) {
+export function createClaimRootBatch(options: { skipClaimed?: Set<string>; note?: string } = {}) {
   const db = subscriptionDatabase();
-  const { items, skipped, total } = buildClaimItems(options.skipClaimed || new Set<string>());
-  if (!items.length) throw new AdminRequestError("没有需要新增的可领额度；请先确认认购单或已领取状态", 409);
-  const id = `batch-${new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID().slice(0, 8)}`;
+  const skip = options.skipClaimed || new Set<string>();
+  const targets = computeClaimTargets().filter(target => !skip.has(target.address.toLowerCase()));
+  if (!targets.length) throw new AdminRequestError("没有需要生成可领额度的地址；请先确认认购单或已领取状态", 409);
+  const epochRow = db.prepare("SELECT COALESCE(MAX(epoch), 0) AS epoch FROM claim_root_batches WHERE chain_id=?").get(chainConfig.id);
+  const epoch = Number(epochRow?.epoch || 0) + 1;
+  const tree = buildMerkleTree(targets.map(target => ({ address: target.address, amount: target.tokens })), BigInt(epoch));
+  const total = targets.reduce((sum, target) => sum + target.tokens, 0n);
+  const id = `root-${new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID().slice(0, 8)}`;
   db.exec("BEGIN IMMEDIATE");
   try {
-    db.prepare("INSERT INTO claim_batches (id, chain_id, status, addresses, total, note, created_at) VALUES (?,?,?,?,?,?,?)")
-      .run(id, chainConfig.id, "pending", items.length, total.toString(), options.note || null, Date.now());
-    const insert = db.prepare("INSERT INTO claim_batch_items (batch_id, address, amount) VALUES (?,?,?)");
-    for (const item of items) insert.run(id, item.address.toLowerCase(), item.amount.toString());
+    db.prepare("INSERT INTO claim_root_batches (id, chain_id, epoch, root, status, addresses, total, note, created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+      .run(id, chainConfig.id, epoch, tree.root, "pending", targets.length, total.toString(), options.note || null, Date.now());
+    const insert = db.prepare("INSERT INTO claim_root_items (batch_id, address, amount, proof) VALUES (?,?,?,?)");
+    for (const target of targets) {
+      const proof = tree.proofs.get(target.address.toLowerCase());
+      if (!proof) throw new Error(`Merkle 树缺少 ${target.address} 的 proof`);
+      insert.run(id, target.address.toLowerCase(), target.tokens.toString(), JSON.stringify(proof));
+    }
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
-  return { batch: getClaimBatch(id)!, items, skipped, total };
+  return { batch: getClaimRootBatch(id)!, items: listClaimRootItems(id), skipped: computeClaimTargets().filter(target => skip.has(target.address.toLowerCase())).map(target => target.address), total, epoch, root: tree.root };
 }
 
-export function getClaimBatch(id: string): ClaimBatch | null {
-  const row = subscriptionDatabase().prepare("SELECT * FROM claim_batches WHERE chain_id=? AND id=?").get(chainConfig.id, id);
-  return row ? serializeBatch(row) : null;
+export function getClaimRootBatch(id: string): ClaimRootBatch | null {
+  const row = subscriptionDatabase().prepare("SELECT * FROM claim_root_batches WHERE chain_id=? AND id=?").get(chainConfig.id, id);
+  return row ? serializeRootBatch(row) : null;
 }
 
-export function listClaimBatchItems(id: string) {
-  return subscriptionDatabase().prepare("SELECT address, amount FROM claim_batch_items WHERE batch_id=? ORDER BY address").all(id)
-    .map(row => ({ address: String(row.address), amount: String(row.amount) }));
+export function listClaimRootItems(id: string): Array<{ address: string; amount: string; proof: string[] }> {
+  return subscriptionDatabase().prepare("SELECT address, amount, proof FROM claim_root_items WHERE batch_id=? ORDER BY address").all(id)
+    .map(row => {
+      let proof: string[] = [];
+      try { proof = JSON.parse(String(row.proof)); } catch { /* 忽略损坏的 proof */ }
+      return { address: String(row.address), amount: String(row.amount), proof };
+    });
 }
 
-export function listClaimBatches(options: { page?: number; pageSize?: number } = {}) {
+export function nextClaimRootEpoch(chainId = chainConfig.id): number {
+  const row = subscriptionDatabase().prepare("SELECT COALESCE(MAX(epoch), 0) AS epoch FROM claim_root_batches WHERE chain_id=?").get(chainId);
+  return Number(row?.epoch || 0) + 1;
+}
+
+export function claimRootBatchByRoot(root: string, epoch: number, chainId = chainConfig.id): ClaimRootBatch | null {
+  const row = subscriptionDatabase().prepare("SELECT * FROM claim_root_batches WHERE chain_id=? AND lower(root)=? AND epoch=?").get(chainId, root.toLowerCase(), epoch);
+  return row ? serializeRootBatch(row) : null;
+}
+
+export function claimRootItem(batchId: string, address: string) {
+  const row = subscriptionDatabase().prepare("SELECT address, amount, proof FROM claim_root_items WHERE batch_id=? AND address=?").get(batchId, address.toLowerCase());
+  if (!row) return null;
+  let proof: string[] = [];
+  try { proof = JSON.parse(String(row.proof)); } catch { /* 忽略损坏的 proof */ }
+  return { address: String(row.address), amount: String(row.amount), proof };
+}
+
+export function listClaimRootBatches(options: { page?: number; pageSize?: number } = {}) {
   const db = subscriptionDatabase();
   const page = Math.max(1, Math.floor(options.page || 1)), pageSize = Math.min(100, Math.max(1, Math.floor(options.pageSize || 20)));
-  const total = Number(db.prepare("SELECT COUNT(*) AS count FROM claim_batches WHERE chain_id=?").get(chainConfig.id)?.count || 0);
-  const rows = db.prepare("SELECT * FROM claim_batches WHERE chain_id=? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?").all(chainConfig.id, pageSize, (page - 1) * pageSize);
-  return { items: rows.map(serializeBatch), total, page, pageSize };
+  const total = Number(db.prepare("SELECT COUNT(*) AS count FROM claim_root_batches WHERE chain_id=?").get(chainConfig.id)?.count || 0);
+  const rows = db.prepare("SELECT * FROM claim_root_batches WHERE chain_id=? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?").all(chainConfig.id, pageSize, (page - 1) * pageSize);
+  return { items: rows.map(serializeRootBatch), total, page, pageSize };
 }
 
-/** 登记批次链上结果；已 applied 的批次重复导入不产生任何发放（幂等）。 */
-export function markClaimBatch(id: string, status: "applied" | "failed", txHash?: string) {
-  const batch = getClaimBatch(id);
+/** 登记 root 批次上链结果；已 applied 的批次重复登记不改变任何状态（幂等）。 */
+export function markClaimRootBatch(id: string, status: "applied" | "failed", txHash?: string) {
+  const batch = getClaimRootBatch(id);
   if (!batch) throw new AdminRequestError("批次不存在", 404);
-  if (batch.status === "applied") return batch; // 幂等：重复登记不改变任何额度
+  if (batch.status === "applied") return batch; // 幂等：重复登记不改变任何状态
   if (status === "applied") {
     if (typeof txHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new AdminRequestError("请填写有效的交易哈希", 400);
-    subscriptionDatabase().prepare("UPDATE claim_batches SET status='applied', tx_hash=?, applied_at=? WHERE chain_id=? AND id=?")
+    subscriptionDatabase().prepare("UPDATE claim_root_batches SET status='applied', tx_hash=?, applied_at=? WHERE chain_id=? AND id=?")
       .run(txHash, Date.now(), chainConfig.id, id);
   } else {
-    subscriptionDatabase().prepare("UPDATE claim_batches SET status='failed' WHERE chain_id=? AND id=?").run(chainConfig.id, id);
+    subscriptionDatabase().prepare("UPDATE claim_root_batches SET status='failed' WHERE chain_id=? AND id=?").run(chainConfig.id, id);
   }
-  return getClaimBatch(id)!;
-}
-
-// --------------------------------------------------------- 签名领取授权
-export interface ClaimAuthorization {
-  id: string; address: string; nonce: string; amount: string; mode: number; deadline: number;
-  signature: string; status: string; txHash: string | null; createdAt: number; updatedAt: number;
-}
-function serializeAuthorization(row: Row): ClaimAuthorization {
-  return {
-    id: String(row.id), address: String(row.address), nonce: String(row.nonce), amount: String(row.amount),
-    mode: Number(row.mode), deadline: Number(row.deadline), signature: String(row.signature), status: String(row.status),
-    txHash: row.tx_hash ? String(row.tx_hash) : null, createdAt: Number(row.created_at), updatedAt: Number(row.updated_at),
-  };
-}
-
-export function getClaimAuthorization(address: string, nonce: string, chainId = chainConfig.id): ClaimAuthorization | null {
-  const row = subscriptionDatabase().prepare("SELECT * FROM claim_authorizations WHERE chain_id=? AND address=? AND nonce=?").get(chainId, address.toLowerCase(), String(nonce));
-  return row ? serializeAuthorization(row) : null;
-}
-
-/** 最近一张仍可复用（未领取、未过期）的授权；用于「重复请求返回同一签名」。 */
-export function latestOpenAuthorization(address: string, chainId = chainConfig.id): ClaimAuthorization | null {
-  const row = subscriptionDatabase().prepare(
-    "SELECT * FROM claim_authorizations WHERE chain_id=? AND address=? AND status='signed' ORDER BY created_at DESC, rowid DESC LIMIT 1",
-  ).get(chainId, address.toLowerCase());
-  return row ? serializeAuthorization(row) : null;
-}
-
-/** nonce 单调递增：取该地址历史最大 nonce + 1。 */
-export function nextAuthorizationNonce(address: string, chainId = chainConfig.id): string {
-  const row = subscriptionDatabase().prepare(
-    "SELECT MAX(CAST(nonce AS INTEGER)) AS value FROM claim_authorizations WHERE chain_id=? AND address=?",
-  ).get(chainId, address.toLowerCase());
-  return String((BigInt(Number(row?.value || 0))) + 1n);
-}
-
-export function countAuthorizationsSince(address: string, since: number, chainId = chainConfig.id): number {
-  return Number(subscriptionDatabase().prepare(
-    "SELECT COUNT(*) AS count FROM claim_authorizations WHERE chain_id=? AND address=? AND created_at>?",
-  ).get(chainId, address.toLowerCase(), since)?.count || 0);
-}
-
-/** 本地已登记的领取总额；与链上 claimedOf 取较大值，防止并发导致超发。 */
-export function localClaimedTokens(address: string, chainId = chainConfig.id): bigint {
-  const rows = subscriptionDatabase().prepare(
-    "SELECT amount FROM claim_authorizations WHERE chain_id=? AND address=? AND status='claimed'",
-  ).all(chainId, address.toLowerCase());
-  let total = 0n;
-  for (const row of rows) { try { total += BigInt(String(row.amount)); } catch { /* 忽略损坏记录 */ } }
-  return total;
-}
-
-/**
- * 落库一张新授权：先把该地址仍待领取的旧授权标记为 superseded，再写入新 nonce。
- * 同一 (地址, nonce) 有唯一约束，重复插入会抛错而不会产生两张同 nonce 的授权。
- */
-export function saveClaimAuthorization(input: {
-  address: string; nonce: string; amount: bigint; mode: number; deadline: number; signature: string;
-}) {
-  const db = subscriptionDatabase(), address = input.address.toLowerCase(), now = Date.now();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    db.prepare("UPDATE claim_authorizations SET status='superseded', updated_at=? WHERE chain_id=? AND address=? AND status='signed'")
-      .run(now, chainConfig.id, address);
-    db.prepare(`INSERT INTO claim_authorizations (id, chain_id, address, nonce, amount, mode, deadline, signature, status, created_at, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(randomUUID(), chainConfig.id, address, String(input.nonce), input.amount.toString(), input.mode, input.deadline, input.signature, "signed", now, now);
-    db.exec("COMMIT");
-  } catch (error) { db.exec("ROLLBACK"); throw error; }
-  return getClaimAuthorization(address, input.nonce)!;
-}
-
-/** 领取成功后登记本地回执：同一 nonce 只登记一次，重复调用不重复计数。 */
-export function markAuthorizationClaimed(address: string, nonce: string, txHash: string) {
-  const record = getClaimAuthorization(address, nonce);
-  if (!record) throw new AdminRequestError("授权记录不存在", 404);
-  if (record.status === "claimed") return { ...record, idempotent: true };
-  subscriptionDatabase().prepare("UPDATE claim_authorizations SET status='claimed', tx_hash=?, updated_at=? WHERE chain_id=? AND address=? AND nonce=?")
-    .run(txHash.toLowerCase(), Date.now(), chainConfig.id, address.toLowerCase(), String(nonce));
-  return { ...getClaimAuthorization(address, nonce)!, idempotent: false };
+  return getClaimRootBatch(id)!;
 }
 
 /** 服务器聚合出的单人累计应得额度（CaBi 最小单位）。 */

@@ -19,7 +19,14 @@ export function isAdminConfigured() { return configuration() !== null; }
 export class AdminRequestError extends Error { constructor(message: string, public status: number) { super(message); } }
 export function assertSameOrigin(request: Request) {
   const origin = request.headers.get("origin"), expected = process.env.APP_ORIGIN || new URL(request.url).origin;
-  if (!origin || origin !== expected) throw new AdminRequestError("请从本站页面提交操作", 403);
+  let requestOrigin = "", expectedOrigin = "";
+  try {
+    requestOrigin = new URL(origin || "").origin;
+    expectedOrigin = new URL(expected).origin;
+  } catch { /* Invalid or missing origins are rejected below. */ }
+  if (!origin || origin === "null" || !requestOrigin || requestOrigin !== expectedOrigin) {
+    throw new AdminRequestError("请从本站页面提交操作；若通过自定义域名访问，请检查服务器 APP_ORIGIN 配置", 403);
+  }
 }
 export async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
   const text = await request.text();

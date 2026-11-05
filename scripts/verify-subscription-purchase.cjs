@@ -112,7 +112,7 @@ async function click(element, wait = 24) {
     assert(/35000\s*CaBi/.test(document.body.textContent));
     assert(document.body.textContent.includes('领取到账 · 70%'));
     assert(document.body.textContent.includes('24500'));
-    assert(document.body.textContent.includes('组建流动性 · 30%'));
+    assert(document.body.textContent.includes('转入 LP 地址 · 30%'));
     assert(document.body.textContent.includes('10500'));
     assert(document.body.textContent.includes('BCDE3456'));
     assert(document.body.textContent.includes(PAYEE));

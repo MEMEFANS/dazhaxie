@@ -223,10 +223,10 @@ function PurchasePanelForm() {
       <div className={styles.receipt}>
         <div className={styles.payment}><span>本次支付</span><strong aria-live="polite">{data ? formatAssetAmount(amount, data.usdtDecimals) : "—"}<small>USDT</small></strong></div>
         <div className={styles.allocation}><span><Coins size={14} />对应 CaBi 配额</span><strong>{data ? formatAssetAmount(quota, data.tokenDecimals) : "—"}<small>CaBi</small></strong></div>
-        <p className={styles.receiptHint}>认购后前往代币中心领取：需支付 30% USDT 等值组建流动性，30% CaBi 进入项目 LP，70% 到账可交易。</p>
+        <p className={styles.receiptHint}>领取时另付 30% USDT 等值。</p>
         <div className={styles.claimOptions}>
           <div><span>领取到账 · 70%</span><strong>{data ? formatAssetAmount(quota * 70n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong></div>
-          <div><span>组建流动性 · 30%</span><strong>{data ? formatAssetAmount(quota * 30n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong><p className={styles.claimRequirement}>领取时另付 30% USDT 等值</p></div>
+          <div><span>转入 LP 地址 · 30%</span><strong>{data ? formatAssetAmount(quota * 30n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong></div>
         </div>
       </div>
 

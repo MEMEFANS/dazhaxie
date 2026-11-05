@@ -112,33 +112,29 @@ function ClaimForm() {
   const statusTone = !server?.configured ? "gray" : claimable ? "green" : "gray";
   const statusLabel = !server?.configured ? "暂未开放" : claimable ? "可领取" : "等待额度";
   return <Card className="p-5 sm:p-6">
-    <SectionHead eyebrow="CABI CLAIM" title="认购与奖励领取" desc="认购与奖励自动累计，可自行领取" right={<Badge tone={statusTone}>{statusLabel}</Badge>} />
+    <SectionHead eyebrow="CABI CLAIM" title="CaBi 领取" desc="认购与奖励额度已自动汇总" right={<Badge tone={statusTone}>{statusLabel}</Badge>} />
     <ServiceQueryNotice {...query} label="CaBi 领取" />
     <div id="allocation" className="mt-4 scroll-mt-36 rounded-lg border border-line bg-well px-4 py-2">
       <DataRow label="累计待领" value={claimable !== undefined ? formatAssetAmount(claimable, data?.tokenDecimals ?? 18) + " CaBi" : "—"} />
+      <DataRow label="领取池储备" value={data ? formatAssetAmount(data.poolBalance, data.tokenDecimals) + " CaBi" : "—"} />
       <label className="block py-2 text-xs text-mute">本次领取数量（CaBi）
         <input value={requested} onChange={event => { setRequested(event.target.value); setAccepted(""); }} placeholder={claimable !== undefined ? `默认全部领取：${formatAssetAmount(claimable, data?.tokenDecimals ?? 18)}` : "输入数量"} inputMode="decimal" disabled={!claimable || controller.busy || checking} className="field mt-2 min-h-11 w-full px-3 text-sm" />
       </label>
       <DataRow label="另需支付" value={quote && data ? formatAssetAmount(quote.usdtRequired, data.usdtDecimals) + " USDT" : "—"} />
     </div>
     <div id="claim-center" className="mt-4 scroll-mt-36 rounded-xl border border-line bg-well p-4">
-      <strong className="text-sm">领取并转入 LP 资金</strong>
-      <span className="mt-2 block text-xs leading-6 text-mute">70% CaBi 到账钱包；30% CaBi 与另付的 USDT 转入项目 LP 接收地址。实际添加流动性由项目方执行，领取不会自动生成 LP。</span>
+      <strong className="text-sm">本次领取</strong>
       {quote && data ? <div className="mt-3 grid grid-cols-1 gap-2 text-xs leading-6 text-mute sm:grid-cols-3">
-        <span>转入 LP：{formatAssetAmount(quote.lpTokens, data.tokenDecimals)} CaBi</span>
-        <span>支付 USDT：{formatAssetAmount(quote.usdtRequired, data.usdtDecimals)}</span>
-        <span>到账钱包：{formatAssetAmount(quote.payout, data.tokenDecimals)} CaBi</span>
+        <span>到账（70%）：{formatAssetAmount(quote.payout, data.tokenDecimals)} CaBi</span>
+        <span>转入 LP（30%）：{formatAssetAmount(quote.lpTokens, data.tokenDecimals)} CaBi</span>
+        <span>另付：{formatAssetAmount(quote.usdtRequired, data.usdtDecimals)} USDT</span>
       </div> : null}
     </div>
-    <div className="mt-4 rounded-lg border border-line bg-well px-4 py-2">
-      <DataRow label="本次到账" value={quote && data ? formatAssetAmount(quote.payout, data.tokenDecimals) + " CaBi（70%）" : "—"} />
-      <DataRow label="已领取累计" value={data ? formatAssetAmount(data.totalClaimed, data.tokenDecimals) : "—"} />
-    </div>
-    <p className="mt-3 text-xs leading-6 text-mute">领取时另付 30% USDT 等值；未配置 LP 接收地址时暂不能领取。额度按认购与奖励自动累计，可分多次领取。</p>
+    <p className="mt-3 text-xs leading-6 text-mute">LP 资金转入项目地址，由项目方后续处理。</p>
     {!data?.lpReady ? <p className="mt-2 text-xs leading-6 text-mute">{data?.lpError || "LP 接收地址尚未配置，请等待管理员完成配置。"}</p> : null}
     {!server?.configured ? <p className="mt-2 text-xs leading-6 text-mute">领取通道暂未开放，请稍后再试或联系客服。</p> : null}
     {server?.configured && data && data.signer.toLowerCase() !== (server.signer || "").toLowerCase() ? <p className="mt-2 text-xs leading-6 text-down">领取通道维护中，请稍后再试。</p> : null}
-    <label className="mt-3 flex items-start gap-2 text-xs leading-6 text-mute"><input aria-label="确认本次 CaBi 领取" type="checkbox" checked={confirmed} onChange={event => setAccepted(event.target.checked ? consentKey : "")} disabled={Boolean(reason) || controller.busy || checking} className="mt-1.5 h-4 w-4 shrink-0" />我已核对到账数量与支付金额，同意将 30% CaBi 和 USDT 转入项目 LP 接收地址。</label>
+    <label className="mt-3 flex items-start gap-2 text-xs leading-6 text-mute"><input aria-label="确认本次 CaBi 领取" type="checkbox" checked={confirmed} onChange={event => setAccepted(event.target.checked ? consentKey : "")} disabled={Boolean(reason) || controller.busy || checking} className="mt-1.5 h-4 w-4 shrink-0" />我已确认到账数量及支付金额。</label>
     {!state.connected ? <button onClick={connect} className="btn btn-outline mt-3 min-h-11 px-4 text-sm">连接钱包</button> : null}
     {state.connected && server?.needsSignIn && server.configured ? <button onClick={() => void signIn()} disabled={signingIn} className="btn btn-outline mt-3 min-h-11 w-full text-sm">{signingIn ? "正在登录…" : "登录后查看可领额度"}</button> : null}
     <button onClick={() => void claim()} disabled={Boolean(reason) || !confirmed || controller.busy || checking} className="btn btn-gold mt-3 min-h-11 w-full text-sm">{checking ? "正在核对" : controller.busy ? "等待钱包确认" : reason || "确认领取 70%"}</button>

@@ -143,3 +143,5 @@ cron 示例：
 ## 8. 构建期变量提醒
 
 `NEXT_PUBLIC_CHAIN_ID`、代币/合约地址、RPC、`NEXT_PUBLIC_TRADING_MODE` 在 `next build` 时写入产物。修改后必须重新构建并重启；只改运行环境变量不会生效。
+
+正式 CaBi 主网配置记录在 `deploy/bsc-mainnet.env`，仅包含公开配置。构建前将其中四项合并到构建环境的 `.env.production`，保留其他现有配置。代币地址为 `0xeccbfbb6708ff051e91a2113e4ac4e19b86e26dd`，网络为 BSC 主网（56）。交易池和领取池需独立配置；填写代币地址不会自动开放交易或领取。

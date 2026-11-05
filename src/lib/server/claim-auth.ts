@@ -47,7 +47,6 @@ export const claimPoolAbi = parseAbi([
 ]);
 const erc20Abi = parseAbi([
   "function balanceOf(address) view returns (uint256)",
-  "function allowance(address,address) view returns (uint256)",
 ]);
 
 export const claimPoolClient = createPublicClient({
@@ -137,8 +136,9 @@ export interface ClaimAuthorizationResponse {
 }
 
 /**
- * 领取前置条件（唯一路径）：LP 接收地址与 USDT 必须已配置，且用户 USDT 余额 / 授权
- * 足以支付本次额度对应的 30% USDT。任何一项不满足都不签发授权，避免用户签名后在链上 revert。
+ * 签发凭证前核对 LP 配置、USDT 与余额。用户拿到凭证后由前端交易控制器
+ * 请求本次所需的 USDT approve，再提交 claim；此处不能以未授权为由阻止发放凭证。
+ * USDT 的实际授权额度仍由领取合约的 transferFrom 在链上校验。
  */
 async function assertClaimPrerequisites(pool: Address, address: string, amount: bigint) {
   let lpReceiver: Address, usdt: Address, usdtDecimals: number;
@@ -162,18 +162,14 @@ async function assertClaimPrerequisites(pool: Address, address: string, amount: 
   }
   const required = amount * UNIT_PRICE * LP_USDT_RATIO * (10n ** BigInt(usdtDecimals)) / (TOKENS_PER_SHARE * RATIO_DENOMINATOR);
   if (required === 0n) throw new AdminRequestError("领取额度不足以组建流动性", 400);
-  let balance: bigint, allowance: bigint;
+  let balance: bigint;
   try {
-    [balance, allowance] = await Promise.all([
-      claimPoolClient.readContract({ address: usdt, abi: erc20Abi, functionName: "balanceOf", args: [address as Address] }) as Promise<bigint>,
-      claimPoolClient.readContract({ address: usdt, abi: erc20Abi, functionName: "allowance", args: [address as Address, pool] }) as Promise<bigint>,
-    ]);
+    balance = await claimPoolClient.readContract({ address: usdt, abi: erc20Abi, functionName: "balanceOf", args: [address as Address] }) as bigint;
   } catch {
-    throw new AdminRequestError("暂时无法读取 USDT 余额或授权，请稍后重试", 503);
+    throw new AdminRequestError("暂时无法读取 USDT 余额，请稍后重试", 503);
   }
   const readable = formatUnits(required, usdtDecimals);
   if (balance < required) throw new AdminRequestError(`USDT 余额不足：本次需支付 ${readable} USDT`, 400);
-  if (allowance < required) throw new AdminRequestError(`USDT 授权不足：请先授权 ${readable} USDT 给领取池`, 400);
   return { required, lpReceiver, usdt };
 }
 

@@ -9,7 +9,7 @@
 1. 用户在 DApp 连接钱包并完成一次社群签名登录（复用 `challenge/verifyMessage` 会话）。
 2. 领取卡请求 `GET /api/claim/authorization`：返回签名服务状态与「本次可领额度」。
 3. 页面用链上 `previewClaim(amount)` 展示到账 70%、进入 LP 的 30% 与需另付的 30% USDT。
-4. 二次确认后 `POST /api/claim/authorization`（无 body 参数）：服务器重新聚合额度、读取链上 `claimedOf` 与本地回执，校验 `lpReceiver` 已配置且用户 USDT 余额/授权充足，按需签发或复用一张未过期授权，返回 `{ amount, nonce, deadline, signature, usdtRequired, claimPool, signer }`。
+4. 二次确认后 `POST /api/claim/authorization`，body 提交本次 `amount`：服务器重新聚合额度、读取链上 `claimedOf` 与本地回执，校验 `lpReceiver` 已配置且用户 USDT 余额充足，按需签发或复用一张未过期授权。返回值包含 `amount`、`cumulativeLimit`、`nonce`、`deadline`、`signature`、`usdtRequired`、`claimPool`、`signer`。此时不要求已有 USDT allowance；前端拿到凭证后在钱包请求本次所需金额的 approve，确认后再提交 claim，合约通过 transferFrom 校验实际授权及付款。
 5. 前端先对 USDT 做精确授权，再调用 `claim(amount, nonce, deadline, signature)`；合约从用户扣 30% USDT 等值转入 `lpReceiver`，30% CaBi 转入 `lpReceiver`，70% 转给用户。
 6. 交易成功后前端把交易哈希回执登记到 `POST /api/claim/authorization`（`action: "receipt"`），服务器校验链上 `Claimed` 事件后落库；随后刷新额度与链上状态。下一次领取会得到新的 `amount` 与新的 nonce。
 

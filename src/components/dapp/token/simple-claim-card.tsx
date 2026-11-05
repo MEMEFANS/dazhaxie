@@ -135,6 +135,7 @@ function ClaimForm() {
     {!server?.configured ? <p className="mt-2 text-xs leading-6 text-mute">领取通道暂未开放，请稍后再试或联系客服。</p> : null}
     {server?.configured && data && data.signer.toLowerCase() !== (server.signer || "").toLowerCase() ? <p className="mt-2 text-xs leading-6 text-down">领取通道维护中，请稍后再试。</p> : null}
     <label className="mt-3 flex items-start gap-2 text-xs leading-6 text-mute"><input aria-label="确认本次 CaBi 领取" type="checkbox" checked={confirmed} onChange={event => setAccepted(event.target.checked ? consentKey : "")} disabled={Boolean(reason) || controller.busy || checking} className="mt-1.5 h-4 w-4 shrink-0" />我已确认到账数量及支付金额。</label>
+    {quote && data && (data.wallet?.allowance ?? 0n) < quote.usdtRequired ? <p className="mt-2 text-xs leading-6 text-mute">点击领取后，先在钱包授权本次所需的 {formatAssetAmount(quote.usdtRequired, data.usdtDecimals)} USDT，再确认领取交易。</p> : null}
     {!state.connected ? <button onClick={connect} className="btn btn-outline mt-3 min-h-11 px-4 text-sm">连接钱包</button> : null}
     {state.connected && server?.needsSignIn && server.configured ? <button onClick={() => void signIn()} disabled={signingIn} className="btn btn-outline mt-3 min-h-11 w-full text-sm">{signingIn ? "正在登录…" : "登录后查看可领额度"}</button> : null}
     <button onClick={() => void claim()} disabled={Boolean(reason) || !confirmed || controller.busy || checking} className="btn btn-gold mt-3 min-h-11 w-full text-sm">{checking ? "正在核对" : controller.busy ? "等待钱包确认" : reason || "确认领取 70%"}</button>

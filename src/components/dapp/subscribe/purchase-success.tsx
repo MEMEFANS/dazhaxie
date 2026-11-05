@@ -28,7 +28,7 @@ export function PurchaseSuccess({ shares, paid, allocation, txHash }: PurchaseSu
         <div><dt>本次支付</dt><dd>{paid}<span>USDT</span></dd></div>
         <div><dt>本次获得配额</dt><dd>{allocation}<span>CaBi</span></dd></div>
       </dl>
-      <p className={styles.note}>配额尚需领取，实际到账数量以你选择的领取方式为准。</p>
+      <p className={styles.note}>配额尚需领取：领取时支付 30% USDT 等值组建流动性，30% CaBi 进入项目 LP，70% 到账。</p>
       <div className={styles.nextSteps}>
         <Link href="/dapp/token#allocation" className={styles.viewAllocation}>查看配额</Link>
         <Link href="/dapp/token#claim-center" className={styles.claimTokens}>前往领取<ArrowRight size={15} aria-hidden="true" /></Link>

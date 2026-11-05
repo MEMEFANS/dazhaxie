@@ -9,14 +9,14 @@ pragma solidity ^0.8.20;
  * 用只具备签名权限的 CLAIM_SIGNER 私钥签发 EIP-712 授权；用户拿签名调用 claim 自己去领。
  *
  * 权限边界：
- * - signer：只能签发领取授权，不能转移池内资金、不能改比例、不能换 owner。
- * - owner：只能存币、取回未分配余额、换 signer、配置 USDT / LP / 比例 / 可选限额，
+ * - signer：只能签发领取授权，不能转移池内资金、不能换 owner。
+ * - owner：只能存币、取回未分配余额、换 signer、配置 USDT / LP 接收地址与可选限额，
  *   不能代替用户领取，也不能替用户签授权。
  *
- * 领取规则（与现行业务口径一致）：
- * - mode 0：本次授权额度发 50%；剩余 50% 在 burnRemainder=true 时销毁，否则留在池内。
- * - mode 1：本次授权额度发 70%；剩余 30% CaBi 转入项目 LP 接收地址，
- *   同时按 30% USDT 等值收取配对资金（单价 50 USDT / 份、每份 35000 CaBi）。
+ * 领取规则（唯一路径）：
+ * - 本次授权额度发 70% 给用户；剩余 30% CaBi 转入项目 LP 接收地址，
+ *   同时由用户支付 30% USDT 等值（单价 50 USDT / 份、每份 35000 CaBi）转入同一 LP 接收地址。
+ * - LP 接收地址或 USDT 未配置、USDT 余额或授权不足时，整笔领取直接 revert。
  *
  * 安全要点：EIP-712 结构化摘要（含 chainId 与合约地址，防跨链/跨合约重放）、
  * nonce 一次性（防同链重放）、deadline 过期、金额与额度上限校验、nonReentrant、
@@ -53,10 +53,13 @@ contract CaBiSignedClaimPool {
     uint256 public constant UNIT_PRICE = 50; // USDT / 份
     uint256 public constant TOKENS_PER_SHARE = 35_000 * 1e18; // 18 位 CaBi
     uint256 public constant RATIO_DENOMINATOR = 100;
+    uint256 public constant PAYOUT_RATIO = 70; // 用户实得（唯一领取路径）
+    uint256 public constant LP_TOKEN_RATIO = 30; // 进入 LP 接收地址的代币比例
+    uint256 public constant LP_USDT_RATIO = 30; // 用户另付的 USDT 等值比例
 
-    // EIP-712：Claim(address user,uint256 amount,uint256 nonce,uint256 deadline,uint8 mode)
+    // EIP-712：Claim(address user,uint256 amount,uint256 nonce,uint256 deadline)
     bytes32 public constant CLAIM_TYPEHASH =
-        keccak256("Claim(address user,uint256 amount,uint256 nonce,uint256 deadline,uint8 mode)");
+        keccak256("Claim(address user,uint256 amount,uint256 nonce,uint256 deadline)");
     bytes32 public constant DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 public constant DOMAIN_NAME_HASH = keccak256(bytes("CaBiSignedClaimPool"));
@@ -69,13 +72,6 @@ contract CaBiSignedClaimPool {
     address public owner;
     address public pendingOwner;
     address public lpReceiver;
-    bool public burnRemainder = true;
-
-    // 比例，单位百分比；setter 上限 100。默认与现行业务一致。
-    uint256 public directRatio = 50; // mode 0 用户实得
-    uint256 public lpRatio = 70; // mode 1 用户实得
-    uint256 public lpTokenRatio = 30; // mode 1 进入 LP 接收地址代币
-    uint256 public lpUsdtRatio = 30; // mode 1 用户另付的 USDT 等值比例
 
     // 每个地址的累计授权上限；0 表示不额外限制（由签名金额与 nonce 控制）。
     mapping(address => uint256) public claimLimitOf;
@@ -85,7 +81,6 @@ contract CaBiSignedClaimPool {
     mapping(address => mapping(uint256 => bool)) public nonceUsed;
 
     uint256 public totalClaimed;
-    uint256 public totalBurned;
     uint256 public totalLpTokens;
     uint256 public totalUsdtCharged;
 
@@ -100,22 +95,17 @@ contract CaBiSignedClaimPool {
     event Claimed(
         address indexed user,
         uint256 amount,
-        uint8 indexed mode,
         uint256 nonce,
         uint256 payout,
-        uint256 burnAmount,
         uint256 lpTokens,
         uint256 usdtCharged
     );
     event LpReceiverUpdated(address indexed previousReceiver, address indexed newReceiver);
     event UsdtUpdated(address indexed previousUsdt, address indexed newUsdt);
-    event BurnRemainderUpdated(bool enabled);
-    event RatiosUpdated(uint256 directRatio, uint256 lpRatio, uint256 lpTokenRatio, uint256 lpUsdtRatio);
 
     error NotOwner();
     error ZeroAddress();
     error InvalidAmount();
-    error InvalidMode();
     error InvalidSignature();
     error SignatureExpired();
     error NonceUsed();
@@ -124,7 +114,6 @@ contract CaBiSignedClaimPool {
     error InsufficientPoolBalance();
     error LpReceiverUnset();
     error UsdtUnset();
-    error RatioInvalid();
     error Reentrancy();
 
     modifier onlyOwner() {
@@ -154,7 +143,7 @@ contract CaBiSignedClaimPool {
     }
 
     /// 供服务端/前端核对：返回某个授权参数组合的摘要（不校验签名）。
-    function claimDigest(address user, uint256 amount, uint256 nonce, uint256 deadline, uint8 mode)
+    function claimDigest(address user, uint256 amount, uint256 nonce, uint256 deadline)
         public
         view
         returns (bytes32)
@@ -163,7 +152,7 @@ contract CaBiSignedClaimPool {
             abi.encodePacked(
                 "\x19\x01",
                 domainSeparator(),
-                keccak256(abi.encode(CLAIM_TYPEHASH, user, amount, nonce, deadline, mode))
+                keccak256(abi.encode(CLAIM_TYPEHASH, user, amount, nonce, deadline))
             )
         );
     }
@@ -194,35 +183,19 @@ contract CaBiSignedClaimPool {
     function setUsdt(address usdt_) external onlyOwner {
         if (usdt_ == address(0)) revert ZeroAddress();
         uint8 decimals = IERC20(usdt_).decimals();
-        if (decimals > 18) revert RatioInvalid();
+        if (decimals > 18) revert InvalidAmount();
         address previous = usdt;
         usdt = usdt_;
         usdtDecimals = decimals;
         emit UsdtUpdated(previous, usdt_);
     }
 
+    /// 领取代币与用户支付的 USDT 都进入该地址；未配置时领取直接 revert。
     function setLpReceiver(address receiver) external onlyOwner {
         if (receiver == address(0)) revert ZeroAddress();
         address previous = lpReceiver;
         lpReceiver = receiver;
         emit LpReceiverUpdated(previous, receiver);
-    }
-
-    function setBurnRemainder(bool enabled) external onlyOwner {
-        burnRemainder = enabled;
-        emit BurnRemainderUpdated(enabled);
-    }
-
-    function setRatios(uint256 direct, uint256 lp, uint256 lpToken, uint256 lpUsdt) external onlyOwner {
-        if (direct == 0 || direct > RATIO_DENOMINATOR || lp == 0 || lp > RATIO_DENOMINATOR) revert RatioInvalid();
-        // mode 1 的 LP 份额按「授权额度减去用户实得」计算，因此 lpToken 必须等于 100 - lp。
-        if (lpToken != RATIO_DENOMINATOR - lp) revert RatioInvalid();
-        if (lpUsdt == 0 || lpUsdt > RATIO_DENOMINATOR) revert RatioInvalid();
-        directRatio = direct;
-        lpRatio = lp;
-        lpTokenRatio = lpToken;
-        lpUsdtRatio = lpUsdt;
-        emit RatiosUpdated(direct, lp, lpToken, lpUsdt);
     }
 
     /// 可选的每地址累计上限（0 = 不额外限制）；用于风控兜底，不是正常发放路径。
@@ -250,17 +223,16 @@ contract CaBiSignedClaimPool {
     }
 
     // ---------------------------------------------------------------- claim
-    function claim(uint256 amount, uint256 nonce, uint256 deadline, uint8 mode, bytes calldata signature)
+    function claim(uint256 amount, uint256 nonce, uint256 deadline, bytes calldata signature)
         external
         nonReentrant
     {
-        if (mode != 0 && mode != 1) revert InvalidMode();
         if (amount == 0) revert InvalidAmount();
         if (deadline < block.timestamp) revert SignatureExpired();
         if (nonceUsed[msg.sender][nonce]) revert NonceUsed();
         address currentSigner = signer;
         if (currentSigner == address(0)) revert SignerUnset();
-        if (_recover(claimDigest(msg.sender, amount, nonce, deadline, mode), signature) != currentSigner) {
+        if (_recover(claimDigest(msg.sender, amount, nonce, deadline), signature) != currentSigner) {
             revert InvalidSignature();
         }
         _checkLimit(msg.sender, amount);
@@ -269,15 +241,14 @@ contract CaBiSignedClaimPool {
         claimedOf[msg.sender] += amount;
         totalClaimed += amount;
 
-        Settlement memory settlement = _settle(amount, mode);
+        Settlement memory settlement = _settle(amount);
         emit Claimed(
-            msg.sender, amount, mode, nonce, settlement.payout, settlement.burnAmount, settlement.lpTokens, settlement.usdtCharged
+            msg.sender, amount, nonce, settlement.payout, settlement.lpTokens, settlement.usdtCharged
         );
     }
 
     struct Settlement {
         uint256 payout;
-        uint256 burnAmount;
         uint256 lpTokens;
         uint256 usdtCharged;
     }
@@ -287,37 +258,32 @@ contract CaBiSignedClaimPool {
         if (limit != 0 && claimedOf[user] + amount > limit) revert ClaimLimitExceeded();
     }
 
-    function _settle(uint256 amount, uint8 mode) private returns (Settlement memory settlement) {
-        if (mode == 0) {
-            settlement.payout = amount * directRatio / RATIO_DENOMINATOR;
-            settlement.burnAmount = amount - settlement.payout;
-        } else {
-            settlement.payout = amount * lpRatio / RATIO_DENOMINATOR;
-            settlement.lpTokens = amount - settlement.payout;
-            if (lpReceiver == address(0)) revert LpReceiverUnset();
-            if (usdt == address(0)) revert UsdtUnset();
-            settlement.usdtCharged = _usdtEquivalent(amount);
-            if (settlement.usdtCharged == 0) revert InvalidAmount();
-        }
+    function _settle(uint256 amount) private returns (Settlement memory settlement) {
+        settlement.payout = amount * PAYOUT_RATIO / RATIO_DENOMINATOR;
+        settlement.lpTokens = amount - settlement.payout;
+        settlement.usdtCharged = _usdtEquivalent(amount);
+        if (settlement.usdtCharged == 0) revert InvalidAmount();
+
+        address receiver = lpReceiver;
+        if (receiver == address(0)) revert LpReceiverUnset();
+        address usdtToken = usdt;
+        if (usdtToken == address(0)) revert UsdtUnset();
+
         if (IERC20(token).balanceOf(address(this)) < settlement.payout + settlement.lpTokens) {
             revert InsufficientPoolBalance();
         }
-        if (mode == 0 && burnRemainder && settlement.burnAmount > 0) {
-            totalBurned += settlement.burnAmount;
-            IERC20(token).safeTransfer(address(0x000000000000000000000000000000000000dEaD), settlement.burnAmount);
-        } else if (mode == 1) {
-            totalLpTokens += settlement.lpTokens;
-            totalUsdtCharged += settlement.usdtCharged;
-            IERC20(usdt).safeTransferFrom(msg.sender, lpReceiver, settlement.usdtCharged);
-            IERC20(token).safeTransfer(lpReceiver, settlement.lpTokens);
-        } else {
-            settlement.burnAmount = 0;
-        }
+
+        totalLpTokens += settlement.lpTokens;
+        totalUsdtCharged += settlement.usdtCharged;
+        // 未授权或余额不足时 transferFrom 会直接失败，整笔领取回滚（不会只发 70%）。
+        IERC20(usdtToken).safeTransferFrom(msg.sender, receiver, settlement.usdtCharged);
+        IERC20(token).safeTransfer(receiver, settlement.lpTokens);
         IERC20(token).safeTransfer(msg.sender, settlement.payout);
     }
 
     function _usdtEquivalent(uint256 amount) private view returns (uint256) {
-        return amount * UNIT_PRICE * lpUsdtRatio * (10 ** usdtDecimals) / (TOKENS_PER_SHARE * RATIO_DENOMINATOR);
+        return amount * UNIT_PRICE * LP_USDT_RATIO * (10 ** usdtDecimals)
+            / (TOKENS_PER_SHARE * RATIO_DENOMINATOR);
     }
 
     function _recover(bytes32 digest, bytes calldata signature) private pure returns (address) {
@@ -338,21 +304,15 @@ contract CaBiSignedClaimPool {
     }
 
     // -------------------------------------------------------------- preview
-    function previewClaim(uint256 amount, uint8 mode)
+    function previewClaim(uint256 amount)
         public
         view
-        returns (uint256 payout, uint256 burnAmount, uint256 lpTokens, uint256 usdtRequired)
+        returns (uint256 payout, uint256 lpTokens, uint256 usdtRequired)
     {
-        if (mode != 0 && mode != 1) revert InvalidMode();
-        if (mode == 0) {
-            payout = amount * directRatio / RATIO_DENOMINATOR;
-            burnAmount = burnRemainder ? amount - payout : 0;
-        } else {
-            payout = amount * lpRatio / RATIO_DENOMINATOR;
-            lpTokens = amount - payout;
-            usdtRequired = amount * UNIT_PRICE * lpUsdtRatio * (10 ** usdtDecimals)
-                / (TOKENS_PER_SHARE * RATIO_DENOMINATOR);
-        }
+        payout = amount * PAYOUT_RATIO / RATIO_DENOMINATOR;
+        lpTokens = amount - payout;
+        usdtRequired = amount * UNIT_PRICE * LP_USDT_RATIO * (10 ** usdtDecimals)
+            / (TOKENS_PER_SHARE * RATIO_DENOMINATOR);
     }
 
     function poolBalance() public view returns (uint256) {

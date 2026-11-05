@@ -4,7 +4,17 @@
 
 用户要求在外部薄饼买卖，网站默认 NEXT_PUBLIC_TRADING_MODE=pancake。正式代币使用 CaBiPancakeToken.sol，不使用下方 legacy XBTToken + XBTTradingGateway 方案。两个方案的经济口径不同，不能把旧已部署地址当成新版。
 
-**当前业务架构（2026-11 起）**：认购不再使用 XBTSale，用户直接向后台配置的认购收款地址转 USDT，服务端核验记账；奖励额度由服务器按认购单 + 直推 + 团队极差计算，写入独立领取池 `CaBiSimpleClaimPool(token,owner)`，用户自选直接 50% / 组 LP 70% 领取。`XBTSale.sol` / `CaBiClaimPool.sol` 仅留档，不部署、不被前端引用。部署顺序：代币 → CaBiSimpleClaimPool(token, owner) → setUsdt / setLpReceiver → 代币 approve + deposit → 后台设置收款地址并开启认购 → 生成增量批次 → 离线 CLI 或独立进程写入。owner 私钥不得进入 Web 进程。
+**当前业务架构（2026-11 起）**：认购不再使用 XBTSale，用户直接向后台配置的认购收款地址转 USDT，服务端核验记账；奖励额度由服务器按认购单 + 直推 + 团队极差计算，用仅签名权限的 CLAIM_SIGNER 签发 EIP-712 授权，用户自己调用 `CaBiSignedClaimPool(token, signer, owner)` 领取。领取只有一条路径：支付 30% USDT 等值，30% CaBi 与这笔 USDT 一并进入 lpReceiver，70% CaBi 到账用户。`XBTSale.sol` / `CaBiClaimPool.sol` / `CaBiSimpleClaimPool.sol` 仅留档，不部署、不被前端引用。部署顺序：代币 → CaBiSignedClaimPool(token, signer, owner) → setUsdt / setLpReceiver → 代币 approve + deposit → 后台设置收款地址并开启认购 → 配置 CLAIM_SIGNER_PRIVATE_KEY（需与链上 signer 一致）→ 用户签名登录自领。owner 私钥不得进入 Web 进程。
+
+### 签名自领领取池：CaBiSignedClaimPool
+
+constructor(tokenAddress, signerAddress, ownerAddress) 三参数；token/signer 可换（setSigner 由 owner 调用，换后旧签名立即失效），owner 两步交接。
+
+固定比例（常量，无 setter）：`PAYOUT_RATIO=70`、`LP_TOKEN_RATIO=30`、`LP_USDT_RATIO=30`；USDT 金额 = 额度 × 50 × 30% × 10^usdtDecimals ÷ 35000，与认购单价口径一致。`lpReceiver` 或 `usdt` 未配置、用户 USDT 余额或授权不足时，整笔领取 revert，不存在 50% 兜底。
+
+接口：`previewClaim(amount)`、`claim(amount, nonce, deadline, signature)`、`claimDigest(...)`、`deposit`、`withdrawUnused`、`setSigner`、`setLpReceiver`、`setUsdt`、`setClaimLimit`、`transferOwnership` / `acceptOwnership`；只读 `claimedOf`、`nonceUsed`、`poolBalance`、`allocatedUnclaimed`、`totalClaimed`、`totalLpTokens`、`totalUsdtCharged`。
+
+EIP-712：domain `("CaBiSignedClaimPool","1",chainId,pool)`，结构 `Claim(user,amount,nonce,deadline)`；nonce 一次性、deadline 限时，服务端签发前会校验 USDT 支付能力。
 
 ### 代币与手续费
 
@@ -13,7 +23,7 @@
 - 转入指定pair卖出时：3% CaBi直接去0x000000000000000000000000000000000000dEaD，97%进入pair。owner同样收卖税。
 - 普通钱包和业务合约转账不收交易税；不自动覆盖其它池、V3或任意多跳路径。
 - 普通持仓默认20万，可 setMaxWalletAmount；setMaxWalletExempt 仅豁免持仓上限，不豁免买卖税。新owner需transferOwnership提名后acceptOwnership接受。
-- 代币合约不承担普通用户奖励分配或领取。claimDividend 仅处理分红地址待领 USDT，不是用户的 CaBi 领取入口；用户通过独立 CaBiSimpleClaimPool(token,owner) 选择直接 50% 或组 LP 70% 领取，额度由服务器批次写入。
+- 代币合约不承担普通用户奖励分配或领取。claimDividend 仅处理分红地址待领 USDT，不是用户的 CaBi 领取入口；用户通过独立 CaBiSignedClaimPool 领取：支付 30% USDT 组建流动性，30% 代币进 LP 接收地址，70% 到账。
 
 ### 底池固定周期代币销毁
 

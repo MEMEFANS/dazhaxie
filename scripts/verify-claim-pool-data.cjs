@@ -12,7 +12,7 @@ function pass(name) { results.push(name); console.log('PASS ' + name); }
 let state, requests;
 function resetState() {
   state = {
-    chainId: 56, block: 100n, code: '0x6000', mismatchToken: false, mismatchRatios: false, mismatchPreview: false,
+    chainId: 56, block: 100n, code: '0x6000', mismatchToken: false, mismatchPreview: false,
     lpReady: true, configured: true, authenticated: true, serverError: undefined,
     claimable: 35000n * unit, claimed: 0n, poolBalance: 1000000n * unit, actualBalance: 1000000n * unit,
   };
@@ -31,16 +31,12 @@ const client = {
       case 'pendingOwner': return ZERO;
       case 'lpReceiver': return state.lpReady ? LP : ZERO;
       case 'signer': return SIGNER;
-      case 'burnRemainder': return true;
-      case 'directRatio': return state.mismatchRatios ? 60n : 50n;
-      case 'lpRatio': return 70n;
-      case 'lpTokenRatio': return 30n;
-      case 'lpUsdtRatio': return 30n;
       case 'usdtDecimals': return 6;
       case 'decimals': return 18;
       case 'poolBalance': return state.poolBalance;
       case 'totalClaimed': return 35000n * unit;
-      case 'totalBurned': return 17500n * unit;
+      case 'totalLpTokens': return 10500n * unit;
+      case 'totalUsdtCharged': return 15n * 10n ** 6n;
       case 'allocatedUnclaimed': return 0n;
       case 'unusedBalance': return state.poolBalance;
       case 'balanceOf': return args[0].toLowerCase() === POOL.toLowerCase() ? state.actualBalance : 123n * unit;
@@ -49,10 +45,9 @@ const client = {
       case 'maxWalletAmount': return 200000n * unit;
       case 'isMaxWalletExempt': return false;
       case 'previewClaim': {
-        const amount = args[0], mode = Number(args[1]);
-        if (state.mismatchPreview) return [amount * 60n / 100n, amount * 40n / 100n, 0n, 0n];
-        return mode === 0 ? [amount * 50n / 100n, amount * 50n / 100n, 0n, 0n]
-          : [amount * 70n / 100n, 0n, amount * 30n / 100n, 15n * 10n ** 6n];
+        const amount = args[0];
+        if (state.mismatchPreview) return [amount * 60n / 100n, amount * 40n / 100n, 15n * 10n ** 6n];
+        return [amount * 70n / 100n, amount * 30n / 100n, 15n * 10n ** 6n];
       }
       default: throw new Error('unexpected ' + functionName);
     }
@@ -101,21 +96,20 @@ function load() {
     assert.equal(data.server.configured, true);
     assert.equal(data.server.claimable, 35000n * unit);
     assert.equal(data.claimed, 0n);
-    assert.equal(data.directPreview.payout, 17500n * unit);
-    assert.equal(data.directPreview.burnAmount, 17500n * unit);
-    assert.equal(data.lpPreview.payout, 24500n * unit);
-    assert.equal(data.lpPreview.lpTokens, 10500n * unit);
-    assert.equal(data.lpPreview.usdtRequired, 15n * 10n ** 6n);
+    assert.equal(data.preview.payout, 24500n * unit);
+    assert.equal(data.preview.lpTokens, 10500n * unit);
+    assert.equal(data.preview.usdtRequired, 15n * 10n ** 6n);
+    assert.equal(data.totalLpTokens, 10500n * unit);
+    assert.equal(data.totalUsdtCharged, 15n * 10n ** 6n);
     assert.equal(data.wallet.usdtBalance, 123n * unit);
     assert.equal(data.wallet.tokenBalance, 123n * unit);
     assert.equal(data.wallet.maxWalletAmount, 200000n * unit);
     assert.equal(requests[0].url, '/api/claim/authorization');
-    pass('reads pool rules, wallet balances and both previews, with the claimable amount coming from the signing service');
+    pass('reads pool rules, wallet balances and the single 70/30 preview, with the claimable amount coming from the signing service');
 
     const publicData = await module_.fetchClaimPoolData();
     assert.equal(publicData.wallet, undefined);
-    assert.equal(publicData.directPreview, undefined);
-    assert.equal(publicData.lpPreview, undefined);
+    assert.equal(publicData.preview, undefined);
     assert.equal(publicData.lpReady, true);
     assert.equal(publicData.server.claimable, 35000n * unit);
     pass('public reads expose pool totals and server configuration without wallet-specific previews');
@@ -124,7 +118,7 @@ function load() {
     const signedOut = await module_.fetchClaimPoolData(A);
     assert.equal(signedOut.server.needsSignIn, true);
     assert.equal(signedOut.server.claimable, undefined);
-    assert.equal(signedOut.directPreview, undefined);
+    assert.equal(signedOut.preview, undefined);
     pass('a wallet without a signed session sees a sign-in requirement instead of a claimable amount');
 
     resetState(); state.configured = false; state.claimable = undefined;
@@ -132,14 +126,14 @@ function load() {
     assert.equal(unconfigured.server.configured, false);
     assert.match(unconfigured.server.error, /未配置签名服务/);
     assert.equal(unconfigured.server.claimable, undefined);
-    assert.equal(unconfigured.directPreview, undefined);
+    assert.equal(unconfigured.preview, undefined);
     pass('a missing signer key disables the claim card with an explicit reason');
 
     resetState(); state.serverError = '当前没有可领取额度';
     const exhausted = await module_.fetchClaimPoolData(A);
     assert.equal(exhausted.server.error, '当前没有可领取额度');
-    assert.equal(exhausted.directPreview, undefined);
-    pass('a zero-entitlement response from the server surfaces its message and skips previews');
+    assert.equal(exhausted.preview, undefined);
+    pass('a zero-entitlement response from the server surfaces its message and skips the preview');
 
     resetState(); state.claimed = 17500n * unit; state.claimable = 17500n * unit;
     const partial = await module_.fetchClaimPoolData(A);
@@ -147,24 +141,20 @@ function load() {
     assert.equal(partial.server.claimable, 17500n * unit);
     pass('a partially claimed wallet shows both its on-chain claimed total and the remaining server entitlement');
 
-    resetState(); state.mismatchRatios = true;
-    await assert.rejects(() => module_.fetchClaimPoolData(A), /领取规则或储备信息不一致/);
+    resetState(); state.mismatchPreview = true;
+    await assert.rejects(() => module_.fetchClaimPoolData(A), /领取预览与额度不一致/);
     resetState(); state.mismatchToken = true;
     await assert.rejects(() => module_.fetchClaimPoolData(A), /领取池代币与 CaBi 配置不一致/);
     resetState(); state.poolBalance = 999999n * unit; state.actualBalance = 999998n * unit;
     await assert.rejects(() => module_.fetchClaimPoolData(A), /领取规则或储备信息不一致/);
-    pass('ratio, token and pooled-balance mismatches stop the read instead of showing unsafe numbers');
-
-    resetState(); state.mismatchPreview = true;
-    await assert.rejects(() => module_.fetchClaimPoolData(A), /领取预览与额度不一致/);
-    pass('preview values must match the server entitlement before the claim buttons are usable');
+    pass('the 70/30 split, token and pooled-balance mismatches stop the read instead of showing unsafe numbers');
 
     resetState(); state.lpReady = false;
-    const directOnly = await module_.fetchClaimPoolData(A);
-    assert.equal(directOnly.lpReady, false);
-    assert(directOnly.lpError.includes('只能选择直接领取'));
-    assert.equal(directOnly.lpPreview, undefined);
-    pass('missing USDT or LP receiver falls back to direct 50% only with an explicit reason');
+    const lpMissing = await module_.fetchClaimPoolData(A);
+    assert.equal(lpMissing.lpReady, false);
+    assert.match(lpMissing.lpError, /LP 接收地址尚未配置/);
+    assert.equal(lpMissing.preview, undefined);
+    pass('missing USDT or LP receiver blocks claiming entirely with an explicit reason');
 
     resetState(); state.chainId = 97;
     await assert.rejects(() => module_.fetchClaimPoolData(A), /当前网络信息不一致/);

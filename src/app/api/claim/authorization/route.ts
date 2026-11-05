@@ -24,7 +24,7 @@ export async function GET() {
   }
 }
 
-/** POST 签发领取授权（body: { mode }）；body: { action: "receipt", nonce, hash } 登记领取回执。 */
+/** POST 签发领取授权（唯一路径：30% USDT 组 LP、70% 到账）；body: { action: "receipt", nonce, hash } 登记领取回执。 */
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
@@ -32,6 +32,6 @@ export async function POST(request: Request) {
     if (body.action === "receipt") {
       return Response.json({ receipt: await recordClaimReceipt(wallet.address, body.nonce, body.hash) }, { headers: { "Cache-Control": "no-store" } });
     }
-    return Response.json(await issueClaimAuthorization(wallet.address, body.mode), { headers: { "Cache-Control": "no-store" } });
+    return Response.json(await issueClaimAuthorization(wallet.address), { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return adminErrorResponse(error); }
 }

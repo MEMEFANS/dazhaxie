@@ -1,5 +1,5 @@
 import "server-only";
-import { createPublicClient, decodeEventLog, encodeFunctionData, fallback, http, isAddress, parseAbi, recoverTypedDataAddress, type Address, type Hex } from "viem";
+import { createPublicClient, decodeEventLog, encodeFunctionData, fallback, formatUnits, http, isAddress, parseAbi, recoverTypedDataAddress, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { appChain, chainConfig, chainConfigurationValid, contracts } from "../chain-config";
 import { AdminRequestError } from "./admin-session";
@@ -21,11 +21,11 @@ const CLAIM_TYPES = {
     { name: "amount", type: "uint256" },
     { name: "nonce", type: "uint256" },
     { name: "deadline", type: "uint256" },
-    { name: "mode", type: "uint8" },
   ],
 } as const;
 const DOMAIN_NAME = "CaBiSignedClaimPool", DOMAIN_VERSION = "1";
 const DEFAULT_TTL_SECONDS = 600, DEFAULT_RATE_LIMIT = 5;
+const UNIT_PRICE = 50n, TOKENS_PER_SHARE = 35_000n * 10n ** 18n, LP_USDT_RATIO = 30n, RATIO_DENOMINATOR = 100n;
 
 export const claimPoolAbi = parseAbi([
   "function token() view returns (address)",
@@ -34,18 +34,19 @@ export const claimPoolAbi = parseAbi([
   "function usdt() view returns (address)",
   "function usdtDecimals() view returns (uint8)",
   "function lpReceiver() view returns (address)",
-  "function directRatio() view returns (uint256)",
-  "function lpRatio() view returns (uint256)",
-  "function lpTokenRatio() view returns (uint256)",
-  "function lpUsdtRatio() view returns (uint256)",
   "function claimedOf(address) view returns (uint256)",
   "function claimLimitOf(address) view returns (uint256)",
   "function poolBalance() view returns (uint256)",
   "function totalClaimed() view returns (uint256)",
-  "function totalBurned() view returns (uint256)",
+  "function totalLpTokens() view returns (uint256)",
+  "function totalUsdtCharged() view returns (uint256)",
   "function allocatedUnclaimed() view returns (uint256)",
   "function unusedBalance() view returns (uint256)",
-  "event Claimed(address indexed user, uint256 amount, uint8 indexed mode, uint256 nonce, uint256 payout, uint256 burnAmount, uint256 lpTokens, uint256 usdtCharged)",
+  "event Claimed(address indexed user, uint256 amount, uint256 nonce, uint256 payout, uint256 lpTokens, uint256 usdtCharged)",
+]);
+const erc20Abi = parseAbi([
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address,address) view returns (uint256)",
 ]);
 
 export const claimPoolClient = createPublicClient({
@@ -128,18 +129,55 @@ function domainOf(pool: Address) {
 }
 
 export interface ClaimAuthorizationResponse {
-  amount: string; nonce: string; deadline: number; mode: number; signature: string;
+  amount: string; nonce: string; deadline: number; signature: string;
+  usdtRequired: string;
   claimPool: Address; chainId: number; signer: Address;
   domain: { name: string; version: string };
 }
 
-/** 签发（或复用）一张领取授权；同一额度同一 mode 的重复请求返回同一张未使用签名。 */
-export async function issueClaimAuthorization(address: string, modeInput?: unknown): Promise<ClaimAuthorizationResponse> {
+/**
+ * 领取前置条件（唯一路径）：LP 接收地址与 USDT 必须已配置，且用户 USDT 余额 / 授权
+ * 足以支付本次额度对应的 30% USDT。任何一项不满足都不签发授权，避免用户签名后在链上 revert。
+ */
+async function assertClaimPrerequisites(pool: Address, address: string, amount: bigint) {
+  let lpReceiver: Address, usdt: Address, usdtDecimals: number;
+  try {
+    [lpReceiver, usdt, usdtDecimals] = await Promise.all([
+      claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "lpReceiver" }) as Promise<Address>,
+      claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "usdt" }) as Promise<Address>,
+      claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "usdtDecimals" }) as Promise<number>,
+    ]);
+  } catch {
+    throw new AdminRequestError("暂时无法读取领取池配置，请稍后重试", 503);
+  }
+  if (!lpReceiver || lpReceiver.toLowerCase() === "0x0000000000000000000000000000000000000000") {
+    throw new AdminRequestError("LP 接收地址尚未配置，暂不能领取", 503);
+  }
+  if (!usdt || usdt.toLowerCase() === "0x0000000000000000000000000000000000000000") {
+    throw new AdminRequestError("领取池未配置 USDT，暂不能领取", 503);
+  }
+  const required = amount * UNIT_PRICE * LP_USDT_RATIO * (10n ** BigInt(usdtDecimals)) / (TOKENS_PER_SHARE * RATIO_DENOMINATOR);
+  if (required === 0n) throw new AdminRequestError("领取额度不足以组建流动性", 400);
+  let balance: bigint, allowance: bigint;
+  try {
+    [balance, allowance] = await Promise.all([
+      claimPoolClient.readContract({ address: usdt, abi: erc20Abi, functionName: "balanceOf", args: [address as Address] }) as Promise<bigint>,
+      claimPoolClient.readContract({ address: usdt, abi: erc20Abi, functionName: "allowance", args: [address as Address, pool] }) as Promise<bigint>,
+    ]);
+  } catch {
+    throw new AdminRequestError("暂时无法读取 USDT 余额或授权，请稍后重试", 503);
+  }
+  const readable = formatUnits(required, usdtDecimals);
+  if (balance < required) throw new AdminRequestError(`USDT 余额不足：本次需支付 ${readable} USDT`, 400);
+  if (allowance < required) throw new AdminRequestError(`USDT 授权不足：请先授权 ${readable} USDT 给领取池`, 400);
+  return { required, lpReceiver, usdt };
+}
+
+/** 签发（或复用）一张领取授权；同一额度的重复请求返回同一张未使用签名。 */
+export async function issueClaimAuthorization(address: string): Promise<ClaimAuthorizationResponse> {
   const pool = await ensurePool();
   const account = claimSigner();
   if (!account) throw new AdminRequestError("未配置签名服务，暂不能领取", 503);
-  const mode = modeInput === undefined || modeInput === null ? 0 : Number(modeInput);
-  if (mode !== 0 && mode !== 1) throw new AdminRequestError("领取方式无效", 400);
   if (countAuthorizationsSince(address, Date.now() - 60_000) >= rateLimitPerMinute()) {
     throw new AdminRequestError("签名请求过于频繁，请稍后再试", 429);
   }
@@ -149,32 +187,33 @@ export async function issueClaimAuthorization(address: string, modeInput?: unkno
     throw new AdminRequestError("签名服务与链上 signer 不一致，请联系管理员", 503);
   }
   if (state.outstanding === 0n) throw new AdminRequestError("当前没有可领取额度", 400);
+  const prerequisites = await assertClaimPrerequisites(pool, address, state.outstanding);
 
   const deadline = Math.floor(Date.now() / 1000) + ttlSeconds(), now = Math.floor(Date.now() / 1000);
   const reuse = latestOpenAuthorization(address);
-  if (reuse && reuse.mode === mode && reuse.amount === state.outstanding.toString() && reuse.deadline > now + 60) {
+  if (reuse && reuse.amount === state.outstanding.toString() && reuse.deadline > now + 60) {
     // 换过 signer 后旧记录仍可能留在库里：只有当前私钥能复现的签名才允许复用。
     const recovered = await recoverTypedDataAddress({
       domain: domainOf(pool), types: CLAIM_TYPES, primaryType: "Claim",
-      message: { user: address as Address, amount: BigInt(reuse.amount), nonce: BigInt(reuse.nonce), deadline: BigInt(reuse.deadline), mode: reuse.mode },
+      message: { user: address as Address, amount: BigInt(reuse.amount), nonce: BigInt(reuse.nonce), deadline: BigInt(reuse.deadline) },
       signature: reuse.signature as Hex,
     }).catch(() => null);
     if (recovered && recovered.toLowerCase() === account.address.toLowerCase()) {
       return {
-        amount: reuse.amount, nonce: reuse.nonce, deadline: reuse.deadline, mode: reuse.mode, signature: reuse.signature,
+        amount: reuse.amount, nonce: reuse.nonce, deadline: reuse.deadline, signature: reuse.signature,
+        usdtRequired: prerequisites.required.toString(),
         claimPool: pool, chainId: chainConfig.id, signer: account.address, domain: domainOf(pool),
       };
     }
   }
 
   const nonce = nextAuthorizationNonce(address);
-  const message = {
-    user: address as Address, amount: state.outstanding, nonce: BigInt(nonce), deadline: BigInt(deadline), mode,
-  };
+  const message = { user: address as Address, amount: state.outstanding, nonce: BigInt(nonce), deadline: BigInt(deadline) };
   const signature = await account.signTypedData({ domain: domainOf(pool), types: CLAIM_TYPES, primaryType: "Claim", message });
-  saveClaimAuthorization({ address, nonce, amount: state.outstanding, mode, deadline, signature });
+  saveClaimAuthorization({ address, nonce, amount: state.outstanding, mode: 0, deadline, signature });
   return {
-    amount: state.outstanding.toString(), nonce, deadline, mode, signature,
+    amount: state.outstanding.toString(), nonce, deadline, signature,
+    usdtRequired: prerequisites.required.toString(),
     claimPool: pool, chainId: chainConfig.id, signer: account.address, domain: domainOf(pool),
   };
 }
@@ -206,8 +245,9 @@ export interface ClaimPoolOverview {
   error?: string;
   chain?: {
     owner: Address; signer: Address; usdt: Address; lpReceiver: Address; usdtDecimals: number;
-    poolBalance: string; totalClaimed: string; totalBurned: string; allocatedUnclaimed: string; unusedBalance: string;
-    directRatio: string; lpRatio: string; lpTokenRatio: string; lpUsdtRatio: string;
+    poolBalance: string; totalClaimed: string; totalLpTokens: string; totalUsdtCharged: string;
+    allocatedUnclaimed: string; unusedBalance: string;
+    lpReady: boolean;
   };
   signing: ReturnType<typeof claimSigningStatus> & { signerMatches?: boolean };
   entitlements: { total: string; outstanding: string; addresses: number; rows: { address: string; tokens: string; chainClaimed: string; outstanding: string; reason: string[] }[] };
@@ -234,15 +274,12 @@ export async function claimPoolOverview(): Promise<ClaimPoolOverview> {
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "usdtDecimals" }),
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "poolBalance" }),
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "totalClaimed" }),
-      claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "totalBurned" }),
+      claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "totalLpTokens" }),
+      claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "totalUsdtCharged" }),
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "allocatedUnclaimed" }),
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "unusedBalance" }),
-      claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "directRatio" }),
-      claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "lpRatio" }),
-      claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "lpTokenRatio" }),
-      claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "lpUsdtRatio" }),
-    ]) as [Address, Address, Address, Address, number, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
-    const [owner, chainSigner, usdt, lpReceiver, usdtDecimals, poolBalance, totalClaimed, totalBurned, allocatedUnclaimed, unusedBalance, directRatio, lpRatio, lpTokenRatio, lpUsdtRatio] = chain;
+    ]) as [Address, Address, Address, Address, number, bigint, bigint, bigint, bigint, bigint, bigint];
+    const [owner, chainSigner, usdt, lpReceiver, usdtDecimals, poolBalance, totalClaimed, totalLpTokens, totalUsdtCharged, allocatedUnclaimed, unusedBalance] = chain;
     const claimedAmounts = await Promise.all(visible.map(row =>
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "claimedOf", args: [row.address as Address] }).catch(() => 0n) as Promise<bigint>
     ));
@@ -257,9 +294,10 @@ export async function claimPoolOverview(): Promise<ClaimPoolOverview> {
       mode: "signed", pool,
       chain: {
         owner, signer: chainSigner, usdt, lpReceiver, usdtDecimals: Number(usdtDecimals),
-        poolBalance: String(poolBalance), totalClaimed: String(totalClaimed), totalBurned: String(totalBurned),
+        poolBalance: String(poolBalance), totalClaimed: String(totalClaimed),
+        totalLpTokens: String(totalLpTokens), totalUsdtCharged: String(totalUsdtCharged),
         allocatedUnclaimed: String(allocatedUnclaimed), unusedBalance: String(unusedBalance),
-        directRatio: String(directRatio), lpRatio: String(lpRatio), lpTokenRatio: String(lpTokenRatio), lpUsdtRatio: String(lpUsdtRatio),
+        lpReady: Boolean(lpReceiver && lpReceiver.toLowerCase() !== "0x0000000000000000000000000000000000000000" && usdt && usdt.toLowerCase() !== "0x0000000000000000000000000000000000000000"),
       },
       signing: { ...signing, signerMatches: signing.signer?.toLowerCase() === String(chainSigner).toLowerCase() },
       entitlements: { total: total.toString(), outstanding: outstanding.toString(), addresses: rows.length, rows: detail },

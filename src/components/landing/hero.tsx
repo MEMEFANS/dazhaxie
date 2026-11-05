@@ -21,7 +21,7 @@ import {
   fmt,
 } from "@/lib/constants";
 import styles from "./landing.module.css";
-import { OverviewStatus } from "./overview-status";
+import { DeferredOverview } from "./deferred-overview";
 
 const shortcuts = [
   {
@@ -141,7 +141,7 @@ export function Hero() {
         ))}
       </nav>
 
-      <OverviewStatus />
+      <DeferredOverview />
 
       <section id="ecosystem" className={styles.section} aria-labelledby="ecosystem-title">
         <div className={styles.sectionLabel}>
@@ -266,7 +266,7 @@ export function Hero() {
           </details>
           <details className={styles.faqItem}>
             <summary>认购后什么时候可以领取 CaBi？</summary>
-            <p>认购完成后，CaBi 按认购记录自动计入可领额度。开放领取后在代币中心自行领取，两种方式二选一：直接领取 50%，或支付 30% USDT 组建流动性领取 70%。领取需支付少量网络手续费。</p>
+            <p>认购完成后，CaBi 按认购记录自动计入可领额度。开放领取后在代币中心自行领取：需先支付 30% USDT 等值组建流动性，30% 代币同步进入项目 LP，70% 代币到账钱包后可交易。领取需支付少量网络手续费。</p>
           </details>
         </div>
       </section>

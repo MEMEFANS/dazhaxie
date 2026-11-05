@@ -6,19 +6,39 @@ const ROOT = path.resolve(__dirname, '..');
 const A = '0x1111111111111111111111111111111111111111', B = '0x2222222222222222222222222222222222222222';
 const USDT = '0x3333333333333333333333333333333333333333', PAYEE = '0x4444444444444444444444444444444444444444';
 const hash = '0x' + 'ab'.repeat(32);
-const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://localhost:3000/dapp/subscribe' });
+const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://localhost:3000/dapp/subscribe', pretendToBeVisual: true });
 global.window = dom.window; global.document = dom.window.document; global.IS_REACT_ACT_ENVIRONMENT = true;
 Object.defineProperty(global, 'navigator', { configurable: true, value: dom.window.navigator });
+dom.window.requestAnimationFrame = callback => setTimeout(() => callback(Date.now()), 0);
+dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+dom.window.Element.prototype.scrollIntoView = () => {};
 const React = require('react'), { createRoot } = require('react-dom/client');
 const results = [];
 function pass(name) { results.push(name); console.log('PASS ' + name); }
+const MODULE_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.mjs', '.cjs'], loadCache = new Map();
 function load(file, replacements = {}) {
-  const filename = path.join(ROOT, file), runtimeModule = { exports: {} };
+  const filename = path.isAbsolute(file) ? file : path.join(ROOT, file), cached = loadCache.get(filename);
+  if (cached) return cached.exports;
+  const runtimeModule = { exports: {} };
+  loadCache.set(filename, runtimeModule);
   const javascript = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
+  const resolve = name => {
+    if (Object.hasOwn(replacements, name)) return replacements[name];
+    let target;
+    if (name.startsWith('.')) target = path.resolve(path.dirname(filename), name);
+    else if (name.startsWith('@/')) target = path.join(ROOT, 'src', name.slice(2));
+    if (target) {
+      if (name.endsWith('.css')) return {};
+      const extension = MODULE_EXTENSIONS.find(item => fs.existsSync(target + item));
+      if (extension) return load(target + extension, replacements);
+    }
+    return require(name);
+  };
   vm.runInNewContext(javascript, {
-    module: runtimeModule, exports: runtimeModule.exports,
-    require: name => Object.hasOwn(replacements, name) ? replacements[name] : require(name),
+    module: runtimeModule, exports: runtimeModule.exports, require: resolve,
     window: dom.window, document: dom.window.document, navigator: dom.window.navigator, Event: dom.window.Event,
+    URL: dom.window.URL, URLSearchParams: dom.window.URLSearchParams,
+    requestAnimationFrame: callback => setTimeout(callback, 0), cancelAnimationFrame: id => clearTimeout(id),
     fetch: (request, init) => mockFetch(request, init), console, setTimeout, clearTimeout, Error, Promise, Date, JSON, BigInt,
   }, { filename });
   return runtimeModule.exports;
@@ -42,13 +62,15 @@ function fixture() {
     globalSold: 120, remainingGlobal: 19880, purchased: 0, remainingPersonal: 2, usdtDecimals: 6, tokenDecimals: 18, message: '',
   };
 }
-const tx = { transaction: null, busy: false, run: async request => { if (request.beforeSend) await request.beforeSend(); writes.push(request); return txResult; } };
+const tx = { transaction: null, busy: false, clear() { tx.transaction = null; }, resume: async () => txResult, run: async request => { if (request.beforeSend) await request.beforeSend(); writes.push(request); return txResult; } };
 const container = ({ children }) => React.createElement('section', null, children);
 const icon = () => null;
 const Component = load('src/components/dapp/subscribe/purchase-panel.tsx', {
-  react: React, viem, 'lucide-react': { Check: icon, Copy: icon, Wallet: icon },
+  react: React, viem, 'lucide-react': new Proxy({}, { get: (target, key) => typeof key === 'symbol' ? undefined : icon }),
+  'next/link': { __esModule: true, default: ({ href, children, ...rest }) => React.createElement('a', { href, ...rest }, children) },
   '@/lib/store': { useStore: () => store },
-  '@/lib/chain-config': { chainConfig: { id: 56, shortName: 'BSC' } },
+  '@/lib/chain-config': { chainConfig: { id: 56, shortName: 'BSC' }, getExplorerTxUrl: hash => 'https://bscscan.com/tx/' + hash },
+  '@/lib/transaction-cancellation': { isUserCancelledError: error => error instanceof Error && /rejected|denied|4001/i.test(error.message) },
   '@/lib/amounts': { formatAssetAmount: (amount, decimals) => viem.formatUnits(amount, decimals) },
   '@/lib/subscribe-data': {
     useSubscribeConfig: () => configQuery,
@@ -77,8 +99,7 @@ async function reset() {
   configRefreshes = 0; orderRefreshes = 0; tx.transaction = null; tx.busy = false; version++;
   await render();
 }
-const action = () => document.querySelector('button.btn-gold'), checkbox = () => document.querySelector('input[type="checkbox"]');
-const row = label => document.querySelector('[data-row="' + label + '"]').textContent;
+const action = () => document.querySelector('button.btn-gold'), radio = shares => document.querySelector('[aria-label="认购 ' + shares + ' 份"]');
 async function click(element, wait = 24) {
   assert(element, 'missing element');
   await React.act(async () => { element.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); await pause(wait); });
@@ -87,18 +108,17 @@ async function click(element, wait = 24) {
 (async () => {
   try {
     await reset();
-    assert(row('本次应付').includes('50 USDT'));
-    assert(row('代币配额').includes('35000 CaBi'));
-    assert(row('直接领取到账').includes('17500 CaBi（50%）'));
-    assert(row('组 LP 领取到账').includes('24500 CaBi（70%）'));
-    assert(row('USDT 余额').includes('1000 USDT'));
-    assert.equal(document.querySelector('[data-referral-code]').textContent, 'BCDE3456');
+    assert(document.body.textContent.includes('50USDT') || /50\s*USDT/.test(document.body.textContent));
+    assert(/35000\s*CaBi/.test(document.body.textContent));
+    assert(document.body.textContent.includes('领取到账 · 70%'));
+    assert(document.body.textContent.includes('24500'));
+    assert(document.body.textContent.includes('组建流动性 · 30%'));
+    assert(document.body.textContent.includes('10500'));
+    assert(document.body.textContent.includes('BCDE3456'));
     assert(document.body.textContent.includes(PAYEE));
-    assert.equal(action().disabled, true);
-    await click(checkbox());
     assert.equal(action().disabled, false);
-    assert.equal(action().textContent, '确认转账认购');
-    pass('panel shows the configured payee, 50 USDT/share, 50%/70% payouts and requires explicit confirmation');
+    assert.equal(action().textContent, '确认认购');
+    pass('panel shows the configured payee, 50 USDT/share and the single 30% LP / 70% payout path');
 
     await click(action(), 60);
     assert.equal(writes.length, 1);
@@ -112,63 +132,56 @@ async function click(element, wait = 24) {
     assert.equal(requests[0].init.method, 'POST');
     assert.equal(JSON.parse(requests[0].init.body).shares, 1);
     assert.equal(JSON.parse(requests[0].init.body).hash, hash);
-    assert(document.body.textContent.includes('认购单已登记'));
-    assert.equal(checkbox().checked, false);
-    assert.equal(document.querySelector('[data-quantity]').textContent, '1');
+    assert(document.body.textContent.includes('认购已登记'));
     assert.equal(configRefreshes, 1);
     assert.equal(orderRefreshes, 1);
-    pass('confirmation sends USDT directly to the payee and posts the hash to the server ledger without any sale contract');
+    pass('submission sends USDT directly to the payee and posts the hash to the server ledger without any sale contract');
 
-    await reset(); await click(checkbox()); serverResponse = { status: 202, body: { error: '等待区块确认' } };
+    await reset(); serverResponse = { status: 202, body: { error: '等待区块确认' } };
     await click(action(), 60);
     assert(requests[0].url === '/api/subscribe/orders');
     assert(document.body.textContent.includes('等待区块确认'));
-    assert.equal(action().textContent, '等待服务器核验');
-    const retry = Array.from(document.querySelectorAll('button')).find(button => button.textContent.includes('重新核验'));
-    assert(retry, 'missing retry button');
+    const retry = Array.from(document.querySelectorAll('button')).find(button => button.textContent.includes('查询认购结果'));
+    assert(retry, 'missing query button');
     serverResponse = { status: 200, body: { order: { id: 'o1' } } };
     await click(retry, 60);
     assert.equal(writes.length, 1, 'recheck must not transfer again');
     assert.equal(requests.length, 2);
-    assert(document.body.textContent.includes('认购单已登记'));
+    assert(document.body.textContent.includes('认购已登记'));
     pass('a 202 verification keeps the hash for a transfer-free recheck that completes without paying twice');
 
-    await reset(); await click(checkbox()); serverResponse = { status: 409, body: { error: '该交易哈希已登记过认购' } };
+    await reset(); serverResponse = { status: 409, body: { error: '该交易哈希已登记过认购' } };
     await click(action(), 60);
     assert(document.body.textContent.includes('该交易哈希已登记过认购'));
-    assert.equal(document.querySelector('[role="alert"]').textContent.includes('该交易哈希'), true);
+    assert(document.querySelector('[data-kind="registration-failed"]'), 'missing failed registration status');
+    assert.equal(requests.length, 1);
     pass('a rejected verification surfaces the server reason and does not create a local order');
 
-    await reset(); configQuery.data.purchased = 1; configQuery.data.remainingPersonal = 1; await render();
-    await click(document.querySelector('[aria-label="增加认购份数"]'));
-    assert.equal(document.querySelector('[data-quantity]').textContent, '2');
-    await click(checkbox());
-    assert(action().textContent.includes('超过此钱包剩余认购份数'));
-    assert.equal(action().disabled, true);
-    pass('per-wallet 1-2 share cap is enforced in the UI and blocks submission');
+    await reset(); configQuery.data.purchased = 1; await render();
+    assert.equal(radio(2).disabled, true);
+    assert(document.body.textContent.includes('剩余可购份额不足'));
+    assert.equal(action().disabled, false);
+    pass('the per-wallet 1-2 share cap disables the unavailable option and keeps the allowed one');
 
-    await reset(); balanceValue = 49n * 10n ** 6n; configQuery.data.globalSold += 1; await render(); await click(checkbox());
-    assert.equal(action().textContent, 'USDT 余额不足');
-    pass('insufficient USDT balance blocks the transfer before signing');
-
-    await reset(); referralQuery.data = { ...relation, bound: false }; await render(); await click(checkbox());
+    await reset(); referralQuery.data = { ...relation, bound: false }; await render();
     assert(action().textContent.includes('邀请入口'));
     assert.equal(action().disabled, true);
     await click(action()); assert.equal(writes.length, 0);
-    pass('an unbound wallet cannot subscribe even after confirming the transfer');
+    pass('an unbound wallet cannot subscribe');
 
-    await reset(); configQuery.data.enabled = false; configQuery.data.locked = true; await render(); await click(checkbox());
+    await reset(); configQuery.data.enabled = false; configQuery.data.locked = true; await render();
     assert(action().textContent.includes('认购暂时关闭'));
+    assert.equal(action().disabled, true);
     pass('the operational subscribe lock disables the transfer path');
 
     await reset(); store.state = { connected: false, address: '', chainId: 0 }; version++; await render();
-    assert(action().textContent.includes('请连接钱包'));
+    assert(action().textContent.includes('连接钱包'));
     assert(document.body.textContent.includes('连接钱包'));
     pass('disconnected wallets are told to connect before any transfer');
 
     await reset(); ordersQuery.orders = [{ id: 'o1', shares: 2, amount: '100000000', txHash: hash, status: 'confirmed', createdAt: Date.now() }]; await render();
-    assert(document.body.textContent.includes('我的认购凭证'));
-    assert(document.body.textContent.includes('2 份'));
+    assert(document.body.textContent.includes('我的认购记录'));
+    assert(document.body.textContent.includes('份生态份额'));
     pass('recorded orders are rendered as subscription receipts with their transaction hash');
 
     console.log(results.length + ' subscription purchase checks passed.');

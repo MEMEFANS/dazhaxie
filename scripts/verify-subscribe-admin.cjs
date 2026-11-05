@@ -165,7 +165,7 @@ async function type(element, value) {
     // 签名自领模式：显示领取池指标、签名服务状态与自动聚合的待领额度，并提供带审计的权限交接。
     claimPoolData = {
       mode: 'signed', pool: A,
-      chain: { owner: B, signer: '0x5555555555555555555555555555555555555555', usdt: PAYEE, lpReceiver: PAYEE, usdtDecimals: 6, poolBalance: String(500000n * unit), totalClaimed: '0', totalBurned: String(17500n * unit), allocatedUnclaimed: '0', unusedBalance: String(500000n * unit), directRatio: '50', lpRatio: '70', lpTokenRatio: '30', lpUsdtRatio: '30' },
+      chain: { owner: B, signer: '0x5555555555555555555555555555555555555555', usdt: PAYEE, lpReceiver: PAYEE, usdtDecimals: 6, poolBalance: String(500000n * unit), totalClaimed: '0', totalLpTokens: String(10500n * unit), totalUsdtCharged: String(15n * 10n ** 6n), allocatedUnclaimed: '0', unusedBalance: String(500000n * unit), lpReady: true },
       signing: { configured: true, signer: '0x5555555555555555555555555555555555555555', claimPool: A, chainId: 56, ttlSeconds: 600, rateLimitPerMinute: 5, signerMatches: true },
       entitlements: { total: String(70000n * unit), outstanding: String(70000n * unit), addresses: 2, rows: [{ address: A, tokens: String(35000n * unit), chainClaimed: '0', outstanding: String(35000n * unit), reason: ['认购单', '直推奖励'] }, { address: B, tokens: String(35000n * unit), chainClaimed: '0', outstanding: String(35000n * unit), reason: ['极差结算'] }] },
     };

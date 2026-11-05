@@ -64,7 +64,7 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="全局已认购" value={subscribe.data ? subscribe.data.globalSold.toLocaleString("en-US") : "—"} unit="份" hint={subscribe.data ? `硬顶 ${subscribe.data.hardCap.toLocaleString("en-US")} 份 · 服务器记账` : subscribe.error || "等待认购配置"} />
         <StatCard label="实物兑换" value={redemption.data?.configured ? (redemption.data.enabled ? "开放" : "停用") : "—"} hint={redemption.error || "订单与发货在「兑换管理」查看"} />
-        <StatCard label="领取池余额" value={reward.data ? formatAssetAmount(reward.data.poolBalance,reward.data.tokenDecimals) : "—"} unit="CaBi" hint={reward.error || "服务器签名授权 · 50%直接领取 / 70%组LP领取"} />
+        <StatCard label="领取池余额" value={reward.data ? formatAssetAmount(reward.data.poolBalance,reward.data.tokenDecimals) : "—"} unit="CaBi" hint={reward.error || "服务器签名授权 · 强制 30% USDT 组 LP / 70% 到账"} />
         <StatCard label="待处理工单" value={pendingTickets === null ? "—" : fmt(pendingTickets)} unit="条" hint={pendingTickets === null ? "正在读取工单统计" : "在「工单处理」回复或完结"} />
       </div>
 

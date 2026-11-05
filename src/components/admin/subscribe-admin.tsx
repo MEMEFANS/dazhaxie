@@ -12,7 +12,7 @@ interface BatchResponse { items: ClaimBatch[]; total: number; page: number; page
 interface ClaimPoolResponse {
   mode: "signed" | "legacy" | "unconfigured" | "error";
   pool: string | null; error?: string;
-  chain?: { owner: string; signer: string; usdt: string; lpReceiver: string; usdtDecimals: number; poolBalance: string; totalClaimed: string; totalBurned: string; allocatedUnclaimed: string; unusedBalance: string; directRatio: string; lpRatio: string; lpTokenRatio: string; lpUsdtRatio: string };
+  chain?: { owner: string; signer: string; usdt: string; lpReceiver: string; usdtDecimals: number; poolBalance: string; totalClaimed: string; totalLpTokens: string; totalUsdtCharged: string; allocatedUnclaimed: string; unusedBalance: string; lpReady: boolean };
   signing: { configured: boolean; signer: string | null; claimPool: string | null; chainId: number; ttlSeconds: number; rateLimitPerMinute: number; signerMatches?: boolean };
   entitlements: { total: string; outstanding: string; addresses: number; rows: Array<{ address: string; tokens: string; chainClaimed: string; outstanding: string; reason: string[] }> };
 }
@@ -173,19 +173,23 @@ export default function SubscribeAdmin() {
     </Card>
 
     {pool?.mode === "signed" ? <Card>
-      <SectionHead title="领取池（签名自领）" desc="额度按认购单 + 直推奖励 + 团队极差自动聚合；服务器 signer 只签发一次性领取授权，用户自己去池里领取，无需逐人写入" />
+      <SectionHead title="领取池（签名自领）" desc="额度按认购单 + 直推奖励 + 团队极差自动聚合；领取只有一条路径：支付 30% USDT 组 LP、30% 代币进 LP、70% 到账用户。服务器 signer 只签发一次性领取授权，用户自己去池里领取" />
       {poolError ? <p role="alert" className="mt-2 text-xs leading-6 text-down">{poolError}</p> : null}
       {pool.error ? <p className="mt-2 text-xs leading-6 text-down">{pool.error}</p> : null}
       <div className="mt-4 grid gap-x-6 sm:grid-cols-2">
         <DataRow label="池余额" value={pool.chain ? formatAssetAmount(BigInt(pool.chain.poolBalance), 18) + " CaBi" : "—"} />
         <DataRow label="已领取累计" value={pool.chain ? formatAssetAmount(BigInt(pool.chain.totalClaimed), 18) + " CaBi" : "—"} />
-        <DataRow label="已销毁累计" value={pool.chain ? formatAssetAmount(BigInt(pool.chain.totalBurned), 18) + " CaBi" : "—"} />
+        <DataRow label="已转入 LP 累计" value={pool.chain ? formatAssetAmount(BigInt(pool.chain.totalLpTokens), 18) + " CaBi" : "—"} />
+        <DataRow label="用户已支付 USDT 累计" value={pool.chain ? formatAssetAmount(BigInt(pool.chain.totalUsdtCharged), pool.chain.usdtDecimals) + " USDT" : "—"} />
         <DataRow label="可提回未分配" value={pool.chain ? formatAssetAmount(BigInt(pool.chain.unusedBalance), 18) + " CaBi" : "—"} />
         <DataRow label="待领额度（服务器聚合）" value={formatAssetAmount(BigInt(pool.entitlements.outstanding), 18) + " CaBi / " + pool.entitlements.addresses + " 个地址"} />
         <DataRow label="已分配未领（链上限额）" value={pool.chain ? formatAssetAmount(BigInt(pool.chain.allocatedUnclaimed), 18) + " CaBi" : "—"} />
         <DataRow label="签名服务" value={pool.signing.configured ? "已配置（可签发授权）" : "未配置（领取按钮会被禁用）"} />
         <DataRow label="服务器 signer" value={pool.signing.signer || "—"} />
         <DataRow label="链上 signer" value={pool.chain?.signer || "—"} />
+        <DataRow label="领取规则" value="强制组 LP：支付 30% USDT，30% 代币进 LP，70% 到账" />
+        <DataRow label="LP 接收地址" value={pool.chain?.lpReady ? pool.chain.lpReceiver : "未配置（用户无法领取）"} />
+        <DataRow label="USDT" value={pool.chain?.usdt || "—"} />
         <DataRow label="owner" value={pool.chain?.owner || "—"} />
       </div>
       {pool.signing.configured && pool.chain && !pool.signing.signerMatches ? <p className="mt-2 text-xs leading-6 text-down">服务器 signer 与链上 signer 不一致：用户领取会失败，请立即完成权限交接或更新密钥。</p> : null}

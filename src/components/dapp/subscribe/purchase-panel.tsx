@@ -97,7 +97,7 @@ function PurchasePanelForm() {
   else if (state.chainId !== chainConfig.id) reason = "请切换到" + chainConfig.shortName;
   else if (query.status !== "ready" || query.error || !data) reason = query.error || "正在读取认购配置";
   else if (!data.configured) reason = data.message || "认购暂未开放";
-  else if (!bound) reason = "请先在邀请入口绑定推荐关系";
+  else if (!bound) reason = referral.binding?.bound ? "请先签名登录" : "请先在邀请入口绑定推荐关系";
   else if (!data.enabled) reason = data.message || "认购暂时关闭";
   else if (quantity > remaining) reason = "超过此钱包剩余认购份数";
   else if (quantity > data.remainingGlobal) reason = "超过全局剩余份数";
@@ -223,10 +223,10 @@ function PurchasePanelForm() {
       <div className={styles.receipt}>
         <div className={styles.payment}><span>本次支付</span><strong aria-live="polite">{data ? formatAssetAmount(amount, data.usdtDecimals) : "—"}<small>USDT</small></strong></div>
         <div className={styles.allocation}><span><Coins size={14} />对应 CaBi 配额</span><strong>{data ? formatAssetAmount(quota, data.tokenDecimals) : "—"}<small>CaBi</small></strong></div>
-        <p className={styles.receiptHint}>以下为不同领取方式的预计到账数量，认购后前往代币中心领取。</p>
+        <p className={styles.receiptHint}>认购后前往代币中心领取：需支付 30% USDT 等值组建流动性，30% CaBi 进入项目 LP，70% 到账可交易。</p>
         <div className={styles.claimOptions}>
-          <div><span>直接领取 · 50%</span><strong>{data ? formatAssetAmount(quota * 50n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong></div>
-          <div><span>组建流动性 · 70%</span><strong>{data ? formatAssetAmount(quota * 70n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong><p className={styles.claimRequirement}>领取时另付 30% USDT</p></div>
+          <div><span>领取到账 · 70%</span><strong>{data ? formatAssetAmount(quota * 70n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong></div>
+          <div><span>组建流动性 · 30%</span><strong>{data ? formatAssetAmount(quota * 30n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong><p className={styles.claimRequirement}>领取时另付 30% USDT 等值</p></div>
         </div>
       </div>
 

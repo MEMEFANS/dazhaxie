@@ -191,6 +191,8 @@ export function useStore(): StoreValue {
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const settingsEndpoint = pathname === "/admin/login" ? null
+    : pathname.startsWith("/admin") ? "/api/admin/settings" : "/api/settings";
   const [state, setState] = useState<DAppState>(() => emptyState());
   const [hydrated, setHydrated] = useState(false);
   const [restored, setRestored] = useState(false);
@@ -265,28 +267,42 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // Operational settings are shared server records; no browser archive can
   // activate a financial service. Those still require their own live adapter.
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !settingsEndpoint) return;
     const controller = new AbortController();
-    const adminPage = pathname.startsWith("/admin") && pathname !== "/admin/login";
+    const adminPage = settingsEndpoint === "/api/admin/settings";
+    let syncing = false;
+    let updateQueued = false;
     const sync = async () => {
+      if (syncing || controller.signal.aborted) return;
+      syncing = true;
       try {
-        const response = await fetch(adminPage ? "/api/admin/settings" : "/api/settings", { cache: "no-store", signal: controller.signal });
+        const response = await fetch(settingsEndpoint, { cache: "no-store", signal: controller.signal });
         if (!response.ok) return;
         const body = await response.json();
         const settings = (adminPage ? body.settings : body) as Partial<OperationalSettings>;
         if (typeof settings.subscribeLocked !== "boolean" || typeof settings.exchangeEnabled !== "boolean") return;
-        if (!controller.signal.aborted) setState(s => ({ ...s, subscribeLocked: settings.subscribeLocked!, exchangeEnabled: settings.exchangeEnabled!,
-          ...(adminPage && Array.isArray(settings.sensitiveWords) ? { sensitiveWords: settings.sensitiveWords } : {}),
-          ...(settings.exchangePayee ? { exchangePayee: settings.exchangePayee } : {}) }));
+        if (!controller.signal.aborted) setState(s => {
+          const sensitiveWords = adminPage && Array.isArray(settings.sensitiveWords) ? settings.sensitiveWords : s.sensitiveWords;
+          const exchangePayee = settings.exchangePayee || s.exchangePayee;
+          const sameWords = sensitiveWords.length === s.sensitiveWords.length && sensitiveWords.every((word, index) => word === s.sensitiveWords[index]);
+          if (s.subscribeLocked === settings.subscribeLocked && s.exchangeEnabled === settings.exchangeEnabled && s.exchangePayee === exchangePayee && sameWords) return s;
+          return { ...s, subscribeLocked: settings.subscribeLocked!, exchangeEnabled: settings.exchangeEnabled!, sensitiveWords, exchangePayee };
+        });
       } catch { /* Retain closed/default settings when the settings service is unavailable. */ }
+      finally {
+        syncing = false;
+        if (updateQueued && !controller.signal.aborted) { updateQueued = false; void sync(); }
+      }
     };
-    void sync();
-    const onFocus = () => { void sync(); };
+    const onFocus = () => { if (!document.hidden) void sync(); };
+    const onSettingsUpdated = () => { if (syncing) updateQueued = true; else void sync(); };
+    onFocus();
     const timer = window.setInterval(onFocus, 30_000);
     window.addEventListener("focus", onFocus);
-    window.addEventListener("cabi-operational-settings-updated", onFocus);
-    return () => { controller.abort(); window.clearInterval(timer); window.removeEventListener("focus", onFocus); window.removeEventListener("cabi-operational-settings-updated", onFocus); };
-  }, [hydrated, pathname]);
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("cabi-operational-settings-updated", onSettingsUpdated);
+    return () => { controller.abort(); window.clearInterval(timer); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); window.removeEventListener("cabi-operational-settings-updated", onSettingsUpdated); };
+  }, [hydrated, settingsEndpoint]);
 
   // Toast 自动消失
   useEffect(() => {

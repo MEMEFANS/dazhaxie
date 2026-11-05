@@ -67,7 +67,7 @@ export function TeamHero({ stats }: { stats?: PromotionStats }) {
         <button type="button" onClick={() => void copyLink()} disabled={!link} className="btn btn-gold min-h-10 w-full px-4 text-xs sm:w-auto">{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? "已复制" : "复制邀请链接"}</button>
       </div>
       <div className="mt-4 flex flex-col gap-2 rounded-xl border border-line bg-well p-3 sm:flex-row sm:items-center">
-        <div className="min-w-0 flex-1"><p className="text-[10px] text-faint">我的邀请码 <span className="ml-2 font-mono font-semibold tracking-[0.2em] text-plum">{code || "登录并绑定后生成"}</span></p><p className="mt-1 truncate font-mono text-[11px] text-mute">{link || "连接钱包并完成邀请绑定后获取专属链接"}</p></div>
+        <div className="min-w-0 flex-1"><p className="text-[10px] text-faint">我的邀请码 <span className="ml-2 font-mono font-semibold tracking-[0.2em] text-plum">{code || (referral.binding?.bound ? "签名登录后查看" : "登录并绑定后生成")}</span></p><p className="mt-1 truncate font-mono text-[11px] text-mute">{link || (referral.binding?.bound ? "邀请关系已绑定，签名登录后查看专属链接" : "连接钱包并完成邀请绑定后获取专属链接")}</p></div>
       </div>
     </Card>
   </div>;

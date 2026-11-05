@@ -8,7 +8,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeF
 import { homedir } from "node:os";
 import path from "node:path";
 
-const DATABASES = ["operations.sqlite", "referrals.sqlite", "redemption.sqlite"];
+const DATABASES = ["operations.sqlite", "referrals.sqlite", "redemption.sqlite", "subscriptions.sqlite", "community.sqlite"];
 
 function resolveDataDirectory() {
   if (process.env.CABI_DATA_DIR) return path.resolve(process.env.CABI_DATA_DIR);

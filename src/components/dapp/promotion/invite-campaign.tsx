@@ -74,7 +74,7 @@ export function InviteCampaign() {
           <h2 className={styles.linkLabel}>专属邀请链接</h2>
           <div className={styles.linkRow}>
             <p className={styles.link} title={inviteLink}>
-              {inviteLink || "登录并绑定邀请后生成专属链接"}
+              {inviteLink || (referral.binding?.bound ? "签名登录后查看专属链接" : "登录并绑定邀请后生成专属链接")}
             </p>
           </div>
           <button
@@ -87,7 +87,7 @@ export function InviteCampaign() {
               ? copied === "link"
                 ? "链接已复制"
                 : "复制邀请链接"
-              : state.connected ? "请先完成邀请绑定" : "连接钱包获取邀请"}
+              : state.connected ? referral.binding?.bound ? "请先签名登录" : "请先完成邀请绑定" : "连接钱包获取邀请"}
           </button>
           <div className={styles.cardFooter}>
             <span aria-hidden="true" />

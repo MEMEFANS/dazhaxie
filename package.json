@@ -12,6 +12,7 @@
     "test:wallet": "node scripts/verify-wallet-network.cjs",
     "test:referral": "node scripts/verify-referral-binding.cjs && node scripts/verify-referral-data.cjs && node scripts/verify-referral-client.cjs && node scripts/verify-referral-gate.cjs && node scripts/verify-subscription-purchase.cjs",
     "test:referral-navigation": "node scripts/verify-referral-gate-navigation.cjs",
+    "test:referral-return": "node scripts/verify-referral-status.cjs && node scripts/verify-referral-return.cjs",
     "test:claim": "node scripts/verify-signed-claim-pool.cjs && node scripts/verify-simple-claim-pool.cjs && node scripts/verify-claim-pool-data.cjs && node scripts/verify-subscribe-admin.cjs && node scripts/verify-subscription-purchase.cjs",
     "test:subscribe": "node scripts/verify-subscription-server.cjs && node scripts/verify-subscription-purchase.cjs",
     "test:business": "node scripts/verify-contract-transactions.cjs && node scripts/verify-subscription-server.cjs && npm run test:team && npm run test:referral && npm run test:claim",

@@ -5,6 +5,7 @@ import { appChain, chainConfig } from "./chain-config";
 import { useStore } from "./store";
 import * as wallet from "./wallet";
 import type { RedemptionConfig, RedemptionOrder } from "./redemption";
+import { fetchSharedConfig } from "./shared-config-request";
 export async function redemptionRequest<T>(url:string, options?:RequestInit):Promise<T> {
   const response=await fetch(url,{cache:"no-store",...options,headers:{"Content-Type":"application/json",...options?.headers}});
   const body=await response.json();
@@ -16,7 +17,7 @@ export function useRedemptionConfig() {
   const [data,setData]=useState<RedemptionConfig>(); const [error,setError]=useState(""); const [loading,setLoading]=useState(true);
   const mounted=useRef(false);
   const refresh=useCallback(async()=>{
-    try {const next=await redemptionRequest<RedemptionConfig>("/api/redemption/config");if(mounted.current){setData(next);setError("");}}
+    try {const next=await fetchSharedConfig<RedemptionConfig>("/api/redemption/config","兑换配置读取失败");if(mounted.current){setData(next);setError("");}}
     catch(e){if(mounted.current){setError(e instanceof Error?e.message:"兑换配置读取失败");setData(undefined);}}
     finally{if(mounted.current)setLoading(false);}
   },[]);

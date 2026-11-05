@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
+import { fetchSharedConfig } from "./shared-config-request";
 
 export interface SubscribeConfig {
   configured: boolean; enabled: boolean; locked: boolean; message?: string;
@@ -21,9 +22,7 @@ export interface SubscribeSnapshot { status: "loading" | "ready" | "error"; data
 
 export async function fetchSubscribeConfig(address?: string): Promise<SubscribeConfig> {
   const url = address ? `/api/subscribe/config?address=${encodeURIComponent(address)}` : "/api/subscribe/config";
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error("认购配置暂时无法读取");
-  return await response.json() as SubscribeConfig;
+  return fetchSharedConfig<SubscribeConfig>(url, "认购配置暂时无法读取", false);
 }
 export async function fetchSubscribeOrders(): Promise<SubscribeOrderView[]> {
   const response = await fetch("/api/subscribe/orders", { cache: "no-store" });
@@ -56,27 +55,35 @@ export async function fetchPromotionStats(): Promise<PromotionResult | undefined
 export function usePromotionStats(enabled: boolean) {
   const [result, setResult] = useState<PromotionResult | undefined>();
   const [error, setError] = useState("");
+  const sequence = useRef(0);
   const refresh = useCallback(() => {
+    const request = ++sequence.current;
     if (!enabled) { setResult(undefined); return; }
-    void fetchPromotionStats().then(value => { setResult(value); setError(value ? "" : "请先免费签名登录"); }, cause => setError(cause instanceof Error ? cause.message : "推广统计暂时无法读取"));
+    void fetchPromotionStats().then(value => { if (request !== sequence.current) return; setResult(value); setError(value ? "" : "请先免费签名登录"); }, cause => { if (request === sequence.current) setError(cause instanceof Error ? cause.message : "推广统计暂时无法读取"); });
   }, [enabled]);
   useEffect(() => {
+    sequence.current += 1;
     const timer = window.setTimeout(refresh, 0);
     const interval = window.setInterval(refresh, 30_000);
-    return () => { window.clearTimeout(timer); window.clearInterval(interval); };
+    window.addEventListener("cabi-referral-updated", refresh);
+    return () => { sequence.current += 1; window.clearTimeout(timer); window.clearInterval(interval); window.removeEventListener("cabi-referral-updated", refresh); };
   }, [refresh]);
   return { stats: result?.stats, branches: result?.branches || [], error, refresh };
 }
 export function useSubscribeOrders(enabled: boolean) {
   const [orders, setOrders] = useState<SubscribeOrderView[]>([]);
   const [error, setError] = useState("");
+  const sequence = useRef(0);
   const refresh = useCallback(() => {
+    const request = ++sequence.current;
     if (!enabled) { setOrders([]); return; }
-    void fetchSubscribeOrders().then(setOrders, cause => setError(cause instanceof Error ? cause.message : "认购记录暂时无法读取"));
+    void fetchSubscribeOrders().then(value => { if (request !== sequence.current) return; setOrders(value); setError(""); }, cause => { if (request === sequence.current) setError(cause instanceof Error ? cause.message : "认购记录暂时无法读取"); });
   }, [enabled]);
   useEffect(() => {
+    sequence.current += 1;
     const timer = window.setTimeout(refresh, 0);
-    return () => window.clearTimeout(timer);
+    window.addEventListener("cabi-referral-updated", refresh);
+    return () => { sequence.current += 1; window.clearTimeout(timer); window.removeEventListener("cabi-referral-updated", refresh); };
   }, [refresh]);
   return { orders, error, refresh };
 }

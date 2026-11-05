@@ -41,7 +41,7 @@ async function main(){
  assert.equal((await route.GET()).status,200);assert.equal((await(await route.GET()).json()).data,null);assert.equal((await route.POST(req('/api/referral',{account:user.address,code:root.code}))).status,401);
  assert.equal((await rootRoute.POST(req('/api/admin/referral-roots',{address:project.address}))).status,401);
  pass('system identities, anonymous binding and unauthorized root initialization cannot create usable invitations');
- const challenge=auth.createReferralChallenge(req(),user.address);assert(challenge.message.includes('free message signature'));assert(!challenge.message.includes('shipping-account'));
+ const challenge=auth.createReferralChallenge(req(),user.address);assert(challenge.message.includes('CaBi 登录'));assert(!challenge.message.includes('shipping-account'));
  const incorrect=await other.signMessage({message:challenge.message});await assert.rejects(auth.verifyReferralChallenge(req(),challenge.id,incorrect),/验证失败/);
  const signature=await user.signMessage({message:challenge.message}),session=await auth.verifyReferralChallenge(req(),challenge.id,signature);
  assert.equal(session.address,user.address.toLowerCase());assert.equal((await auth.currentReferralWallet()).address,user.address.toLowerCase());

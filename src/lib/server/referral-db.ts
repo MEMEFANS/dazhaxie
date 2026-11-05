@@ -5,7 +5,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { getAddress, isAddress, zeroAddress } from "viem";
 import { chainConfig, contracts } from "../chain-config";
-import { parseInvitation, type ReferralData } from "../referral";
+import { parseInvitation, type ReferralBinding, type ReferralData } from "../referral";
 import { adminDataDirectory } from "./admin-db";
 import { AdminRequestError } from "./admin-session";
 
@@ -59,6 +59,11 @@ function ensureMember(address: string) {
   return row;
 }
 export function readReferral(input: unknown): ReferralData { return serialize(ensureMember(referralAddress(input))); }
+/** Read existing membership only; checking an address must not register it. */
+export function readReferralBinding(input: unknown): ReferralBinding {
+  const account = referralAddress(input), row = rowFor(account);
+  return { account, chainId: chainConfig.id, bound: Boolean(row?.parent || row?.root) };
+}
 export function bindReferral(input: unknown, codeInput: unknown): ReferralData {
   const address = referralAddress(input);
   const code = typeof codeInput === "string" ? parseInvitation(codeInput) : undefined;

@@ -1,3 +1,10 @@
+/** Public display state only; this is not a wallet session. */
+export interface ReferralBinding {
+  account: string;
+  chainId: number;
+  bound: boolean;
+}
+
 export interface ReferralData {
   account: string;
   code: string;

@@ -270,7 +270,7 @@
 
 @media (max-width: 720px) {
   .page { padding-bottom: 90px; }
-  .mobileCheckout { position: fixed; z-index: 44; right: 0; bottom: calc(67px + env(safe-area-inset-bottom, 0px)); left: 0; display: block; padding: 11px 16px 13px; border-top: 1px solid #e5d8ee; background: #fffdfffa; box-shadow: 0 -8px 24px #4f296d0a; backdrop-filter: blur(16px); }
+  .mobileCheckout { position: fixed; z-index: 44; right: 0; bottom: calc(67px + env(safe-area-inset-bottom, 0px)); left: 0; display: block; padding: 11px 16px 13px; border-top: 1px solid #e5d8ee; background: #fffdff; box-shadow: 0 -8px 24px #4f296d0a; }
   .mobileCheckout[data-inline-visible="true"] { display: none; }
   .mobileCheckoutInner { display: flex; width: min(520px, 100%); align-items: center; justify-content: space-between; gap: 16px; margin-inline: auto; }
   .mobileTotal { flex-shrink: 0; }

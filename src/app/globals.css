@@ -4,13 +4,16 @@
 :root {
   --background: #f9f9f9;
   --foreground: #240f46;
+  /* Keep existing number/hash styles on a system monospace stack without font downloads. */
+  --font-geist-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: Inter, system-ui, Avenir, "Helvetica Neue", Helvetica,
+    "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 

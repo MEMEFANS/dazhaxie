@@ -27,14 +27,6 @@ const nextConfig: NextConfig = {
   redirects() {
     return [{ source: "/dapp", destination: "/", permanent: false }];
   },
-  turbopack: {
-    rules: {
-      "globals.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
-  },
 };
 
 export default nextConfig;

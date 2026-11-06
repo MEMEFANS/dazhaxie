@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { getAddress } from "viem";
 import { useStore } from "@/lib/store";
 import { chainConfig, contracts } from "@/lib/chain-config";
-import { claimPoolAbi, claimErrorText, fetchClaimPoolData, refreshClaimPoolData, useClaimPoolData } from "@/lib/claim-pool-data";
+import { claimPoolAbi, fetchClaimPoolData, refreshClaimPoolData, requestClaimAuthorization, submitClaimReceipt, useClaimPoolData } from "@/lib/claim-pool-data";
 import { useContractTransaction, TransactionFeedback } from "@/lib/contract-transactions";
 import { signInCommunity } from "@/lib/community-client";
 import { formatAssetAmount } from "@/lib/amounts";
@@ -19,108 +19,91 @@ export default function SimpleClaimCard() {
 function ClaimForm() {
   const { state, connect } = useStore(), query = useClaimPoolData(state.connected ? state.address : undefined);
   const data = query.status === "ready" && !query.error ? query.data : undefined;
-  const controller = useContractTransaction("claim-pool-claim");
-  const [accepted, setAccepted] = useState(""), [error, setError] = useState("");
-  const [checking, setChecking] = useState(false), [signingIn, setSigningIn] = useState(false);
-  const [lastClaim, setLastClaim] = useState<{ payout: string } | null>(null);
+  const prepareTx = useContractTransaction("claim-pool-prepare"), claimTx = useContractTransaction("claim-pool-claim");
+  const [accepted, setAccepted] = useState(""), [error, setError] = useState(""), [checking, setChecking] = useState(false), [signingIn, setSigningIn] = useState(false);
   const active = useRef(true), operation = useRef(false), latest = useRef("");
-  const quote = data?.preview;
-  const claimable = data?.server.claimable;
-  const consentKey = [state.address.toLowerCase(), state.chainId, contracts.claimPool, data?.merkleRoot, data?.server.amount, claimable, quote?.payout, quote?.lpTokens, quote?.usdtRequired, data?.lpReceiver, data?.usdt].join(":");
+  const claimable = data?.server.claimable, quote = data?.preview;
+  const preparedOutstanding = data && data.prepared > data.claimed ? data.prepared - data.claimed : 0n;
+  const consentKey = [state.address.toLowerCase(), state.chainId, contracts.claimPool, claimable, quote?.payout, quote?.lpTokens, quote?.usdtRequired, quote?.estimatedLiquidity, data?.prepared, data?.claimed, data?.claimOpen, data?.lpReceiver, data?.usdt, data?.signer].join(":");
   const confirmed = accepted === consentKey;
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => { latest.current = consentKey; }, [consentKey]);
-  useEffect(() => { if (controller.transaction?.status === "success") refreshClaimPoolData(); }, [controller.transaction?.status]);
+  useEffect(() => { if (prepareTx.transaction?.status === "success" || claimTx.transaction?.status === "success") refreshClaimPoolData(); }, [prepareTx.transaction?.status, claimTx.transaction?.status]);
   const server = data?.server;
+  const canClaimNow = Boolean(data?.claimOpen && preparedOutstanding > 0n);
   let reason = "";
   if (!state.connected) reason = "请连接钱包";
   else if (state.chainId !== chainConfig.id) reason = "请切换到" + chainConfig.shortName;
   else if (!data?.wallet) reason = query.status === "error" || query.error ? "领取信息暂时无法更新" : "正在更新领取信息";
   else if (!server?.configured) reason = server?.error || "领取通道暂未开放，请稍后再试";
   else if (server.needsSignIn) reason = "";
-  else if (server.error) reason = server.error;
+  else if (server.error && claimable !== 0n) reason = server.error;
+  else if (canClaimNow) {
+    const payout = preparedOutstanding * 70n / 100n;
+    if (!holdingAllows(data.wallet.tokenBalance, payout, data.wallet.maxWalletAmount, data.wallet.exempt)) reason = "领取后将超过持仓上限，请先转出部分 CaBi";
+  } else if (preparedOutstanding > 0n) reason = "组 LP 已完成，领取开放后可领取";
   else if (claimable === undefined) reason = "正在读取可领额度";
-  else if (!server.proof?.length || server.amount === undefined) reason = "正在生成领取凭证";
-  else if (claimable === 0n) reason = "当前没有可领取额度";
-  else if (data.poolBalance < claimable) reason = "领取储备不足，请联系管理员补足池余额";
+  else if (claimable === 0n) reason = "当前没有可组 LP 的额度";
   else if (!data.lpReady || !quote) reason = data.lpError || "LP 接收地址尚未配置，请等待管理员完成配置";
-  else if (quote.payout === 0n) reason = "当前额度不足以领取";
-  else if (!holdingAllows(data.wallet.tokenBalance, quote.payout, data.wallet.maxWalletAmount, data.wallet.exempt)) reason = "领取后将超过持仓上限，请先转出部分 CaBi";
+  else if (quote.usdtRequired === 0n || quote.payout === 0n) reason = "当前额度不足以组建流动性";
   else if (data.wallet.usdtBalance === undefined || data.wallet.usdtBalance < quote.usdtRequired) reason = "USDT 余额不足，需 " + formatAssetAmount(quote.usdtRequired, data.usdtDecimals) + " USDT";
 
   async function signIn() {
-    if (signingIn || !state.connected) return;
-    setSigningIn(true); setError("");
+    if (signingIn || !state.connected) return; setSigningIn(true); setError("");
     try { await signInCommunity(getAddress(state.address.toLowerCase())); if (active.current) refreshClaimPoolData(); }
     catch (cause) { if (active.current) setError(cause instanceof Error ? cause.message : "登录失败，请重试。"); }
     finally { if (active.current) setSigningIn(false); }
   }
-
-  async function claim() {
-    if (reason || !confirmed || !claimable || !quote || !contracts.claimPool || !data || controller.busy || operation.current) return;
-    operation.current = true; setChecking(true); setError(""); setLastClaim(null); const reviewed = consentKey;
+  async function act() {
+    if (reason || !confirmed || !contracts.claimPool || !data || prepareTx.busy || claimTx.busy || operation.current) return;
+    operation.current = true; setChecking(true); setError(""); const reviewed = consentKey;
     try {
       const fresh = await fetchClaimPoolData(getAddress(state.address.toLowerCase()));
       if (!active.current || latest.current !== reviewed) return;
-      if (fresh.server.claimable !== claimable || fresh.server.amount !== data.server.amount || fresh.merkleRoot.toLowerCase() !== data.merkleRoot.toLowerCase()) throw new Error("可领额度或领取批次已变化，请刷新后重新确认。");
-      if ((fresh.server.proof || []).join(";") !== (data.server.proof || []).join(";")) throw new Error("领取凭证已更新，请刷新后重新确认。");
-      if ((fresh.lpReceiver || "").toLowerCase() !== (data.lpReceiver || "").toLowerCase() || (fresh.usdt || "").toLowerCase() !== (data.usdt || "").toLowerCase()) throw new Error("领取配置已变化，请刷新后重新确认。");
-      const freshQuote = fresh.preview;
-      if (!freshQuote || freshQuote.amount !== claimable || freshQuote.payout !== quote.payout) throw new Error("领取额度已变化，请重新确认。");
-      if (!fresh.wallet || !holdingAllows(fresh.wallet.tokenBalance, freshQuote.payout, fresh.wallet.maxWalletAmount, fresh.wallet.exempt)) throw new Error("领取后将超过当前持仓上限。");
-      if (!fresh.lpReady || freshQuote.usdtRequired !== quote.usdtRequired || (fresh.wallet.usdtBalance || 0n) < quote.usdtRequired) throw new Error("LP 报价或 USDT 余额已变化，请刷新后重新确认。");
-      const cumulative = fresh.server.amount, proof = fresh.server.proof;
-      if (cumulative === undefined || !proof?.length) throw new Error("领取凭证尚未就绪，请刷新后重试。");
-
-      const hash = await controller.run({
-        address: contracts.claimPool,
-        abi: claimPoolAbi,
-        functionName: "claim",
-        args: [cumulative, proof],
-        description: "领取 70% CaBi，并支付 " + formatAssetAmount(freshQuote.usdtRequired, fresh.usdtDecimals) + " USDT 组建流动性；30% 代币转入 LP 地址",
-        approval: { token: fresh.usdt, amount: freshQuote.usdtRequired },
-      });
-      if (active.current && hash) {
-        setAccepted("");
-        setLastClaim({ payout: freshQuote.payout.toString() });
-        refreshClaimPoolData();
+      if ((fresh.lpReceiver || "").toLowerCase() !== data.lpReceiver.toLowerCase() || fresh.claimOpen !== data.claimOpen) throw new Error("领取状态已变化，请刷新后重新确认。");
+      if (fresh.prepared > fresh.claimed) {
+        if (!fresh.claimOpen) throw new Error("组 LP 已完成，请等待领取开放时间。");
+        const hash = await claimTx.run({ address: contracts.claimPool, abi: claimPoolAbi, functionName: "claim", args: [], description: "领取已组 LP 对应的 70% CaBi" });
+        if (hash) refreshClaimPoolData();
+      } else {
+        if (!fresh.server.claimable || !fresh.preview || !fresh.server.entitlement) throw new Error("可组 LP 额度尚未就绪，请刷新后重试。");
+        const authorization = await requestClaimAuthorization(fresh.server.claimable);
+        if (authorization.amount !== fresh.server.claimable || authorization.cumulativeLimit !== fresh.server.entitlement) throw new Error("授权额度已变化，请刷新后重试。");
+        const minLiquidity = fresh.preview.estimatedLiquidity * 99n / 100n;
+        if (minLiquidity <= 0n) throw new Error("LP 预估数量无效，请刷新后重试。");
+        const hash = await prepareTx.run({ address: contracts.claimPool, abi: claimPoolAbi, functionName: "prepareLiquidity", args: [{ amount: authorization.amount, cumulativeLimit: authorization.cumulativeLimit, nonce: authorization.nonce, deadline: authorization.deadline }, authorization.signature, fresh.preview.usdtRequired, minLiquidity], description: "支付 " + formatAssetAmount(fresh.preview.usdtRequired, fresh.usdtDecimals) + " USDT 并自动组 LP；70% CaBi 在领取开放后到账", approval: { token: fresh.usdt, amount: fresh.preview.usdtRequired } });
+        if (hash) { void submitClaimReceipt(authorization.nonce, hash); refreshClaimPoolData(); }
       }
-    } catch (cause) { if (active.current) { setAccepted(""); setError(claimErrorText(cause)); refreshClaimPoolData(); } }
+      setAccepted("");
+    } catch (cause) { if (active.current) { setAccepted(""); setError(cause instanceof Error ? cause.message : "领取操作失败，请重试。"); refreshClaimPoolData(); } }
     finally { if (active.current) { operation.current = false; setChecking(false); } }
   }
 
-  const statusTone = !server?.configured ? "gray" : claimable ? "green" : "gray";
-  const statusLabel = !server?.configured ? "暂未开放" : claimable ? "可领取" : "等待额度";
+  const statusTone = !server?.configured ? "gray" : (claimable || preparedOutstanding) ? "green" : "gray";
+  const statusLabel = !server?.configured ? "暂未开放" : canClaimNow ? "可领取" : preparedOutstanding ? "已组 LP" : claimable ? "可组 LP" : "等待额度";
+  const buttonLabel = canClaimNow ? "领取 70% CaBi" : preparedOutstanding ? "等待领取开放" : "确认组 LP";
   return <Card className="p-5 sm:p-6">
-    <SectionHead eyebrow="CABI CLAIM" title="认购与奖励领取" desc="认购与奖励自动累计，可自行领取" right={<Badge tone={statusTone}>{statusLabel}</Badge>} />
+    <SectionHead eyebrow="CABI CLAIM" title="认购与奖励领取" desc="服务器核验额度，用户钱包自动组 LP" right={<Badge tone={statusTone}>{statusLabel}</Badge>} />
     <ServiceQueryNotice {...query} label="CaBi 领取" />
     <div id="allocation" className="mt-4 scroll-mt-36 rounded-lg border border-line bg-well px-4 py-2">
-      <DataRow label="本次可领" value={claimable !== undefined ? formatAssetAmount(claimable, data?.tokenDecimals ?? 18) + " CaBi" : "—"} />
-      <DataRow label="另需支付" value={quote && data ? formatAssetAmount(quote.usdtRequired, data.usdtDecimals) + " USDT" : "—"} />
+      <DataRow label="可组 LP 额度" value={claimable !== undefined ? formatAssetAmount(claimable, data?.tokenDecimals ?? 18) + " CaBi" : "—"} />
+      <DataRow label="已组 LP 额度" value={data ? formatAssetAmount(data.prepared, data.tokenDecimals) + " CaBi" : "—"} />
+      <DataRow label="已到账额度" value={data ? formatAssetAmount(data.claimed, data.tokenDecimals) + " CaBi" : "—"} />
+      <DataRow label="本次支付 USDT" value={quote && data ? formatAssetAmount(quote.usdtRequired, data.usdtDecimals) + " USDT" : "—"} />
     </div>
-    <div id="claim-center" className="mt-4 scroll-mt-36 rounded-xl border border-line bg-well p-4">
-      <strong className="text-sm">组 LP 领取（唯一领取方式）</strong>
-      <span className="mt-2 block text-xs leading-6 text-mute">需先支付 30% USDT 等值组建流动性：30% CaBi 与这笔 USDT 同时进入项目 LP 地址，70% CaBi 到账钱包后可交易。</span>
-      {quote && data ? <div className="mt-3 grid grid-cols-1 gap-2 text-xs leading-6 text-mute sm:grid-cols-3">
-        <span>转入 LP：{formatAssetAmount(quote.lpTokens, data.tokenDecimals)} CaBi</span>
-        <span>支付 USDT：{formatAssetAmount(quote.usdtRequired, data.usdtDecimals)}</span>
-        <span>到账钱包：{formatAssetAmount(quote.payout, data.tokenDecimals)} CaBi</span>
-      </div> : null}
+    <div id="claim-center" className="mt-4 rounded-xl border border-line bg-well p-4">
+      <strong className="text-sm">自动组 LP 领取（唯一领取方式）</strong>
+      <span className="mt-2 block text-xs leading-6 text-mute">先由你的钱包支付 30% USDT 并自动加入交易对，领取开放后再领取 70% CaBi。</span>
+      {quote && data ? <div className="mt-3 grid grid-cols-1 gap-2 text-xs leading-6 text-mute sm:grid-cols-3"><span>进入 LP：{formatAssetAmount(quote.lpTokens, data.tokenDecimals)} CaBi</span><span>支付：{formatAssetAmount(quote.usdtRequired, data.usdtDecimals)} USDT</span><span>到账：{formatAssetAmount(quote.payout, data.tokenDecimals)} CaBi</span></div> : null}
     </div>
-    <div className="mt-4 rounded-lg border border-line bg-well px-4 py-2">
-      <DataRow label="本次到账" value={quote && data ? formatAssetAmount(quote.payout, data.tokenDecimals) + " CaBi（70%）" : "—"} />
-      <DataRow label="已领取累计" value={data ? formatAssetAmount(data.totalClaimed, data.tokenDecimals) : "—"} />
-    </div>
-    <p className="mt-3 text-xs leading-6 text-mute">70% CaBi 到账钱包，同时支付 30% USDT 用于组建流动性；未配置 LP 接收地址时暂不能领取。额度按认购与奖励自动累计，可分多次领取。</p>
     {!data?.lpReady ? <p className="mt-2 text-xs leading-6 text-mute">{data?.lpError || "LP 接收地址尚未配置，请等待管理员完成配置。"}</p> : null}
     {!server?.configured ? <p className="mt-2 text-xs leading-6 text-mute">领取通道暂未开放，请稍后再试或联系客服。</p> : null}
-    {!server?.needsSignIn && server?.configured && data && !data.merkleRoot.startsWith("0x000000") ? <p className="mt-2 text-xs leading-6 text-mute">当前领取批次 #{data.epoch}，额度由项目方钱包发布，领取由你自己的钱包发起。</p> : null}
-    <label className="mt-3 flex items-start gap-2 text-xs leading-6 text-mute"><input aria-label="确认本次 CaBi 领取" type="checkbox" checked={confirmed} onChange={event => setAccepted(event.target.checked ? consentKey : "")} disabled={Boolean(reason) || controller.busy || checking} className="mt-1.5 h-4 w-4 shrink-0" />我已核对到账数量与支付金额，同意支付 30% USDT 组建流动性。</label>
+    {server?.configured && data && data.signer.toLowerCase() !== (server.signer || "").toLowerCase() ? <p className="mt-2 text-xs leading-6 text-down">领取签名服务与链上配置不一致，请联系管理员。</p> : null}
+    <label className="mt-3 flex items-start gap-2 text-xs leading-6 text-mute"><input aria-label="确认本次 CaBi 领取" type="checkbox" checked={confirmed} onChange={event => setAccepted(event.target.checked ? consentKey : "")} disabled={Boolean(reason) || prepareTx.busy || claimTx.busy || checking} className="mt-1.5 h-4 w-4 shrink-0" />我已核对数量，同意支付 USDT 自动组 LP。</label>
     {!state.connected ? <button onClick={connect} className="btn btn-outline mt-3 min-h-11 px-4 text-sm">连接钱包</button> : null}
     {state.connected && server?.needsSignIn && server.configured ? <button onClick={() => void signIn()} disabled={signingIn} className="btn btn-outline mt-3 min-h-11 w-full text-sm">{signingIn ? "正在登录…" : "登录后查看可领额度"}</button> : null}
-    <button onClick={() => void claim()} disabled={Boolean(reason) || !confirmed || controller.busy || checking} className="btn btn-gold mt-3 min-h-11 w-full text-sm">{checking ? "正在核对" : controller.busy ? "等待钱包确认" : reason || "确认领取 70%"}</button>
-    {lastClaim ? <p className="mt-3 text-xs leading-6 text-up">领取已确认：本次到账 {formatAssetAmount(BigInt(lastClaim.payout), data?.tokenDecimals ?? 18)} CaBi（70%）。可领额度已刷新。</p> : null}
+    <button onClick={() => void act()} disabled={Boolean(reason) || !confirmed || prepareTx.busy || claimTx.busy || checking} className="btn btn-gold mt-3 min-h-11 w-full text-sm">{checking ? "正在核对" : prepareTx.busy || claimTx.busy ? "等待钱包确认" : reason || buttonLabel}</button>
     {error ? <p role="alert" className="mt-3 text-xs leading-6 text-down">{error}</p> : null}
-    <TransactionFeedback controller={controller} />
+    <TransactionFeedback controller={prepareTx} /><TransactionFeedback controller={claimTx} />
   </Card>;
 }

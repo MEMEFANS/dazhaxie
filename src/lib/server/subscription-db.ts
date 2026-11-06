@@ -40,6 +40,13 @@ export function subscriptionDatabase() {
       PRIMARY KEY(batch_id, address)
     );
     CREATE INDEX IF NOT EXISTS claim_root_items_address ON claim_root_items(address);
+    CREATE TABLE IF NOT EXISTS claim_authorizations (
+      id TEXT PRIMARY KEY, chain_id INTEGER NOT NULL, address TEXT NOT NULL, nonce TEXT NOT NULL,
+      amount TEXT NOT NULL, mode INTEGER NOT NULL, deadline INTEGER NOT NULL, signature TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'signed', tx_hash TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      UNIQUE(chain_id, address, nonce)
+    );
+    CREATE INDEX IF NOT EXISTS claim_authorizations_address ON claim_authorizations(chain_id, address, status, created_at DESC);
   `);
   cache.cabiSubscriptionDb = { file, db };
   return db;
@@ -307,6 +314,80 @@ export function markClaimRootBatch(id: string, status: "applied" | "failed", txH
     subscriptionDatabase().prepare("UPDATE claim_root_batches SET status='failed' WHERE chain_id=? AND id=?").run(chainConfig.id, id);
   }
   return getClaimRootBatch(id)!;
+}
+
+// --------------------------------------------------------- LaunchPool 签名领取授权
+// LaunchPool 使用服务器签发的 EIP-712 授权；这些记录用于限流、幂等复用和
+// 领取回执审计。Merkle 批次表仍保留，方便历史数据查询，但不参与新流程。
+export interface ClaimAuthorization {
+  id: string; address: string; nonce: string; amount: string; mode: number; deadline: number;
+  signature: string; status: string; txHash: string | null; createdAt: number; updatedAt: number;
+}
+function serializeAuthorization(row: Row): ClaimAuthorization {
+  return {
+    id: String(row.id), address: String(row.address), nonce: String(row.nonce), amount: String(row.amount),
+    mode: Number(row.mode), deadline: Number(row.deadline), signature: String(row.signature), status: String(row.status),
+    txHash: row.tx_hash ? String(row.tx_hash) : null, createdAt: Number(row.created_at), updatedAt: Number(row.updated_at),
+  };
+}
+
+export function getClaimAuthorization(address: string, nonce: string, chainId = chainConfig.id): ClaimAuthorization | null {
+  const row = subscriptionDatabase().prepare("SELECT * FROM claim_authorizations WHERE chain_id=? AND address=? AND nonce=?").get(chainId, address.toLowerCase(), String(nonce));
+  return row ? serializeAuthorization(row) : null;
+}
+
+export function latestOpenAuthorization(address: string, chainId = chainConfig.id): ClaimAuthorization | null {
+  const row = subscriptionDatabase().prepare(
+    "SELECT * FROM claim_authorizations WHERE chain_id=? AND address=? AND status='signed' ORDER BY created_at DESC, rowid DESC LIMIT 1",
+  ).get(chainId, address.toLowerCase());
+  return row ? serializeAuthorization(row) : null;
+}
+
+export function nextAuthorizationNonce(address: string, chainId = chainConfig.id): string {
+  const row = subscriptionDatabase().prepare(
+    "SELECT MAX(CAST(nonce AS INTEGER)) AS value FROM claim_authorizations WHERE chain_id=? AND address=?",
+  ).get(chainId, address.toLowerCase());
+  return String(BigInt(Number(row?.value || 0)) + 1n);
+}
+
+export function countAuthorizationsSince(address: string, since: number, chainId = chainConfig.id): number {
+  return Number(subscriptionDatabase().prepare(
+    "SELECT COUNT(*) AS count FROM claim_authorizations WHERE chain_id=? AND address=? AND created_at>?",
+  ).get(chainId, address.toLowerCase(), since)?.count || 0);
+}
+
+export function localClaimedTokens(address: string, chainId = chainConfig.id): bigint {
+  const rows = subscriptionDatabase().prepare(
+    "SELECT amount FROM claim_authorizations WHERE chain_id=? AND address=? AND status='claimed'",
+  ).all(chainId, address.toLowerCase());
+  let total = 0n;
+  for (const row of rows) { try { total += BigInt(String(row.amount)); } catch { /* 忽略损坏记录 */ } }
+  return total;
+}
+
+export function saveClaimAuthorization(input: {
+  address: string; nonce: string; amount: bigint; mode: number; deadline: number; signature: string;
+}) {
+  const db = subscriptionDatabase(), address = input.address.toLowerCase(), now = Date.now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("UPDATE claim_authorizations SET status='superseded', updated_at=? WHERE chain_id=? AND address=? AND status='signed'")
+      .run(now, chainConfig.id, address);
+    db.prepare(`INSERT INTO claim_authorizations (id, chain_id, address, nonce, amount, mode, deadline, signature, status, created_at, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(randomUUID(), chainConfig.id, address, String(input.nonce), input.amount.toString(), input.mode, input.deadline, input.signature, "signed", now, now);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return getClaimAuthorization(address, input.nonce)!;
+}
+
+export function markAuthorizationClaimed(address: string, nonce: string, txHash: string) {
+  const record = getClaimAuthorization(address, nonce);
+  if (!record) throw new AdminRequestError("授权记录不存在", 404);
+  if (record.status === "claimed") return { ...record, idempotent: true };
+  subscriptionDatabase().prepare("UPDATE claim_authorizations SET status='claimed', tx_hash=?, updated_at=? WHERE chain_id=? AND address=? AND nonce=?")
+    .run(txHash.toLowerCase(), Date.now(), chainConfig.id, address.toLowerCase(), String(nonce));
+  return { ...getClaimAuthorization(address, nonce)!, idempotent: false };
 }
 
 /** 服务器聚合出的单人累计应得额度（CaBi 最小单位）。 */

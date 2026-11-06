@@ -1,0 +1,14 @@
+{
+  "chainId": 56,
+  "owner": "0xf8ada5c5052a47dc6e28a07c8a321fb1ad257d70",
+  "previousToken": "0xeccbfbb6708ff051e91a2113e4ac4e19b86e26dd",
+  "previousPool": "0x315913165c095c7f58f3fd220bccc11c3b322d22",
+  "previousSigner": "0xaa43f3d7c8a008180bbd478b2591cba4356fa82b",
+  "token": "0xb38d33fc2773798f0b4007d89eb5be51249c75aa",
+  "pool": "0x10ec832f10ae5092d446d3413a7a2079bc30e2be",
+  "pair": "0xd91efc4e895ca4a1ae6d49f49cb4076add56f7c6",
+  "usdt": "0x55d398326f99059ff775485246999027b3197955",
+  "signer": "0xaa43f3d7c8a008180bbd478b2591cba4356fa82b",
+  "lpReceiver": "0xfd420403066249b1f963ba616c7b6661008fb9df",
+  "newPoolReserve": "700000000"
+}

@@ -5,7 +5,7 @@
 ## 用户确认的规则
 
 - 名称、符号 CaBi，18 位精度，固定发行 10 亿枚，全部初始发给 owner；无增发。
-- 初始价格固定为 700 CaBi / USDT。管理员示例初始池为 15,000 USDT＋10,500,000 CaBi。
+- 初始价格固定为 700 CaBi / USDT。管理员首次加池为 100 USDT＋70,000 CaBi。
 - 每份 35,000 CaBi 额度拆为 24,500 CaBi 待领，以及 10,500 CaBi 配套用户支付的 15 USDT，实际进入唯一绑定的 V2 池并 mint LP。
 - 组 LP 阶段没有买入白名单；普通买卖和持币人转账统一暂停。owner 可以直接划拨初始资金，不能通过普通 Router 买卖。未开放交易前，其它池也不能从本代币取得普通买入输出。
 - 领取时间与交易时间分别设置，交易时间不得早于领取时间。可以设为同一时间。开始组 LP 后时间锁定，不能延后，时间到自动开放，无需管理员补发开盘交易。
@@ -64,7 +64,15 @@ npm run test:launch-deploy
 
 运行 `npm run deploy:launch`，预检 BSC 主网、USDT、Router/Factory、管理员余额与旧池参数后，在 `http://127.0.0.1:8789/` 提供本机部署页面。用装有 MetaMask／OKX 的 Chrome 或 Edge 打开，连接公开模板中的 owner，点击「按顺序部署并配置」，依次在钱包确认：部署新代币、创建交易对、绑定交易对、部署新加池／领取合约、绑定专用合约。钱包可以逐步确认，也可以取消后继续；已完成步骤不重复发送。
 
-本页面只完成五步基础部署，不设置开放时间、不调用 `openLiquidity`、不转移旧池资产、不注入新币储备，也不支付初始 15,000 USDT。完成后链上仍是 Setup。预估 GAS 会在每笔签名前更新；所有 JSON-RPC 数量字段，包括 nonce，均转换为十六进制字符串。
+### 管理员签名迁移控制台
+
+运行 `npm run deploy:launch-migration`，在 `http://127.0.0.1:8790/` 核验旧签名领取池并依次确认迁移交易。控制台先将旧池 signer 指向新池，再提取全部 7 亿枚旧 CaBi，最后由管理员将 7 亿枚新 CaBi 直接转入新池。迁移脚本在启动和每一步前检查新旧合约身份、旧池余额与领取数、代币阶段、钱包余额及重复交易状态。每一笔都要管理员插件钱包单独签名，并等待链上确认。迁移记录保存在 `output/launch-deployment/migration-result.json`。这些操作不会设置开放时间或注入 USDT。
+
+迁移成功后，BSC 的初始池比例是 100 USDT＋70,000 新 CaBi。它需要之后通过新池的 `seedLiquidity` 操作添加；薄饼普通加池入口不适用于筹备阶段。
+
+设置开放时间及初始流动性时运行 `npm run deploy:launch-stage2`，打开 `http://127.0.0.1:8791/`。页面会核对 7 亿枚新币储备、旧池已清空、管理员的 CaBi/USDT 余额、交易对余额、时间和授权。依次签名：设置时间、分别精确授权 70,000 CaBi 和 100 USDT、开启组 LP、通过专用池将 100 USDT＋70,000 CaBi 加入空池。开启组 LP 会锁定时间；开启后才可以添加初始流动性。LP 发给管理员钱包。操作记录保存在 `output/launch-deployment/stage2-result.json`。
+
+本页面只完成五步基础部署，不设置开放时间、不调用 `openLiquidity`、不转移旧池资产、不注入新币储备，也不支付首次加池的 100 USDT＋70,000 CaBi。完成后链上仍是 Setup。预估 GAS 会在每笔签名前更新；所有 JSON-RPC 数量字段，包括 nonce，均转换为十六进制字符串。
 
 部署结果保存在 `output/launch-deployment/result.json`，包含新代币、交易对、新池和逐步交易哈希；完整源码与公开参数分别在同目录的 `standard-input.json`、`manifest.json`。发送后即刻保存哈希，等待两次区块确认，再核对发送人、目标、金额、calldata、运行代码及实际配置。运行代码核验会处理构造时写入的 immutable 字段，随后按公开参数逐项核验。
 
@@ -81,7 +89,7 @@ npm run test:launch-deploy
 5. 若迁移旧签名池，暂停旧网站签发，先备份认购、奖励与回执数据。由旧池 owner 调用旧池 `setSigner(newPool)`，使旧签名不再可用；随后核对并提取旧池全部可用余额。新池在准备和领取时检查旧池已退役且余额为零；不能再把旧池恢复为有效 signer。`claimedOf` 承接旧池已领记录，不能清零重发。
 6. **旧代币和新代币是不同资产**。提取旧池的旧币不会自动给新池充值；需由 owner 从新币供应量向新池转入对应储备，例如 7 亿枚新 CaBi。新币的发行及旧币兑换安排需在正式切换前明确。
 7. owner 调用 `scheduleLaunch(claimAt,tradingAt)` 设置未来时间，再调用 `openLiquidity()`，锁定时间。先核对日期及时区；开始后不能修改。
-8. owner 对新池分别授权初始 CaBi 和 USDT。先读 `previewSeed(10500000e18)`，核对 15,000 USDT 和预估 LP，设置合理 `minLiquidity` 与交易 deadline，再调用 `seedLiquidity`。确认初始 LP 接收地址为 owner。
+8. owner 对新池分别授权 70,000 CaBi 和 100 USDT。先读 `previewSeed(70000e18)`，核对 100 USDT 和预估 LP，设置合理 `minLiquidity` 与交易 deadline，再调用 `seedLiquidity(70000e18, 100e18, minLiquidity, deadline)`（BSC USDT 为 18 位精度）。确认初始 LP 接收地址为 owner。
 9. 接入网站：先申请新 Prepare 凭证，再精确授权本次 USDT，调用 `prepareLiquidity`。必须显示 70% 待领、30% 配对、LP 最终归项目、退出截止、领取和交易时间。余额或授权不足时由交易流程提示，不重复收费。
 10. 读取链上阶段和准备记录，验证小额真实流程后再开放网站参与。正式交易前不得继续运行旧的池销毁 keeper；新币池销毁需等开盘 8 小时后才可执行。
 

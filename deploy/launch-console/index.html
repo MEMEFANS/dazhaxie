@@ -19,8 +19,9 @@
       <div><dt>LP 最终接收钱包</dt><dd id="lpReceiver"></dd></div>
       <div><dt>额度签名地址</dt><dd id="signer"></dd></div>
       <div><dt>配对资产</dt><dd>BSC USDT · <span id="usdt"></span></dd></div>
+      <div><dt>首次加池</dt><dd id="initialLiquidity">加载中…</dd></div>
     </dl>
-    <p class="muted">GAS 由管理员插件钱包支付。本页的五步操作只部署和绑定合约；7 亿枚储备注资、旧币迁移和初始 15,000 USDT 加池另行操作。</p>
+    <p class="muted">GAS 由管理员插件钱包支付。本页的五步操作只部署和绑定合约；7 亿枚储备注资、旧币迁移和首次加池另行操作。</p>
   </section>
   <section class="card">
     <h2>连接管理员钱包</h2>
@@ -39,7 +40,7 @@
     <p class="muted">每步会弹出插件钱包，并独立核对链上结果。已完成的步骤会自动跳过。</p>
     <div id="steps">
       <article data-kind="token"><div><h3>1. 部署新版 CaBi 代币</h3><p>固定总量，分阶段开放</p></div><span class="status">待部署</span><button data-send="token" disabled>部署代币</button></article>
-      <article data-kind="pair"><div><h3>2. 创建 CaBi／USDT 交易对</h3><p>PancakeSwap V2 空池</p></div><span class="status">待创建</span><button data-send="pair" disabled>创建交易对</button></article>
+      <article data-kind="pair"><div><h3>2. 创建 CaBi／USDT 交易对</h3><p>创建 PancakeSwap V2 空池，首次加池在后续进行</p></div><span class="status">待创建</span><button data-send="pair" disabled>创建交易对</button></article>
       <article data-kind="trading"><div><h3>3. 绑定交易对</h3><p>绑定 Router、USDT 和池地址</p></div><span class="status">待绑定</span><button data-send="trading" disabled>绑定交易对</button></article>
       <article data-kind="pool"><div><h3>4. 部署加池／领取合约</h3><p>真实组 LP，保留 70% 待领额度</p></div><span class="status">待部署</span><button data-send="pool" disabled>部署领取合约</button></article>
       <article data-kind="bind"><div><h3>5. 绑定专用加池合约</h3><p>配置加池权限及持仓豁免</p></div><span class="status">待绑定</span><button data-send="bind" disabled>完成绑定</button></article>

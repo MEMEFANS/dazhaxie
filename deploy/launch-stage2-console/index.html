@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CaBi 初始 LP · BSC 主网</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body><main>
+  <p class="eyebrow">BSC MAINNET · INITIAL LIQUIDITY</p>
+  <h1>设置时间并加入初始 LP</h1>
+  <p class="intro">使用专用 CaBi 合约按固定比例设置开放时间并添加初始流动性。每笔交易都由管理员钱包单独确认。</p>
+  <section class="card">
+    <h2>本次操作参数</h2>
+    <dl>
+      <div><dt>管理员</dt><dd id="owner">加载中…</dd></div>
+      <div><dt>新 CaBi</dt><dd id="token"></dd></div>
+      <div><dt>新池</dt><dd id="pool"></dd></div>
+      <div><dt>CaBi／USDT 交易对</dt><dd id="pair"></dd></div>
+      <div><dt>领取开放</dt><dd id="claimTime"></dd></div>
+      <div><dt>交易开放</dt><dd id="tradingTime"></dd></div>
+      <div><dt>管理员钱包</dt><dd id="account">尚未连接</dd></div>
+    </dl>
+    <p id="message" role="status" aria-live="polite">正在核对合约和资金…</p>
+    <p id="balances" class="muted"></p>
+    <p id="fee" class="muted"></p>
+    <p class="muted">“开启组 LP”会永久锁定上方时间。首次加池时，LP 代币发给管理员钱包。</p>
+  </section>
+  <section class="card">
+    <h2>按顺序操作</h2>
+    <div class="toolbar"><select id="wallet" aria-label="选择插件钱包"><option>正在寻找插件钱包…</option></select><button id="connect" disabled>连接管理员钱包</button><button id="switch" class="secondary" hidden>切换 BSC 主网</button><button id="refresh" class="secondary">刷新链上状态</button></div>
+    <div id="steps">
+      <article data-kind="schedule"><div><h3>1. 设置领取与交易时间</h3><p>领取 2026年11月8日10:12:55；交易 2026年11月8日20:00（北京时间）</p></div><span class="status">待设置</span><button data-send="schedule" disabled>设置时间</button></article>
+      <article data-kind="approveToken"><div><h3>2. 授权新池使用 CaBi</h3><p id="tokenApprovalHint">精确授权 70,000 枚新 CaBi，留在钱包中的余额不受影响。</p></div><span class="status">待授权</span><button data-send="approveToken" disabled>授权 CaBi</button></article>
+      <article data-kind="approveUsdt"><div><h3>3. 授权新池使用 USDT</h3><p>精确授权 100 USDT。</p></div><span class="status">待授权</span><button data-send="approveUsdt" disabled>授权 USDT</button></article>
+      <article data-kind="open"><div><h3>4. 开启组 LP</h3><p>永久锁定开放时间；交易仍按设定时间开始。</p></div><span class="status">待开启</span><button data-send="open" disabled>开启组 LP</button></article>
+      <article data-kind="seed"><div><h3>5. 首次添加流动性</h3><p>添加 100 USDT＋70,000 枚 CaBi，初始 LP 发给管理员。</p></div><span class="status">待加池</span><button data-send="seed" disabled>加入初始 LP</button></article>
+    </div>
+  </section>
+  <section class="card">
+    <h2>恢复待核对交易</h2>
+    <div class="toolbar"><select id="kind" aria-label="操作类型"><option value="schedule">设置时间</option><option value="approveToken">授权 CaBi</option><option value="approveUsdt">授权 USDT</option><option value="open">开启组 LP</option><option value="seed">首次加池</option></select><input id="hash" placeholder="0x 开头的交易哈希" aria-label="交易哈希" autocomplete="off" spellcheck="false"><button id="check" class="secondary">查询并核对</button></div>
+    <a id="txLink" target="_blank" rel="noopener noreferrer"></a>
+  </section>
+  <footer>确认每个钱包弹窗的合约地址、代币和金额。不要通过薄饼普通加池页面添加首次流动性。</footer>
+</main><script src="/wallet.js?v=20261107-reset-cache-fix"></script></body>
+</html>

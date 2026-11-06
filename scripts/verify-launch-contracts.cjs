@@ -85,20 +85,20 @@ async function scenario(decimals) {
     await unavailable(token, 'burnPool');
     pass(label + '组LP开始后时间锁定，池内销毁等到开盘后计时');
 
-    await send(quote, 'mint', [owner, unit(15000, decimals)]);
-    await send(token, 'approve', [pool.address, unit(10500000)]);
-    await send(quote, 'approve', [pool.address, unit(15000, decimals)]);
-    const seedQuote = await read(pool, 'previewSeed', [unit(10500000)]);
-    assert.equal(seedQuote[0], unit(15000, decimals));
-    await send(pool, 'seedLiquidity', [unit(10500000), seedQuote[0], seedQuote[1] * 99n / 100n, tradingAt]);
-    assert.equal(await balance(token, pair.address), unit(10500000));
-    assert.equal(await balance(quote, pair.address), unit(15000, decimals));
+    await send(quote, 'mint', [owner, unit(100, decimals)]);
+    await send(token, 'approve', [pool.address, unit(70000)]);
+    await send(quote, 'approve', [pool.address, unit(100, decimals)]);
+    const seedQuote = await read(pool, 'previewSeed', [unit(70000)]);
+    assert.equal(seedQuote[0], unit(100, decimals));
+    await send(pool, 'seedLiquidity', [unit(70000), seedQuote[0], seedQuote[1] * 99n / 100n, tradingAt]);
+    assert.equal(await balance(token, pair.address), unit(70000));
+    assert.equal(await balance(quote, pair.address), unit(100, decimals));
     assert.equal(await balance(token, DEAD), 0n);
     assert.equal(await read(token, 'taxTokenBalance'), 0n);
     assert.equal(await read(token, 'liquidityOperation'), 0);
     assert((await balance(pair, owner)) > 0n);
     await send(token, 'transfer', [pool.address, unit(700000000)]);
-    pass(label + '15000 USDT＋1050万CaBi真正建池，初始加池不扣税');
+    pass(label + '100 USDT＋70,000 CaBi真正建池，初始加池不扣税');
 
     const sign = async (user, amount, cumulativeLimit, nonce) => {
       const authorization = { amount, cumulativeLimit, nonce, deadline: tradingAt };
@@ -129,8 +129,8 @@ async function scenario(decimals) {
     assert.equal(aliceQuote[0], unit(49000)); assert.equal(aliceQuote[1], unit(21000)); assert.equal(aliceQuote[2], unit(30, decimals));
     const bobQuote = await prepare(bob, unit(35000), 1n);
     assert.equal(bobQuote[0], unit(24500)); assert.equal(bobQuote[1], unit(10500)); assert.equal(bobQuote[2], unit(15, decimals));
-    assert.equal(await balance(token, pair.address), unit(10531500));
-    assert.equal(await balance(quote, pair.address), unit(15045, decimals));
+    assert.equal(await balance(token, pair.address), unit(101500));
+    assert.equal(await balance(quote, pair.address), unit(145, decimals));
     assert.equal(await read(pool, 'reservedPayout'), unit(73500));
     assert.equal(await balance(pair, pool.address), await read(pool, 'escrowedLp'));
     await unavailable(pool, 'claim', [], alice);

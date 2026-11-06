@@ -1,0 +1,16 @@
+{
+  "chainId": 56,
+  "owner": "0xf8ada5c5052a47dc6e28a07c8a321fb1ad257d70",
+  "token": "0xb38d33fc2773798f0b4007d89eb5be51249c75aa",
+  "pool": "0x10ec832f10ae5092d446d3413a7a2079bc30e2be",
+  "pair": "0xd91efc4e895ca4a1ae6d49f49cb4076add56f7c6",
+  "usdt": "0x55d398326f99059ff775485246999027b3197955",
+  "previousPool": "0x315913165c095c7f58f3fd220bccc11c3b322d22",
+  "lpReceiver": "0xfd420403066249b1f963ba616c7b6661008fb9df",
+  "seedTokens": "70000",
+  "seedUsdt": "100",
+  "claimStartsAt": "1794103975",
+  "tradingStartsAt": "1794139200",
+  "claimStartsAtBeijing": "2026-11-08 10:12:55",
+  "tradingStartsAtBeijing": "2026-11-08 20:00"
+}

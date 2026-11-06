@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CaBi 旧池迁移 · BSC 主网</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body><main>
+  <p class="eyebrow">BSC MAINNET · ASSET MIGRATION</p>
+  <h1>CaBi 领取池迁移</h1>
+  <p class="intro">逐笔核对旧池停用、旧币回收和新池储备。每笔交易由管理员插件钱包签名。</p>
+  <section class="card">
+    <h2>链上账户</h2>
+    <dl>
+      <div><dt>管理员</dt><dd id="owner">加载中…</dd></div>
+      <div><dt>旧领取池</dt><dd id="previousPool"></dd></div>
+      <div><dt>旧 CaBi</dt><dd id="previousToken"></dd></div>
+      <div><dt>新领取池</dt><dd id="pool"></dd></div>
+      <div><dt>新 CaBi</dt><dd id="token"></dd></div>
+      <div><dt>钱包连接</dt><dd id="account">尚未连接</dd></div>
+    </dl>
+    <p id="message" role="status" aria-live="polite">正在核对 BSC 链上状态…</p>
+    <p id="balances" class="muted"></p>
+    <p id="fee" class="muted"></p>
+  </section>
+  <section class="card">
+    <h2>按顺序迁移</h2>
+    <div class="toolbar"><select id="wallet" aria-label="选择插件钱包"><option>正在寻找插件钱包…</option></select><button id="connect" disabled>连接管理员钱包</button><button id="switch" class="secondary" hidden>切换 BSC 主网</button><button id="refresh" class="secondary">刷新状态</button></div>
+    <div id="steps">
+      <article data-kind="retire"><div><h3>1. 停用旧池签名</h3><p>将旧池签名地址更改为新池，停止发出旧版领取授权。</p></div><span class="status">待执行</span><button data-send="retire" disabled>停用旧池</button></article>
+      <article data-kind="withdraw"><div><h3>2. 取回旧池代币</h3><p>旧领取记录已核对为 0，回收旧池中的旧 CaBi 到管理员钱包。</p></div><span class="status">待执行</span><button data-send="withdraw" disabled>取回旧币</button></article>
+      <article data-kind="fund"><div><h3>3. 注入新池储备</h3><p>把新 CaBi 转入新池；旧 CaBi 不会转入新池。</p></div><span class="status">待执行</span><button data-send="fund" disabled>转入新币</button></article>
+    </div>
+  </section>
+  <section class="card">
+    <h2>恢复待核对交易</h2>
+    <div class="toolbar"><select id="kind" aria-label="操作类型"><option value="retire">停用旧池</option><option value="withdraw">取回旧币</option><option value="fund">注入新币</option></select><input id="hash" placeholder="0x 开头的交易哈希" aria-label="交易哈希" autocomplete="off" spellcheck="false"><button id="check" class="secondary">查询并核对</button></div>
+    <a id="txLink" target="_blank" rel="noopener noreferrer"></a>
+  </section>
+  <footer>请核对钱包弹窗中的代币、数量和收款地址后再签名。所有步骤完成后再回到代币部署页设置开放时间。</footer>
+</main><script src="/migration-wallet.js"></script></body>
+</html>

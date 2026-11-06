@@ -171,6 +171,7 @@ async function initialize() {
   if (!response.ok) throw new Error('无法加载部署参数');
   manifest = await response.json(); storageKey = 'cabi-launch-deployment:' + manifest.fingerprint;
   for (const field of ['owner', 'distributionReceiver', 'buybackPool', 'lpReceiver', 'signer', 'usdt']) $(field).textContent = manifest[field];
+  $('initialLiquidity').textContent = Number(manifest.initialUsdtAmount).toLocaleString('zh-CN') + ' USDT ＋ ' + Number(manifest.initialTokenAmount).toLocaleString('zh-CN') + ' CaBi';
   discover(); await refresh();
   $('fee').textContent = '代币部署当前预估 GAS：' + manifest.preflight.tokenEstimatedFeeBnb + ' BNB，签名前会重新估算。';
   message(pending ? '已恢复上一次钱包操作，请查询并核对交易。' : state.complete ? '链上部署已完成，合约处于筹备阶段。' : '请连接管理员插件钱包，在 BSC 主网确认部署。');

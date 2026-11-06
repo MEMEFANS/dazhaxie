@@ -74,7 +74,7 @@ async function browserWorkflow(mode) {
   const hash = '0x' + 'a'.repeat(64), dataHash = '0x' + 'b'.repeat(64), address = '0x2222222222222222222222222222222222222222';
   let pending = null, sends = 0, cancelled = false, verified = false;
   const record = { actions: {} }, state = {};
-  const manifest = { owner, chainId: 56, kinds, labels, fingerprint: mode, preflight: { tokenEstimatedFeeBnb: '0.001' } };
+  const manifest = { owner, chainId: 56, kinds, labels, initialUsdtAmount: '100', initialTokenAmount: '70000', fingerprint: mode, preflight: { tokenEstimatedFeeBnb: '0.001' } };
   w.ethereum = { isMetaMask: true, request: async ({ method, params }) => {
     if (method === 'eth_requestAccounts' || method === 'eth_accounts') return [owner];
     if (method === 'eth_chainId') return '0x38';

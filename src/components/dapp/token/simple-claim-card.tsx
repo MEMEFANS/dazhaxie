@@ -89,6 +89,7 @@ function ClaimForm() {
       <DataRow label="已到账额度" value={data ? formatAssetAmount(data.claimed, data.tokenDecimals) + " CaBi" : "—"} />
       <DataRow label="本次支付 USDT" value={quote && data ? formatAssetAmount(quote.usdtRequired, data.usdtDecimals) + " USDT" : "—"} />
     </div>
+    {quote && data ? <p className="mt-2 text-xs leading-6 text-mute">点击确认组 LP 后，系统会自动授权本次所需的 {formatAssetAmount(quote.usdtRequired, data.usdtDecimals)} USDT；已有足够授权时会自动跳过授权。</p> : null}
     <div id="claim-center" className="mt-4 rounded-xl border border-line bg-well p-4">
       <strong className="text-sm">自动组 LP 领取（唯一领取方式）</strong>
       <span className="mt-2 block text-xs leading-6 text-mute">按固定比例组 LP：每份 35,000 CaBi 配额中，10,500 CaBi 与 15 USDT 进入 LP，24,500 CaBi 在开放后到账。</span>

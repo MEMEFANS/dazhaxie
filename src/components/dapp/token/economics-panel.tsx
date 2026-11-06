@@ -4,9 +4,7 @@ import { ShieldAlert } from "lucide-react";
 import { formatUnits } from "viem";
 import { useStore } from "@/lib/store";
 import { useTokenData } from "@/lib/chain-data";
-import { tradingMode } from "@/lib/chain-config";
-import { PancakeSwapLink } from "@/components/dapp/pancake-swap-link";
-import { BUY_FEE_BPS, MAX_WALLET_BALANCE, SELL_FEE_BPS, TOTAL_SUPPLY, fmt } from "@/lib/constants";
+import { MAX_WALLET_BALANCE, TOTAL_SUPPLY, fmt } from "@/lib/constants";
 import { Badge, Card, DataRow, Metric, SectionHead } from "@/components/dapp/ui";
 
 function assetAmount(amount: bigint, decimals: number, precision = 4): string {
@@ -27,21 +25,10 @@ export default function EconomicsPanel() {
   const statusText = failed ? "暂时无法更新" : { unconfigured: "资产信息待开放", loading: "正在更新", ready: "已更新", error: "暂时无法更新" }[query.status];
 
   return <Card className="p-5 sm:p-6">
-    <SectionHead eyebrow="MY ASSETS" title="CaBi 资产" desc="查看余额、交易规则与持仓额度" right={<Badge tone={token ? "green" : failed ? "red" : "gray"}>{statusText}</Badge>} />
+    <SectionHead eyebrow="MY ASSETS" title="CaBi 资产" desc="查看余额与持仓额度" right={<Badge tone={token ? "green" : failed ? "red" : "gray"}>{statusText}</Badge>} />
     <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-5">
       <Metric label="发行总量" value={token ? assetAmount(token.totalSupply, token.decimals + 8) : fmt(TOTAL_SUPPLY / 100000000)} unit="亿枚" hint={token ? token.name : "项目发行规则"} />
       <Metric label="我的 CaBi 余额" value={balance !== undefined && token ? assetAmount(balance, token.decimals) : "—"} unit="枚" hint={!state.connected ? "连接钱包查看" : token ? "当前钱包余额" : "余额暂未更新"} />
-    </div>
-
-    <div className="mt-6 border-t border-line pt-5">
-      <p className="kicker">交易规则</p>
-      <div className="mt-3 rounded-lg border border-line bg-well px-4 py-1">
-        <DataRow label="买入手续费" value={`${BUY_FEE_BPS / 100}%`} />
-        <DataRow label="卖出手续费" value={`${SELL_FEE_BPS / 100}%`} />
-        <DataRow label="钱包转账手续费" value="0%" />
-      </div>
-      <p className="mt-3 text-[12px] leading-6 text-mute">{tradingMode === "pancake" ? "买入和卖出手续费以 CaBi 收取，普通钱包之间转账不收手续费。请以交易页面显示的实际到账数量为准。" : "买入手续费以 USDT 收取，卖出手续费以 CaBi 收取，普通钱包之间转账不收手续费。请以交易页面显示的实际到账数量为准。"}</p>
-      <PancakeSwapLink className="mt-4" />
     </div>
 
     <div className="mt-6 border-t border-line pt-5">

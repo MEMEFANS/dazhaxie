@@ -61,6 +61,7 @@ function fixture() {
     configured: true, enabled: true, locked: false, payee: PAYEE, usdt: USDT, token: '0x5555555555555555555555555555555555555555',
     chainId: 56, unitPrice: 50, tokensPerShare: 35000, minShares: 1, maxShares: 2, hardCap: 20000, softCap: 10000,
     globalSold: 120, remainingGlobal: 19880, purchased: 0, remainingPersonal: 2, usdtDecimals: 6, tokenDecimals: 18, message: '',
+    priceTiers: [{ until: 5000, price: 50 }, { until: 10000, price: 55 }, { until: 15000, price: 60 }, { until: 20000, price: 70 }],
   };
 }
 const tx = { transaction: null, busy: false, clear() { tx.transaction = null; }, resume: async () => txResult, run: async request => { if (request.beforeSend) await request.beforeSend(); writes.push(request); return txResult; } };
@@ -103,6 +104,24 @@ async function reset() {
   await render();
 }
 const action = () => document.querySelector('button.btn-gold'), radio = shares => document.querySelector('[aria-label="认购 ' + shares + ' 份"]');
+function setInput(selector, value) {
+  const input = document.querySelector(selector);
+  assert(input, 'missing input ' + selector);
+  const prototype = input.tagName === 'TEXTAREA' ? dom.window.HTMLTextAreaElement.prototype : dom.window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+  setter.call(input, value);
+  input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+}
+async function fillShipping() {
+  await pause(20);
+  await React.act(async () => {
+    setInput('input[autocomplete="name"]', '测试收货人');
+    setInput('input[autocomplete="tel"]', '13800138000');
+    setInput('textarea[autocomplete="street-address"]', '测试省测试市测试路 1 号');
+    await pause();
+  });
+}
 async function click(element, wait = 24) {
   assert(element, 'missing element');
   await React.act(async () => { element.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); await pause(wait); });
@@ -123,6 +142,11 @@ async function click(element, wait = 24) {
     assert.equal(action().textContent, '确认认购');
     pass('panel shows the configured payee, 50 USDT/share and the single 30% LP / 70% payout path');
 
+    await fillShipping();
+    assert.equal(document.querySelector('input[autocomplete="name"]').value, '测试收货人');
+    assert.equal(document.querySelector('input[autocomplete="tel"]').value, '13800138000');
+    assert.equal(document.querySelector('textarea[autocomplete="street-address"]').value, '测试省测试市测试路 1 号');
+    assert.equal(action().disabled, false);
     await click(action(), 60);
     assert.equal(writes.length, 1);
     const write = writes[0];
@@ -135,12 +159,13 @@ async function click(element, wait = 24) {
     assert.equal(requests[0].init.method, 'POST');
     assert.equal(JSON.parse(requests[0].init.body).shares, 1);
     assert.equal(JSON.parse(requests[0].init.body).hash, hash);
+    assert.deepEqual(JSON.parse(requests[0].init.body).shipping, { name: '测试收货人', phone: '13800138000', address: '测试省测试市测试路 1 号' });
     assert(document.body.textContent.includes('认购已登记'));
     assert.equal(configRefreshes, 1);
     assert.equal(orderRefreshes, 1);
     pass('submission sends USDT directly to the payee and posts the hash to the server ledger without any sale contract');
 
-    await reset(); freshConfig = { ...fixture(), payee: B };
+    await reset(); await fillShipping(); freshConfig = { ...fixture(), payee: B };
     await click(action(), 60);
     assert.equal(writes.length, 0);
     assert.equal(requests.length, 0);
@@ -148,7 +173,7 @@ async function click(element, wait = 24) {
     assert(document.body.textContent.includes('认购收款地址或金额已更新'));
     pass('an updated server payee refreshes the page before any wallet transfer');
 
-    await reset(); serverResponse = { status: 202, body: { error: '等待区块确认' } };
+    await reset(); await fillShipping(); serverResponse = { status: 202, body: { error: '等待区块确认' } };
     await click(action(), 60);
     assert(requests[0].url === '/api/subscribe/orders');
     assert(document.body.textContent.includes('等待区块确认'));
@@ -161,7 +186,7 @@ async function click(element, wait = 24) {
     assert(document.body.textContent.includes('认购已登记'));
     pass('a 202 verification keeps the hash for a transfer-free recheck that completes without paying twice');
 
-    await reset(); serverResponse = { status: 409, body: { error: '该交易哈希已登记过认购' } };
+    await reset(); await fillShipping(); serverResponse = { status: 409, body: { error: '该交易哈希已登记过认购' } };
     await click(action(), 60);
     assert(document.body.textContent.includes('该交易哈希已登记过认购'));
     assert(document.querySelector('[data-kind="registration-failed"]'), 'missing failed registration status');

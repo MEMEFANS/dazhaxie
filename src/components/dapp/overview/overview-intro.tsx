@@ -9,13 +9,14 @@ import {
   MAX_EXCHANGE_PER_TIME,
   TOKENS_PER_SHARE,
   TOTAL_SUPPLY,
-  UNIT_PRICE,
   fmt,
 } from "@/lib/constants";
+import { useSubscribeConfig } from "@/lib/subscribe-data";
 import { DataRow, Panel } from "@/components/dapp/ui";
 
 export function OverviewIntro() {
   const { state } = useStore();
+  const subscribe = useSubscribeConfig();
   const chain = state.chainId > 0 ? `Chain ${state.chainId}` : "网络未连接";
 
   return (
@@ -51,7 +52,7 @@ export function OverviewIntro() {
         <div className="mt-3 divide-y divide-line">
           <DataRow label="网络" value={chain} mono={false} />
           <DataRow label="认购资产" value="USDT" mono={false} />
-          <DataRow label="认购单价" value={`${fmt(UNIT_PRICE)} USDT / 份`} />
+          <DataRow label="认购单价" value={`${fmt(subscribe.data?.unitPrice ?? 50)} USDT / 份（分档 50 / 55 / 60 / 70）`} />
           <DataRow label="硬顶" value={`${fmt(HARD_CAP)} 份`} />
           <DataRow label="每份配额" value={`${fmt(TOKENS_PER_SHARE)} CaBi`} />
           <DataRow label="兑换单价" value={`${fmt(EXCHANGE_COST)} CaBi / 份`} />

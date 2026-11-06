@@ -43,6 +43,10 @@ const dbModule = load('src/lib/server/subscription-db.ts', {
   '../constants': constants,
   '../team-tree': teamTree,
   '../merkle': merkle,
+  './redemption-db': {
+    encryptShipping: value => JSON.stringify(value),
+    decryptShipping: value => JSON.parse(value),
+  },
   '../chain-config': { chainConfig: { id: 56 } },
   './admin-db': { adminDataDirectory: () => dataDir },
   './admin-session': { AdminRequestError },
@@ -79,7 +83,13 @@ const chainModule = load('src/lib/server/subscription-chain.ts', {
 });
 
 function order(address, shares, index) {
-  return dbModule.createSubscriptionOrder({ address, shares, amount: BigInt(shares) * 50n * 10n ** 6n, txHash: hash(index) });
+  return dbModule.createSubscriptionOrder({
+    address,
+    shares,
+    amount: BigInt(shares) * 50n * 10n ** 6n,
+    txHash: hash(index),
+    shipping: { name: '测试用户', phone: '13800138000', address: '测试省测试市测试路 1 号' },
+  });
 }
 
 (async () => {
@@ -103,6 +113,17 @@ function order(address, shares, index) {
     assert.equal(searched.total, 1);
     assert.equal(searched.globalSold, 6);
     pass('subscription orders persist, aggregate globalSold/purchased and reject duplicate transaction hashes');
+
+    // ---------------------------------------------------------- 销售价格档位
+    assert.equal(constants.subscriptionUnitPrice(0), 50);
+    assert.equal(constants.subscriptionUnitPrice(4999), 50);
+    assert.equal(constants.subscriptionUnitPrice(5000), 55);
+    assert.equal(constants.subscriptionUnitPrice(9999), 55);
+    assert.equal(constants.subscriptionUnitPrice(10000), 60);
+    assert.equal(constants.subscriptionUnitPrice(14999), 60);
+    assert.equal(constants.subscriptionUnitPrice(15000), 70);
+    assert.equal(constants.subscriptionUnitPrice(19999), 70);
+    pass('subscription price tiers switch at 5000, 10000 and 15000 sold shares');
 
     // ---------------------------------------------------------- 奖励与批次
     const targets = dbModule.computeClaimTargets();

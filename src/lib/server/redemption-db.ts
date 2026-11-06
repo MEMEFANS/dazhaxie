@@ -15,13 +15,13 @@ export function redemptionSecret() {
   return secret;
 }
 function encryptionKey() { return createHash("sha256").update(`cabi-redemption-shipping-v1:${redemptionSecret()}`).digest(); }
-function encrypt(shipping: RedemptionShipping, id: string) {
+export function encryptShipping(shipping: RedemptionShipping, id: string) {
   const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
   cipher.setAAD(Buffer.from(id));
   const encrypted = Buffer.concat([cipher.update(JSON.stringify(shipping), "utf8"), cipher.final()]);
   return `${iv.toString("hex")}.${cipher.getAuthTag().toString("hex")}.${encrypted.toString("hex")}`;
 }
-function decrypt(value: string, id: string): RedemptionShipping {
+export function decryptShipping(value: string, id: string): RedemptionShipping {
   const [iv, tag, encrypted] = value.split("."), decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(iv, "hex"));
   decipher.setAAD(Buffer.from(id)); decipher.setAuthTag(Buffer.from(tag, "hex"));
   return JSON.parse(Buffer.concat([decipher.update(Buffer.from(encrypted, "hex")), decipher.final()]).toString("utf8"));
@@ -47,7 +47,7 @@ function order(row: Row): RedemptionOrder {
   return { id: String(row.id), address: String(row.address), chainId: Number(row.chain_id), payee: String(row.payee || row.contract || ""),
     quantity: Number(row.quantity), amount: String(row.amount), status: row.status as RedemptionOrder["status"], createdAt: Number(row.created_at),
     ...(row.paid_at ? { paidAt: Number(row.paid_at) } : {}), ...(row.tx_hash ? { transactionHash: String(row.tx_hash) as `0x${string}` } : {}),
-    shipping: decrypt(String(row.shipping), String(row.id)), ...(row.carrier ? { carrier: String(row.carrier) } : {}),
+    shipping: decryptShipping(String(row.shipping), String(row.id)), ...(row.carrier ? { carrier: String(row.carrier) } : {}),
     ...(row.tracking_number ? { trackingNumber: String(row.tracking_number) } : {}), ...(row.shipped_at ? { shippedAt: Number(row.shipped_at) } : {}),
     ...(row.note ? { note: String(row.note) } : {}) };
 }
@@ -72,7 +72,7 @@ export function createRedemptionOrder(input: {
   const id = `${input.address.toLowerCase()}${randomBytes(12).toString("hex")}`;
   try {
     db.prepare("INSERT INTO redemption_orders(id,address,chain_id,contract,payee,quantity,amount,status,created_at,paid_at,tx_hash,shipping) VALUES(?,?,?,?,?,?,?, 'paid',?,?,?,?)")
-      .run(id, input.address.toLowerCase(), input.chainId, input.payee.toLowerCase(), input.payee, input.quantity, input.amount, now, now, input.transactionHash.toLowerCase(), encrypt(input.shipping, id));
+      .run(id, input.address.toLowerCase(), input.chainId, input.payee.toLowerCase(), input.payee, input.quantity, input.amount, now, now, input.transactionHash.toLowerCase(), encryptShipping(input.shipping, id));
   } catch {
     throw new AdminRequestError("该笔转账已提交过兑换单，请勿重复提交", 409);
   }

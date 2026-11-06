@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import { readOperationalSettings, saveOperationalSettings } from "@/lib/server/admin-db";
-import { searchSubscriptions } from "@/lib/server/subscription-db";
+import { searchSubscriptions, shipSubscriptionOrder } from "@/lib/server/subscription-db";
 import { AdminRequestError, adminErrorResponse, assertSameOrigin, readJsonObject, requireCurrentAdmin } from "@/lib/server/admin-session";
 
 function number(value: string | null, fallback: number) {
@@ -29,6 +29,11 @@ export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
     const admin = await requireCurrentAdmin(), body = await readJsonObject(request);
+    if (body.action === "ship") {
+      if (typeof body.id !== "string" || !body.id.trim() || typeof body.carrier !== "string" || !body.carrier.trim() || typeof body.trackingNumber !== "string" || !body.trackingNumber.trim()) throw new AdminRequestError("请填写订单、物流公司和运单号", 400);
+      const order = shipSubscriptionOrder(body.id.trim(), body.carrier, body.trackingNumber);
+      return Response.json({ order }, { headers: { "Cache-Control": "no-store" } });
+    }
     const current = readOperationalSettings();
     if (body.subscribePayee !== undefined && typeof body.subscribePayee !== "string") throw new AdminRequestError("认购收款地址格式不正确", 400);
     if (body.subscribeLocked !== undefined && typeof body.subscribeLocked !== "boolean") throw new AdminRequestError("认购开关格式不正确", 400);

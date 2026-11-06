@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { Download, Loader2, RefreshCw, Save } from "lucide-react";
 import { formatAssetAmount } from "@/lib/amounts";
+import { SUBSCRIPTION_PRICE_TIERS, subscriptionUnitPrice } from "@/lib/constants";
 import { Card, DataRow, Progress, SectionHead } from "@/components/dapp/ui";
 
-interface SubscriptionRow { id: string; address: string; shares: number; amount: string; txHash: string; status: string; createdAt: number }
+interface SubscriptionRow { id: string; address: string; shares: number; amount: string; txHash: string; status: string; createdAt: number; shipping?: { name: string; phone: string; address: string }; carrier?: string; trackingNumber?: string; shippedAt?: number }
 interface ListResponse { items: SubscriptionRow[]; total: number; page: number; pageSize: number; globalSold: number; hardCap: number; subscribeLocked: boolean; subscribePayee: string; error?: string }
 interface ClaimPoolResponse {
   mode: "signed" | "legacy" | "unconfigured" | "error";
@@ -42,6 +43,7 @@ export default function SubscribeAdmin() {
   const [q, setQ] = useState(""), [page, setPage] = useState(1);
   const [payee, setPayee] = useState("");
   const [busy, setBusy] = useState(""), [error, setError] = useState(""), [message, setMessage] = useState("");
+  const [shipping, setShipping] = useState<Record<string, { carrier: string; trackingNumber: string }>>({});
 
   async function loadSubscriptions(next = page, nextQ = q) {
     const body = await fetchSubscriptions(next, nextQ);
@@ -87,6 +89,19 @@ export default function SubscribeAdmin() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "保存失败"); }
     finally { setBusy(""); }
   }
+  async function ship(row: SubscriptionRow) {
+    const draft = shipping[row.id];
+    if (!draft?.carrier.trim() || !draft.trackingNumber.trim()) { setError("请填写物流公司和运单号后再登记发货。"); return; }
+    if (busy) return;
+    setBusy(row.id); setError(""); setMessage("");
+    try {
+      const response = await fetch("/api/admin/subscriptions", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "ship", id: row.id, carrier: draft.carrier, trackingNumber: draft.trackingNumber }) });
+      const body = await response.json().catch(() => ({ error: "登记发货失败" })) as { error?: string };
+      if (!response.ok) throw new Error(body.error || "登记发货失败");
+      setMessage("已登记发货，收货信息与运单已保存。"); await loadSubscriptions(page, q);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "登记发货失败"); }
+    finally { setBusy(""); }
+  }
   const percent = list.hardCap > 0 ? Math.min(100, list.globalSold * 100 / list.hardCap) : 0;
   const pages = Math.max(1, Math.ceil(list.total / list.pageSize));
   return <div className="space-y-5">
@@ -97,6 +112,8 @@ export default function SubscribeAdmin() {
         <DataRow label="剩余额度" value={`${Math.max(0, list.hardCap - list.globalSold)} 份`} />
         <DataRow label="运营开关" value={list.subscribeLocked ? "已暂停" : "开放中"} />
         <DataRow label="已登记认购单" value={`${list.total} 笔`} />
+        <DataRow label="当前销售价" value={`${subscriptionUnitPrice(list.globalSold)} USDT / 份`} />
+        <DataRow label="价格档位" value={SUBSCRIPTION_PRICE_TIERS.map(tier => `${tier.price}（${tier.until.toLocaleString()}份前）`).join(" · ")} />
       </div>
       <Progress value={percent} />
       <div className="mt-4 flex flex-wrap gap-2">
@@ -121,9 +138,15 @@ export default function SubscribeAdmin() {
         <a href={`/api/admin/subscriptions/export?q=${encodeURIComponent(q)}`} className="btn btn-outline min-h-11 px-4 text-xs"><Download size={13} />导出 CSV</a>
       </form>
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-xs">
-          <thead className="border-b border-line text-mute"><tr><th className="py-2 pr-3">地址</th><th className="pr-3">份数</th><th className="pr-3">USDT 金额（最小单位）</th><th className="pr-3">交易哈希</th><th className="pr-3">状态</th><th>时间</th></tr></thead>
-          <tbody className="divide-y divide-line">{list.items.length ? list.items.map(row => <tr key={row.id}><td className="py-2 pr-3 font-mono">{row.address}</td><td className="pr-3">{row.shares}</td><td className="pr-3 font-mono">{row.amount}</td><td className="pr-3 font-mono">{row.txHash.slice(0, 14)}…</td><td className="pr-3">{row.status === "confirmed" ? "已确认" : row.status}</td><td className="text-mute">{time(row.createdAt)}</td></tr>) : <tr><td colSpan={6} className="py-4 text-mute">暂无认购单</td></tr>}</tbody>
+        <table className="w-full min-w-[1160px] text-left text-xs">
+          <thead className="border-b border-line text-mute"><tr><th className="py-2 pr-3">地址</th><th className="pr-3">份数</th><th className="pr-3">USDT 金额（最小单位）</th><th className="pr-3">交易哈希</th><th className="pr-3">收货信息</th><th className="pr-3">状态</th><th className="pr-3">发货</th><th>时间</th></tr></thead>
+          <tbody className="divide-y divide-line">{list.items.length ? list.items.map(row => <tr key={row.id}>
+            <td className="py-2 pr-3 font-mono">{row.address}</td><td className="pr-3">{row.shares}</td><td className="pr-3 font-mono">{row.amount}</td><td className="pr-3 font-mono">{row.txHash.slice(0, 14)}…</td>
+            <td className="max-w-[240px] pr-3 leading-5">{row.shipping ? <>{row.shipping.name} · {row.shipping.phone}<br /><span className="text-mute">{row.shipping.address}</span></> : <span className="text-warn">历史订单未填写</span>}</td>
+            <td className="pr-3">{row.status === "confirmed" ? "待发货" : row.status === "shipped" ? "已发货" : row.status === "cancelled" ? "已取消" : row.status}</td>
+            <td className="pr-3">{row.status === "confirmed" && row.shipping ? <div className="flex min-w-[260px] flex-col gap-1"><div className="flex gap-1"><input aria-label={`订单 ${row.id} 物流公司`} value={shipping[row.id]?.carrier || ""} onChange={event => setShipping(prev => ({ ...prev, [row.id]: { carrier: event.target.value, trackingNumber: prev[row.id]?.trackingNumber || "" } }))} placeholder="物流公司" className="field h-8 min-w-0 flex-1 px-2 text-[11px]" /><input aria-label={`订单 ${row.id} 运单号`} value={shipping[row.id]?.trackingNumber || ""} onChange={event => setShipping(prev => ({ ...prev, [row.id]: { trackingNumber: event.target.value, carrier: prev[row.id]?.carrier || "" } }))} placeholder="运单号" className="field h-8 min-w-0 flex-1 px-2 text-[11px]" /></div><button onClick={() => void ship(row)} disabled={busy === row.id} className="btn btn-outline h-8 px-2 text-[11px]">{busy === row.id ? "保存中…" : "登记发货"}</button></div> : row.trackingNumber ? <span className="text-mute">{row.carrier} · {row.trackingNumber}</span> : "—"}</td>
+            <td className="text-mute">{time(row.createdAt)}</td>
+          </tr>) : <tr><td colSpan={8} className="py-4 text-mute">暂无认购单</td></tr>}</tbody>
         </table>
       </div>
       <div className="mt-3 flex items-center justify-between gap-3 text-xs text-mute"><span>共 {list.total} 笔 · 第 {list.page} / {pages} 页</span><div className="flex gap-2"><button onClick={() => { const next = Math.max(1, page - 1); setPage(next); void loadSubscriptions(next, q).catch(cause => setError(cause instanceof Error ? cause.message : "读取失败")); }} disabled={page <= 1 || Boolean(busy)} className="btn btn-outline min-h-10 px-3 text-xs">上一页</button><button onClick={() => { const next = Math.min(pages, page + 1); setPage(next); void loadSubscriptions(next, q).catch(cause => setError(cause instanceof Error ? cause.message : "读取失败")); }} disabled={page >= pages || Boolean(busy)} className="btn btn-outline min-h-10 px-3 text-xs">下一页</button></div></div>

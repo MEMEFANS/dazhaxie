@@ -11,6 +11,8 @@ import { buildMerkleTree } from "../merkle";
 import { adminDataDirectory } from "./admin-db";
 import { AdminRequestError } from "./admin-session";
 import { referralTreeRows } from "./referral-db";
+import { decryptShipping, encryptShipping } from "./redemption-db";
+import type { RedemptionShipping } from "../redemption";
 
 type Row = Record<string, unknown>;
 const cache = globalThis as typeof globalThis & { cabiSubscriptionDb?: { file: string; db: DatabaseSync } };
@@ -25,6 +27,7 @@ export function subscriptionDatabase() {
     CREATE TABLE IF NOT EXISTS subscription_orders (
       id TEXT PRIMARY KEY, chain_id INTEGER NOT NULL, address TEXT NOT NULL, shares INTEGER NOT NULL,
       amount TEXT NOT NULL, tx_hash TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'confirmed', created_at INTEGER NOT NULL,
+      shipping TEXT, carrier TEXT, tracking_number TEXT, shipped_at INTEGER,
       UNIQUE(chain_id, tx_hash)
     );
     CREATE INDEX IF NOT EXISTS subscription_orders_address ON subscription_orders(chain_id, address, created_at DESC);
@@ -48,17 +51,25 @@ export function subscriptionDatabase() {
     );
     CREATE INDEX IF NOT EXISTS claim_authorizations_address ON claim_authorizations(chain_id, address, status, created_at DESC);
   `);
+  for (const column of ["shipping TEXT", "carrier TEXT", "tracking_number TEXT", "shipped_at INTEGER"]) {
+    try { db.exec(`ALTER TABLE subscription_orders ADD COLUMN ${column}`); } catch { /* column already exists */ }
+  }
   cache.cabiSubscriptionDb = { file, db };
   return db;
 }
 
 export interface SubscriptionOrder {
   id: string; address: string; shares: number; amount: string; txHash: string; status: string; createdAt: number;
+  shipping?: RedemptionShipping; carrier?: string; trackingNumber?: string; shippedAt?: number;
 }
 function serialize(row: Row): SubscriptionOrder {
   return {
     id: String(row.id), address: String(row.address), shares: Number(row.shares), amount: String(row.amount),
     txHash: String(row.tx_hash), status: String(row.status), createdAt: Number(row.created_at),
+    ...(row.shipping ? { shipping: decryptShipping(String(row.shipping), String(row.id)) } : {}),
+    ...(row.carrier ? { carrier: String(row.carrier) } : {}),
+    ...(row.tracking_number ? { trackingNumber: String(row.tracking_number) } : {}),
+    ...(row.shipped_at ? { shippedAt: Number(row.shipped_at) } : {}),
   };
 }
 
@@ -80,7 +91,7 @@ export function subscriptionOrderByHash(txHash: string, chainId = chainConfig.id
 /**
  * 同一哈希只允许登记一次；硬顶在同一个写事务内复核，避免并发请求把总量推过上限。
  */
-export function createSubscriptionOrder(input: { address: string; shares: number; amount: bigint; txHash: string }) {
+export function createSubscriptionOrder(input: { address: string; shares: number; amount: bigint; txHash: string; shipping: RedemptionShipping }) {
   const db = subscriptionDatabase(), address = input.address.toLowerCase(), txHash = input.txHash.toLowerCase();
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -89,11 +100,25 @@ export function createSubscriptionOrder(input: { address: string; shares: number
     const sold = globalSold();
     if (sold + input.shares > HARD_CAP) throw new AdminRequestError("认购将超过全局硬顶，本笔未登记", 409);
     const id = randomUUID();
-    db.prepare("INSERT INTO subscription_orders (id, chain_id, address, shares, amount, tx_hash, status, created_at) VALUES (?,?,?,?,?,?,?,?)")
-      .run(id, chainConfig.id, address, input.shares, input.amount.toString(), txHash, "confirmed", Date.now());
+    db.prepare("INSERT INTO subscription_orders (id, chain_id, address, shares, amount, tx_hash, status, created_at, shipping) VALUES (?,?,?,?,?,?,?,?,?)")
+      .run(id, chainConfig.id, address, input.shares, input.amount.toString(), txHash, "confirmed", Date.now(), encryptShipping(input.shipping, id));
     db.exec("COMMIT");
     return { id, address, shares: input.shares, amount: input.amount.toString(), txHash, status: "confirmed", createdAt: Date.now() } as SubscriptionOrder;
   } catch (error) { db.exec("ROLLBACK"); throw error; }
+}
+
+export function shipSubscriptionOrder(id: string, carrier: string, trackingNumber: string) {
+  const result = subscriptionDatabase().prepare("UPDATE subscription_orders SET status='shipped', carrier=?, tracking_number=?, shipped_at=? WHERE id=? AND status='confirmed'").run(carrier.trim().slice(0, 60), trackingNumber.trim().slice(0, 80), Date.now(), id) as { changes: number };
+  if (!result.changes) throw new AdminRequestError("仅已确认且未发货的认购单可发货", 409);
+  const row = subscriptionDatabase().prepare("SELECT * FROM subscription_orders WHERE id=?").get(id);
+  return row ? serialize(row) : null;
+}
+
+export function cancelSubscriptionOrder(id: string) {
+  const result = subscriptionDatabase().prepare("UPDATE subscription_orders SET status='cancelled' WHERE id=? AND status='confirmed'").run(id) as { changes: number };
+  if (!result.changes) throw new AdminRequestError("仅待发货认购单可取消", 409);
+  const row = subscriptionDatabase().prepare("SELECT * FROM subscription_orders WHERE id=?").get(id);
+  return row ? serialize(row) : null;
 }
 
 export function listAddressSubscriptions(address: string, chainId = chainConfig.id): SubscriptionOrder[] {

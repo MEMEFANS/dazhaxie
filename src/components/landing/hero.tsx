@@ -17,7 +17,6 @@ import {
   HARD_CAP,
   TOKENS_PER_SHARE,
   TOTAL_SUPPLY,
-  UNIT_PRICE,
   fmt,
 } from "@/lib/constants";
 import styles from "./landing.module.css";
@@ -64,7 +63,7 @@ const steps = [
   {
     number: "01",
     title: "了解生态份额",
-    description: `查看认购规则与状态，当前配置为 ${fmt(UNIT_PRICE)} USDT / 份。`,
+    description: "查看认购规则与状态，价格按每 5,000 份分档上涨。",
   },
   {
     number: "02",
@@ -171,7 +170,7 @@ export function Hero() {
             </div>
             <div className={styles.participationAmount}>
               <span className={styles.amountIcon}><Coins size={21} aria-hidden="true" /></span>
-              <strong>{fmt(UNIT_PRICE)} <small>USDT</small></strong>
+              <strong>50–70 <small>USDT / 份</small></strong>
               <Link href="/dapp/subscribe">查看认购规则 <ArrowUpRight size={13} /></Link>
             </div>
             <div className={styles.metrics}>

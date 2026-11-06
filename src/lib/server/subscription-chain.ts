@@ -1,7 +1,7 @@
 import "server-only";
 import { createPublicClient, decodeEventLog, decodeFunctionData, erc20Abi, fallback, getAddress, http, parseUnits, type Address, type Hash } from "viem";
 import { appChain, chainConfig, chainConfigurationValid, contracts } from "../chain-config";
-import { HARD_CAP, MAX_SHARES, MIN_SHARES, SOFT_CAP, TOKENS_PER_SHARE, UNIT_PRICE } from "../constants";
+import { HARD_CAP, MAX_SHARES, MIN_SHARES, SOFT_CAP, SUBSCRIPTION_PRICE_TIERS, TOKENS_PER_SHARE, subscriptionUnitPrice } from "../constants";
 import { normalizePayee, readOperationalSettings } from "./admin-db";
 import { AdminRequestError } from "./admin-session";
 import { globalSold, purchasedOf } from "./subscription-db";
@@ -23,7 +23,7 @@ async function usdtDecimals(): Promise<number> {
 export interface SubscribeConfig {
   configured: boolean; enabled: boolean; locked: boolean; message?: string;
   payee?: Address; usdt?: Address; token?: Address; chainId: number;
-  unitPrice: number; tokensPerShare: number; minShares: number; maxShares: number; hardCap: number; softCap: number;
+  unitPrice: number; priceTiers: readonly { until: number; price: number }[]; tokensPerShare: number; minShares: number; maxShares: number; hardCap: number; softCap: number;
   globalSold: number; remainingGlobal: number; purchased: number; remainingPersonal: number;
   tokenDecimals: number; usdtDecimals: number;
 }
@@ -52,7 +52,7 @@ export async function readSubscribeConfig(address?: string): Promise<SubscribeCo
     ...(payee ? { payee } : {}),
     ...(contracts.usdt ? { usdt: contracts.usdt } : {}),
     ...(contracts.token ? { token: contracts.token } : {}),
-    chainId: chainConfig.id, unitPrice: UNIT_PRICE, tokensPerShare: TOKENS_PER_SHARE,
+    chainId: chainConfig.id, unitPrice: subscriptionUnitPrice(sold), priceTiers: SUBSCRIPTION_PRICE_TIERS, tokensPerShare: TOKENS_PER_SHARE,
     minShares: MIN_SHARES, maxShares: MAX_SHARES, hardCap, softCap: SOFT_CAP,
     globalSold: sold, remainingGlobal, purchased, remainingPersonal,
     tokenDecimals: 18, usdtDecimals: decimals,
@@ -77,7 +77,10 @@ export async function verifySubscriptionTransfer(input: { address: string; hash:
   const usdt = contracts.usdt;
   if (!usdt) throw new AdminRequestError("USDT 地址尚未配置", 503);
   if (typeof input.hash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(input.hash)) throw new AdminRequestError("交易哈希无效", 400);
-  const amount = parseUnits(String(input.shares * UNIT_PRICE), await usdtDecimals());
+  // Price is resolved again from the current global sold count. The browser's
+  // quote is display-only and cannot be used to underpay after a tier changes.
+  const currentPrice = subscriptionUnitPrice(globalSold());
+  const amount = parseUnits(String(input.shares * currentPrice), await usdtDecimals());
   const hash = input.hash as Hash;
   let receipt;
   try { receipt = await client.getTransactionReceipt({ hash }); }

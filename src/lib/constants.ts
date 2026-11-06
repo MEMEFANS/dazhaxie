@@ -2,6 +2,17 @@
 
 // 3.1 认购基础规则
 export const UNIT_PRICE = 50; // USDT / 份
+// 认购销售价按全局已售份数分段；每段内单价固定，代币配额不变。
+export const SUBSCRIPTION_PRICE_TIERS = [
+  { until: 5_000, price: 50 },
+  { until: 10_000, price: 55 },
+  { until: 15_000, price: 60 },
+  { until: 20_000, price: 70 },
+] as const;
+export function subscriptionUnitPrice(globalSold: number): number {
+  const sold = Math.max(0, Math.floor(globalSold));
+  return SUBSCRIPTION_PRICE_TIERS.find(tier => sold < tier.until)?.price ?? SUBSCRIPTION_PRICE_TIERS.at(-1)!.price;
+}
 export const MIN_SHARES = 1; // 单账户最低限购
 export const MAX_SHARES = 2; // 单账户最高限购
 

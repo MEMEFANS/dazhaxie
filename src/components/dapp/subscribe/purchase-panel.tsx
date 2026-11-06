@@ -6,6 +6,7 @@ import { ArrowRight, Check, ChevronDown, Coins, Copy, ShoppingBag, Wallet } from
 import { useStore } from "@/lib/store";
 import { chainConfig } from "@/lib/chain-config";
 import { formatAssetAmount } from "@/lib/amounts";
+import type { RedemptionShipping } from "@/lib/redemption";
 import { fetchSubscribeConfig, useSubscribeConfig, useSubscribeOrders } from "@/lib/subscribe-data";
 import { fetchReferralData, useReferralData } from "@/lib/referral-data";
 import { useContractTransaction } from "@/lib/contract-transactions";
@@ -17,7 +18,8 @@ import { PurchaseRecords } from "./purchase-records";
 import { PurchaseStatus, type PurchaseStatusKind } from "./purchase-status";
 import styles from "./subscribe.module.css";
 
-type PurchaseSnapshot = { hash: string; shares: number; paid: string; allocation: string };
+type PurchaseSnapshot = { hash: string; shares: number; paid: string; allocation: string; shipping: RedemptionShipping };
+const emptyShipping: RedemptionShipping = { name: "", phone: "", address: "" };
 
 export function PurchasePanel() {
   const { state } = useStore();
@@ -35,6 +37,8 @@ function PurchasePanelForm() {
   const [checking, setChecking] = useState(false);
   const [selectedQuantity, setQuantity] = useState(1), [error, setError] = useState("");
   const [cancelled, setCancelled] = useState(false), [resuming, setResuming] = useState(false);
+  const [shipping, setShipping] = useState<RedemptionShipping>(emptyShipping);
+  const shippingLoaded = useRef(false);
   const [serverState, setServerState] = useState<"idle" | "verifying" | "success" | "failed">("idle");
   const [serverMessage, setServerMessage] = useState("");
   const [pending, setPending] = useState<PurchaseSnapshot | null>(null);
@@ -44,6 +48,23 @@ function PurchasePanelForm() {
   const [inlineActionVisible, setInlineActionVisible] = useState(false);
   const inlineActions = useRef<HTMLDivElement>(null), successResult = useRef<HTMLDivElement>(null), statusResult = useRef<HTMLDivElement>(null);
   const submitted = useRef<Omit<PurchaseSnapshot, "hash"> | null>(null);
+
+  const shippingKey = state.connected ? `cabi-subscribe-shipping:v1:${state.chainId}:${state.address.toLowerCase()}` : "";
+  useEffect(() => {
+    shippingLoaded.current = false;
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = shippingKey ? JSON.parse(window.localStorage.getItem(shippingKey) || "null") as Partial<RedemptionShipping> | null : null;
+        setShipping({ name: typeof saved?.name === "string" ? saved.name : "", phone: typeof saved?.phone === "string" ? saved.phone : "", address: typeof saved?.address === "string" ? saved.address : "" });
+      } catch { setShipping(emptyShipping); }
+      shippingLoaded.current = true;
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [shippingKey]);
+  useEffect(() => {
+    if (!shippingLoaded.current || !shippingKey) return;
+    try { window.localStorage.setItem(shippingKey, JSON.stringify(shipping)); } catch { /* local draft is optional */ }
+  }, [shipping, shippingKey]);
 
   useEffect(() => {
     if (!inlineActions.current || typeof IntersectionObserver === "undefined") return;
@@ -64,10 +85,10 @@ function PurchasePanelForm() {
     return () => window.cancelAnimationFrame(frame);
   }, [completed]);
 
-  async function verifyOnServer(hash: string, shares: number): Promise<Response> {
+  async function verifyOnServer(hash: string, shares: number, shippingInfo: RedemptionShipping): Promise<Response> {
     return fetch("/api/subscribe/orders", {
       method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-      body: JSON.stringify({ shares, hash }),
+      body: JSON.stringify({ shares, hash, shipping: shippingInfo }),
     });
   }
   function reportServerResult(response: Response, body: { error?: string }, purchase: PurchaseSnapshot) {
@@ -127,8 +148,11 @@ function PurchasePanelForm() {
 
   async function submit() {
     if (reason || !data?.payee || !data.usdt || !bound || operation.current || tx.busy || pending || unregisteredHash) return;
+    if (!shipping.name.trim() || !/^[+0-9 ()-]{6,25}$/.test(shipping.phone.trim()) || shipping.address.trim().length < 5) {
+      setError("请先填写完整收货姓名、联系电话和地址。收货信息用于认购后发货。"); return;
+    }
     operation.current = true; setChecking(true); setError(""); setCancelled(false); setCompleted(null); setServerState("idle"); setServerMessage(""); tx.clear();
-    submitted.current = { shares: quantity, paid: formatAssetAmount(amount, data.usdtDecimals), allocation: formatAssetAmount(quota, data.tokenDecimals) };
+    submitted.current = { shares: quantity, paid: formatAssetAmount(amount, data.usdtDecimals), allocation: formatAssetAmount(quota, data.tokenDecimals), shipping: { name: shipping.name.trim(), phone: shipping.phone.trim(), address: shipping.address.trim() } };
     try {
       await verifyPurchase();
       const hash = await tx.run({
@@ -139,7 +163,7 @@ function PurchasePanelForm() {
         allowUnsimulated: true,
       });
       if (!hash || !mounted.current) return;
-      await registerPurchase({ hash, ...submitted.current });
+       await registerPurchase({ hash, ...submitted.current });
     } catch (cause) {
       if (mounted.current) { setServerState("failed"); setCancelled(isUserCancelledError(cause)); setError(isUserCancelledError(cause) ? "你已取消钱包确认，可重新发起认购。" : cause instanceof Error ? cause.message : "本次认购未完成，请核对后重试。"); }
     } finally { operation.current = false; if (mounted.current) setChecking(false); }
@@ -148,7 +172,7 @@ function PurchasePanelForm() {
   async function registerPurchase(purchase: PurchaseSnapshot) {
     setPending(purchase); setServerState("verifying"); setServerMessage("");
     try {
-      const response = await verifyOnServer(purchase.hash, purchase.shares);
+      const response = await verifyOnServer(purchase.hash, purchase.shares, purchase.shipping);
       const body = await response.json().catch(() => ({}));
       if (mounted.current) reportServerResult(response, body, purchase);
     } catch {
@@ -160,7 +184,7 @@ function PurchasePanelForm() {
     if (!pending || checking || operation.current) return;
     operation.current = true; setChecking(true); setError("");
     try {
-      const response = await verifyOnServer(pending.hash, pending.shares);
+      const response = await verifyOnServer(pending.hash, pending.shares, pending.shipping);
       const body = await response.json().catch(() => ({}));
       if (!mounted.current) return;
       reportServerResult(response, body, pending);
@@ -181,7 +205,7 @@ function PurchasePanelForm() {
       const restored = description?.match(/^认购 (\d+) 份，向收款地址转入 ([\d,]+(?:\.\d+)?) USDT$/);
       if (!snapshot && restored && data) {
         const shares = Number(restored[1]);
-        if (Number.isSafeInteger(shares) && shares > 0) snapshot = { shares, paid: restored[2], allocation: formatAssetAmount(parseUnits(String(data.tokensPerShare), data.tokenDecimals) * BigInt(shares), data.tokenDecimals) };
+        if (Number.isSafeInteger(shares) && shares > 0) snapshot = { shares, paid: restored[2], allocation: formatAssetAmount(parseUnits(String(data.tokensPerShare), data.tokenDecimals) * BigInt(shares), data.tokenDecimals), shipping };
       }
       if (snapshot) await registerPurchase({ hash, ...snapshot });
       else { setUnregisteredHash(hash); setServerState("failed"); setServerMessage("转账已确认，请联系支持核对本笔认购登记，无需再次支付。"); }
@@ -225,7 +249,7 @@ function PurchasePanelForm() {
     <>
     <section className={styles.purchase} aria-labelledby="purchase-title">
       <div className={styles.purchaseHeading}><h2 id="purchase-title"><ShoppingBag size={19} strokeWidth={1.7} />选择认购份额</h2><span><Wallet size={13} />USDT 支付</span></div>
-      <p className={styles.purchaseIntro}>选择你的份数，核对本次支付与配额。</p>
+      <p className={styles.purchaseIntro}>认购同时登记蟹礼发货信息；代币配额不变，价格按全局认购进度分档。</p>
       {completed ? <div ref={successResult} tabIndex={-1} className={styles.successTarget} aria-label="本次认购结果">
         <PurchaseSuccess shares={completed.shares} paid={completed.paid} allocation={completed.allocation} txHash={completed.hash} />
         {data?.enabled && maximum >= Math.max(1, data.minShares) ? <button type="button" className={`btn btn-outline ${styles.continueButton}`} onClick={() => setCompleted(null)}>继续认购其他份额<ArrowRight size={14} /></button> : null}
@@ -243,6 +267,17 @@ function PurchasePanelForm() {
           <div><span>领取到账 · 70%</span><strong>{data ? formatAssetAmount(quota * 70n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong></div>
           <div><span>组建流动性 · 30%</span><strong>{data ? formatAssetAmount(quota * 30n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong><p className={styles.claimRequirement}>领取时另付 30% USDT 等值</p></div>
         </div>
+      </div>
+      {data ? <p className="mt-2 text-xs leading-5 text-mute">当前销售档位：{data.unitPrice} USDT / 份；价格档位为 50、55、60、70 USDT，每 5,000 份进入下一档。每份 CaBi 配额保持不变。</p> : null}
+
+      <div className="mt-4 rounded-xl border border-line bg-well p-4">
+        <p className="text-sm font-semibold text-strong">蟹礼收货信息</p>
+        <p className="mt-1 text-xs leading-6 text-mute">付款确认后，后台会按这份信息记录并安排发货。</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="block space-y-2 text-xs text-mute"><span>收货人</span><input value={shipping.name} onChange={event => setShipping(value => ({ ...value, name: event.target.value }))} maxLength={60} autoComplete="name" className="field min-h-11 w-full px-3 text-sm" disabled={busy} /></label>
+          <label className="block space-y-2 text-xs text-mute"><span>联系电话</span><input type="tel" value={shipping.phone} onChange={event => setShipping(value => ({ ...value, phone: event.target.value }))} maxLength={25} autoComplete="tel" className="field min-h-11 w-full px-3 text-sm" disabled={busy} /></label>
+        </div>
+        <label className="mt-3 block space-y-2 text-xs text-mute"><span>完整收货地址</span><textarea value={shipping.address} onChange={event => setShipping(value => ({ ...value, address: event.target.value }))} minLength={5} maxLength={500} autoComplete="street-address" rows={3} className="field w-full px-3 py-3 text-sm" disabled={busy} /></label>
       </div>
 
       <details className={styles.payee}><summary><span>收款地址与网络</span><span>{shortPayee}<ChevronDown size={14} /></span></summary><div className={styles.payeeAddress}><code>{data?.payee || "暂未开放"}</code><button type="button" onClick={() => void copyPayee()} disabled={!data?.payee} className={styles.copyButton}>{copied ? <><Check size={12} />已复制</> : <><Copy size={12} />复制</>}</button></div><p>请使用 BSC 网络 USDT 支付，转账前核对收款地址与金额。</p></details>

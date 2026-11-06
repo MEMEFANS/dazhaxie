@@ -11,7 +11,6 @@ import {
   HARD_CAP,
   SOFT_CAP,
   TOKENS_PER_SHARE,
-  UNIT_PRICE,
   fmt,
 } from "@/lib/constants";
 import {
@@ -109,8 +108,8 @@ export function OverviewHero() {
             />
             <Metric
               label="认购单价"
-              value={fmt(UNIT_PRICE)}
-              unit="USDT / 份"
+              value={fmt(config?.unitPrice ?? 50)}
+              unit="USDT / 份 · 分档"
               size="sm"
             />
             <Metric

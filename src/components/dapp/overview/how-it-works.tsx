@@ -2,14 +2,14 @@
 
 // 流程：认购 / 持有 / 兑换，三段各一句
 
-import { EXCHANGE_COST, TOKENS_PER_SHARE, UNIT_PRICE, fmt } from "@/lib/constants";
+import { EXCHANGE_COST, TOKENS_PER_SHARE, fmt } from "@/lib/constants";
 import { Panel, SectionHead } from "@/components/dapp/ui";
 
 const STEPS = [
   {
     no: "01",
     title: "认购",
-    desc: `${UNIT_PRICE} USDT 认购 1 份生态份额，单账户限购 1–2 份。`,
+    desc: "认购单价按全局进度分档：50、55、60、70 USDT，每 5,000 份上涨；单账户限购 1–2 份。",
   },
   {
     no: "02",

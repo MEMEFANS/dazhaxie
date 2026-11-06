@@ -2,16 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
+import type { RedemptionShipping } from "./redemption";
 import { fetchSharedConfig } from "./shared-config-request";
 
 export interface SubscribeConfig {
   configured: boolean; enabled: boolean; locked: boolean; message?: string;
   payee?: Address; usdt?: Address; token?: Address; chainId: number;
-  unitPrice: number; tokensPerShare: number; minShares: number; maxShares: number; hardCap: number; softCap: number;
+  unitPrice: number; priceTiers: readonly { until: number; price: number }[]; tokensPerShare: number; minShares: number; maxShares: number; hardCap: number; softCap: number;
   globalSold: number; remainingGlobal: number; purchased: number; remainingPersonal: number;
   tokenDecimals: number; usdtDecimals: number;
 }
-export interface SubscribeOrderView { id: string; address: string; shares: number; amount: string; txHash: string; status: string; createdAt: number }
+export interface SubscribeOrderView { id: string; address: string; shares: number; amount: string; txHash: string; status: string; createdAt: number; shipping?: RedemptionShipping; carrier?: string; trackingNumber?: string; shippedAt?: number }
 export interface PromotionStats {
   purchased: number; directCount: number; directShares: number; directRewardShares: number;
   teamCount: number; teamShares: number; differentialShares: number; globalSold: number;

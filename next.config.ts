@@ -22,6 +22,9 @@ const nextConfig: NextConfig = {
       { source: "/admin", headers: [{ key: "Cache-Control", value: "no-store" }] },
       { source: "/admin/:path*", headers: [{ key: "Cache-Control", value: "no-store" }] },
       { source: "/api/:path*", headers: [{ key: "Cache-Control", value: "no-store" }] },
+      // DApp 页面依赖钱包、登录会话和实时额度，禁止复用旧的静态页面壳。
+      { source: "/dapp", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
+      { source: "/dapp/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
     ];
   },
   redirects() {

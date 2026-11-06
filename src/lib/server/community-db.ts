@@ -154,8 +154,10 @@ export function ensureMember(address: string) {
 export function setMemberName(address: string, name: string) {
   const value = name.trim().slice(0, 32);
   if (!value) throw new AdminRequestError("昵称不能为空", 400);
-  const result = communityDatabase().prepare("UPDATE community_members SET name=? WHERE address=?").run(value, address.toLowerCase());
+  const db = communityDatabase(), key = address.toLowerCase();
+  const result = db.prepare("UPDATE community_members SET name=? WHERE address=?").run(value, key);
   if (!(result as { changes: number }).changes) throw new AdminRequestError("成员不存在", 404);
+  db.prepare("UPDATE community_admins SET name=? WHERE address=?").run(value, key);
 }
 export function listMembers(options: { q?: string; status?: "active" | "kicked"; page?: number; pageSize?: number } = {}) {
   const db = communityDatabase(), adminSet = adminAddresses();

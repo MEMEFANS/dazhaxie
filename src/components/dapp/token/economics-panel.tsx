@@ -1,13 +1,13 @@
 "use client";
 
-import { RefreshCw, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { formatUnits } from "viem";
 import { useStore } from "@/lib/store";
 import { useTokenData } from "@/lib/chain-data";
-import { chainConfig, contracts, getExplorerAddressUrl, tradingMode } from "@/lib/chain-config";
+import { tradingMode } from "@/lib/chain-config";
 import { PancakeSwapLink } from "@/components/dapp/pancake-swap-link";
 import { BUY_FEE_BPS, MAX_WALLET_BALANCE, SELL_FEE_BPS, TOTAL_SUPPLY, fmt } from "@/lib/constants";
-import { Badge, Card, ContractRow, DataRow, Metric, SectionHead } from "@/components/dapp/ui";
+import { Badge, Card, DataRow, Metric, SectionHead } from "@/components/dapp/ui";
 
 function assetAmount(amount: bigint, decimals: number, precision = 4): string {
   const [integer, fraction = ""] = formatUnits(amount, decimals).split(".");
@@ -23,7 +23,6 @@ export default function EconomicsPanel() {
   const balance = token?.balance;
   const holdingBasisPoints = balance !== undefined && token && token.maxWalletAmount > 0n ? balance * 10000n / token.maxWalletAmount : undefined;
   const holdingPct = holdingBasisPoints === undefined ? undefined : Number(holdingBasisPoints > 10000n ? 10000n : holdingBasisPoints) / 100;
-  const loading = query.status === "loading";
   const failed = query.status === "error" || Boolean(query.error);
   const statusText = failed ? "暂时无法更新" : { unconfigured: "资产信息待开放", loading: "正在更新", ready: "已更新", error: "暂时无法更新" }[query.status];
 
@@ -55,13 +54,5 @@ export default function EconomicsPanel() {
       <p className="mt-3 text-[12px] leading-6 text-mute">接收认购、奖励或转账后，钱包余额需符合当前持仓上限。</p>
     </div>
 
-    <div className="mt-6 rounded-xl border border-line bg-well px-4 py-3">
-      <p className="mb-2 text-[12px] text-mute">代币合约验证</p>
-      <ContractRow address={contracts.token} chain={chainConfig.name} href={contracts.token ? getExplorerAddressUrl(contracts.token) : undefined} />
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[12px] leading-6 text-mute" aria-live="polite">
-        <p>{failed ? "资产信息暂时无法更新，请稍后重试。" : loading ? "正在更新资产信息…" : query.status === "unconfigured" ? "资产信息将于开放后显示。" : query.updatedAt ? `最近更新 ${new Date(query.updatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "资产信息已更新"}</p>
-        {contracts.token ? <button type="button" onClick={query.refresh} disabled={loading} className="btn btn-outline min-h-11 gap-2 px-4 text-[12px]"><RefreshCw size={14} className={loading ? "animate-spin" : undefined} />{loading ? "更新中" : "刷新数据"}</button> : null}
-      </div>
-    </div>
   </Card>;
 }

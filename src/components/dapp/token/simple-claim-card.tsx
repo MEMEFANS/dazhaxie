@@ -20,12 +20,11 @@ function ClaimForm() {
   const { state, connect } = useStore(), query = useClaimPoolData(state.connected ? state.address : undefined);
   const data = query.status === "ready" && !query.error ? query.data : undefined;
   const prepareTx = useContractTransaction("claim-pool-prepare"), claimTx = useContractTransaction("claim-pool-claim");
-  const [accepted, setAccepted] = useState(""), [error, setError] = useState(""), [checking, setChecking] = useState(false), [signingIn, setSigningIn] = useState(false);
+  const [error, setError] = useState(""), [checking, setChecking] = useState(false), [signingIn, setSigningIn] = useState(false);
   const active = useRef(true), operation = useRef(false), latest = useRef("");
   const claimable = data?.server.claimable, quote = data?.preview;
   const preparedOutstanding = data && data.prepared > data.claimed ? data.prepared - data.claimed : 0n;
   const consentKey = [state.address.toLowerCase(), state.chainId, contracts.claimPool, claimable, quote?.payout, quote?.lpTokens, quote?.usdtRequired, quote?.estimatedLiquidity, data?.prepared, data?.claimed, data?.claimOpen, data?.lpReceiver, data?.usdt, data?.signer].join(":");
-  const confirmed = accepted === consentKey;
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => { latest.current = consentKey; }, [consentKey]);
   useEffect(() => { if (prepareTx.transaction?.status === "success" || claimTx.transaction?.status === "success") refreshClaimPoolData(); }, [prepareTx.transaction?.status, claimTx.transaction?.status]);
@@ -55,7 +54,7 @@ function ClaimForm() {
     finally { if (active.current) setSigningIn(false); }
   }
   async function act() {
-    if (reason || !confirmed || !contracts.claimPool || !data || prepareTx.busy || claimTx.busy || operation.current) return;
+    if (reason || !contracts.claimPool || !data || prepareTx.busy || claimTx.busy || operation.current) return;
     operation.current = true; setChecking(true); setError(""); const reviewed = consentKey;
     try {
       const fresh = await fetchClaimPoolData(getAddress(state.address.toLowerCase()));
@@ -74,8 +73,7 @@ function ClaimForm() {
         const hash = await prepareTx.run({ address: contracts.claimPool, abi: claimPoolAbi, functionName: "prepareLiquidity", args: [{ amount: authorization.amount, cumulativeLimit: authorization.cumulativeLimit, nonce: authorization.nonce, deadline: authorization.deadline }, authorization.signature, fresh.preview.usdtRequired, minLiquidity], description: "支付 " + formatAssetAmount(fresh.preview.usdtRequired, fresh.usdtDecimals) + " USDT 并自动组 LP；70% CaBi 在领取开放后到账", approval: { token: fresh.usdt, amount: fresh.preview.usdtRequired } });
         if (hash) { void submitClaimReceipt(authorization.nonce, hash); refreshClaimPoolData(); }
       }
-      setAccepted("");
-    } catch (cause) { if (active.current) { setAccepted(""); setError(cause instanceof Error ? cause.message : "领取操作失败，请重试。"); refreshClaimPoolData(); } }
+    } catch (cause) { if (active.current) { setError(cause instanceof Error ? cause.message : "领取操作失败，请重试。"); refreshClaimPoolData(); } }
     finally { if (active.current) { operation.current = false; setChecking(false); } }
   }
 
@@ -93,16 +91,15 @@ function ClaimForm() {
     </div>
     <div id="claim-center" className="mt-4 rounded-xl border border-line bg-well p-4">
       <strong className="text-sm">自动组 LP 领取（唯一领取方式）</strong>
-      <span className="mt-2 block text-xs leading-6 text-mute">先由你的钱包支付 30% USDT 并自动加入交易对，领取开放后再领取 70% CaBi。</span>
+      <span className="mt-2 block text-xs leading-6 text-mute">按固定比例组 LP：每份 35,000 CaBi 配额中，10,500 CaBi 与 15 USDT 进入 LP，24,500 CaBi 在开放后到账。</span>
       {quote && data ? <div className="mt-3 grid grid-cols-1 gap-2 text-xs leading-6 text-mute sm:grid-cols-3"><span>进入 LP：{formatAssetAmount(quote.lpTokens, data.tokenDecimals)} CaBi</span><span>支付：{formatAssetAmount(quote.usdtRequired, data.usdtDecimals)} USDT</span><span>到账：{formatAssetAmount(quote.payout, data.tokenDecimals)} CaBi</span></div> : null}
     </div>
     {!data?.lpReady ? <p className="mt-2 text-xs leading-6 text-mute">{data?.lpError || "LP 接收地址尚未配置，请等待管理员完成配置。"}</p> : null}
     {!server?.configured ? <p className="mt-2 text-xs leading-6 text-mute">领取通道暂未开放，请稍后再试或联系客服。</p> : null}
     {server?.configured && data && data.signer.toLowerCase() !== (server.signer || "").toLowerCase() ? <p className="mt-2 text-xs leading-6 text-down">领取签名服务与链上配置不一致，请联系管理员。</p> : null}
-    <label className="mt-3 flex items-start gap-2 text-xs leading-6 text-mute"><input aria-label="确认本次 CaBi 领取" type="checkbox" checked={confirmed} onChange={event => setAccepted(event.target.checked ? consentKey : "")} disabled={Boolean(reason) || prepareTx.busy || claimTx.busy || checking} className="mt-1.5 h-4 w-4 shrink-0" />我已核对数量，同意支付 USDT 自动组 LP。</label>
     {!state.connected ? <button onClick={connect} className="btn btn-outline mt-3 min-h-11 px-4 text-sm">连接钱包</button> : null}
     {state.connected && server?.needsSignIn && server.configured ? <button onClick={() => void signIn()} disabled={signingIn} className="btn btn-outline mt-3 min-h-11 w-full text-sm">{signingIn ? "正在登录…" : "登录后查看可领额度"}</button> : null}
-    <button onClick={() => void act()} disabled={Boolean(reason) || !confirmed || prepareTx.busy || claimTx.busy || checking} className="btn btn-gold mt-3 min-h-11 w-full text-sm">{checking ? "正在核对" : prepareTx.busy || claimTx.busy ? "等待钱包确认" : reason || buttonLabel}</button>
+    <button onClick={() => void act()} disabled={Boolean(reason) || prepareTx.busy || claimTx.busy || checking} className="btn btn-gold mt-3 min-h-11 w-full text-sm">{checking ? "正在核对" : prepareTx.busy || claimTx.busy ? "等待钱包确认" : reason || buttonLabel}</button>
     {error ? <p role="alert" className="mt-3 text-xs leading-6 text-down">{error}</p> : null}
     <TransactionFeedback controller={prepareTx} /><TransactionFeedback controller={claimTx} />
   </Card>;

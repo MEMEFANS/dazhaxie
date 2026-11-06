@@ -136,12 +136,15 @@ async function click(element, wait = 24) {
     assert(document.body.textContent.includes('24500'));
     assert(document.body.textContent.includes('组建流动性 · 30%'));
     assert(document.body.textContent.includes('10500'));
-    assert(document.body.textContent.includes('BCDE3456'));
     assert(document.body.textContent.includes(PAYEE));
     assert.equal(action().disabled, false);
     assert.equal(action().textContent, '确认认购');
     pass('panel shows the configured payee, 50 USDT/share and the single 30% LP / 70% payout path');
 
+    await click(action(), 60);
+    assert.equal(writes.length, 1);
+    assert.equal(requests.length, 0);
+    assert(document.body.textContent.includes('付款已确认，请补充收货信息后登记本次认购'));
     await fillShipping();
     assert.equal(document.querySelector('input[autocomplete="name"]').value, '测试收货人');
     assert.equal(document.querySelector('input[autocomplete="tel"]').value, '13800138000');

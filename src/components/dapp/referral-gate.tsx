@@ -49,7 +49,7 @@ function ReferralGateForm({children}:{children:ReactNode}) {
   if(bound)return <>
     {gateReady&&!authenticated?<div role="status" className="border-b border-line bg-[#fff7e6] px-4 py-3 text-plum" data-referral-session="pending">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-        <p className="min-w-0 flex-1 text-xs leading-6">邀请关系已绑定，无需重复填写。{query.status==="error"?"账户状态暂未刷新，请重试。":"签名登录后可使用认购等账户功能，无需 Gas。"}</p>
+        <p className="min-w-0 flex-1 text-xs leading-6">{query.status==="error"?"账户状态暂未刷新，请重试。":"请签名登录后继续使用账户功能，无需 Gas。"}</p>
         {query.status==="error"?<button onClick={()=>void query.refresh()} disabled={busy} className="btn btn-outline min-h-11 px-4 text-xs">重新查询</button>:<button onClick={()=>void enter()} disabled={busy} className="btn btn-gold min-h-11 px-4 text-xs">{busy?"等待钱包签名…":"签名登录"}</button>}
         {error?<p role="alert" className="w-full text-xs leading-6 text-down">{error}</p>:null}
       </div>

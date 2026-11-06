@@ -11,7 +11,6 @@ import { fetchSubscribeConfig, useSubscribeConfig, useSubscribeOrders } from "@/
 import { fetchReferralData, useReferralData } from "@/lib/referral-data";
 import { useContractTransaction } from "@/lib/contract-transactions";
 import { isUserCancelledError } from "@/lib/transaction-cancellation";
-import { RelationNotice } from "./relation-notice";
 import { ShareOptions } from "./share-options";
 import { PurchaseSuccess } from "./purchase-success";
 import { PurchaseRecords } from "./purchase-records";
@@ -20,6 +19,9 @@ import styles from "./subscribe.module.css";
 
 type PurchaseSnapshot = { hash: string; shares: number; paid: string; allocation: string; shipping: RedemptionShipping };
 const emptyShipping: RedemptionShipping = { name: "", phone: "", address: "" };
+function validShipping(value: RedemptionShipping) {
+  return Boolean(value.name.trim()) && /^[+0-9 ()-]{6,25}$/.test(value.phone.trim()) && value.address.trim().length >= 5;
+}
 
 export function PurchasePanel() {
   const { state } = useStore();
@@ -42,6 +44,7 @@ function PurchasePanelForm() {
   const [serverState, setServerState] = useState<"idle" | "verifying" | "success" | "failed">("idle");
   const [serverMessage, setServerMessage] = useState("");
   const [pending, setPending] = useState<PurchaseSnapshot | null>(null);
+  const [awaitingShipping, setAwaitingShipping] = useState<PurchaseSnapshot | null>(null);
   const [completed, setCompleted] = useState<PurchaseSnapshot | null>(null);
   const [unregisteredHash, setUnregisteredHash] = useState("");
   const [copied, setCopied] = useState(false);
@@ -94,7 +97,7 @@ function PurchasePanelForm() {
   function reportServerResult(response: Response, body: { error?: string }, purchase: PurchaseSnapshot) {
     if (response.status === 202) { setServerState("verifying"); setServerMessage(body.error || "转账确认中，请稍后点击重新查询。"); return false; }
     if (!response.ok) { setServerState("failed"); setServerMessage(body.error || "暂未完成认购登记，请查询本次结果，无需再次支付。"); return false; }
-    setServerState("success"); setServerMessage(""); setCompleted(purchase); setPending(null);
+    setServerState("success"); setServerMessage(""); setCompleted(purchase); setPending(null); setAwaitingShipping(null);
     setQuantity(Math.max(1, data?.minShares ?? 1)); void query.refresh(); orders.refresh();
     return true;
   }
@@ -147,10 +150,7 @@ function PurchasePanelForm() {
   async function verifyPurchase() { await verifyReferral(); await verifyConfiguration(); }
 
   async function submit() {
-    if (reason || !data?.payee || !data.usdt || !bound || operation.current || tx.busy || pending || unregisteredHash) return;
-    if (!shipping.name.trim() || !/^[+0-9 ()-]{6,25}$/.test(shipping.phone.trim()) || shipping.address.trim().length < 5) {
-      setError("请先填写完整收货姓名、联系电话和地址。收货信息用于认购后发货。"); return;
-    }
+    if (reason || !data?.payee || !data.usdt || !bound || operation.current || tx.busy || pending || awaitingShipping || unregisteredHash) return;
     operation.current = true; setChecking(true); setError(""); setCancelled(false); setCompleted(null); setServerState("idle"); setServerMessage(""); tx.clear();
     submitted.current = { shares: quantity, paid: formatAssetAmount(amount, data.usdtDecimals), allocation: formatAssetAmount(quota, data.tokenDecimals), shipping: { name: shipping.name.trim(), phone: shipping.phone.trim(), address: shipping.address.trim() } };
     try {
@@ -162,11 +162,24 @@ function PurchasePanelForm() {
         beforeSend: verifyPurchase,
         allowUnsimulated: true,
       });
-      if (!hash || !mounted.current) return;
-       await registerPurchase({ hash, ...submitted.current });
+      if (!hash || !mounted.current || !submitted.current) return;
+      const purchase = { hash, ...submitted.current };
+      if (validShipping(purchase.shipping)) await registerPurchase(purchase);
+      else { setAwaitingShipping(purchase); setServerState("idle"); setServerMessage(""); }
     } catch (cause) {
       if (mounted.current) { setServerState("failed"); setCancelled(isUserCancelledError(cause)); setError(isUserCancelledError(cause) ? "你已取消钱包确认，可重新发起认购。" : cause instanceof Error ? cause.message : "本次认购未完成，请核对后重试。"); }
     } finally { operation.current = false; if (mounted.current) setChecking(false); }
+  }
+
+  async function completeShipping() {
+    if (!awaitingShipping || !validShipping(shipping) || checking || operation.current) {
+      if (awaitingShipping && !validShipping(shipping)) setError("请补充完整收货姓名、联系电话和地址后再登记。");
+      return;
+    }
+    const purchase = { ...awaitingShipping, shipping: { name: shipping.name.trim(), phone: shipping.phone.trim(), address: shipping.address.trim() } };
+    submitted.current = purchase;
+    setError(""); setAwaitingShipping(null);
+    await registerPurchase(purchase);
   }
 
   async function registerPurchase(purchase: PurchaseSnapshot) {
@@ -207,7 +220,11 @@ function PurchasePanelForm() {
         const shares = Number(restored[1]);
         if (Number.isSafeInteger(shares) && shares > 0) snapshot = { shares, paid: restored[2], allocation: formatAssetAmount(parseUnits(String(data.tokensPerShare), data.tokenDecimals) * BigInt(shares), data.tokenDecimals), shipping };
       }
-      if (snapshot) await registerPurchase({ hash, ...snapshot });
+      if (snapshot) {
+        const purchase = { hash, ...snapshot };
+        if (validShipping(purchase.shipping)) await registerPurchase(purchase);
+        else setAwaitingShipping(purchase);
+      }
       else { setUnregisteredHash(hash); setServerState("failed"); setServerMessage("转账已确认，请联系支持核对本笔认购登记，无需再次支付。"); }
     } catch {
       if (mounted.current) setServerMessage("暂时无法查询链上结果，请稍后重试，无需再次支付。");
@@ -223,9 +240,9 @@ function PurchasePanelForm() {
   const maximum = data ? Math.min(data.maxShares, data.remainingGlobal, state.connected ? remaining : data.maxShares) : 1;
   const shortPayee = data?.payee ? `${data.payee.slice(0, 6)}…${data.payee.slice(-4)}` : "等待配置";
   const confirming = tx.transaction?.status === "pending";
-  const actionLabel = tx.busy ? tx.transaction?.status === "wallet" ? "等待钱包确认" : "等待链上确认" : checking ? "正在核对认购" : pending ? "等待认购登记" : unregisteredHash ? "请核对认购登记" : reason || "确认认购";
-  const mobileLabel = !state.connected ? "连接钱包" : pending || confirming ? checking || resuming ? "正在查询…" : confirming ? "查询转账结果" : "查询认购结果" : actionLabel;
-  const mobileDisabled = state.connected && (pending || confirming ? checking || resuming : Boolean(reason) || busy);
+  const actionLabel = awaitingShipping ? "补填收货信息并登记" : tx.busy ? tx.transaction?.status === "wallet" ? "等待钱包确认" : "等待链上确认" : checking ? "正在核对认购" : pending ? "等待认购登记" : unregisteredHash ? "请核对认购登记" : reason || "确认认购";
+  const mobileLabel = !state.connected ? "连接钱包" : awaitingShipping ? actionLabel : pending || confirming ? checking || resuming ? "正在查询…" : confirming ? "查询转账结果" : "查询认购结果" : actionLabel;
+  const mobileDisabled = state.connected && (awaitingShipping ? busy : pending || confirming ? checking || resuming : Boolean(reason) || busy);
   let statusKind: PurchaseStatusKind | undefined;
   let statusMessage: string | undefined;
   if (pending || unregisteredHash) { statusKind = serverState === "failed" ? "registration-failed" : "registering"; statusMessage = serverMessage || undefined; }
@@ -249,14 +266,12 @@ function PurchasePanelForm() {
     <>
     <section className={styles.purchase} aria-labelledby="purchase-title">
       <div className={styles.purchaseHeading}><h2 id="purchase-title"><ShoppingBag size={19} strokeWidth={1.7} />选择认购份额</h2><span><Wallet size={13} />USDT 支付</span></div>
-      <p className={styles.purchaseIntro}>认购同时登记蟹礼发货信息；代币配额不变，价格按全局认购进度分档。</p>
+      <p className={styles.purchaseIntro}>先完成认购付款，再补填蟹礼收货信息；代币配额不变，价格按全局认购进度分档。</p>
       {completed ? <div ref={successResult} tabIndex={-1} className={styles.successTarget} aria-label="本次认购结果">
         <PurchaseSuccess shares={completed.shares} paid={completed.paid} allocation={completed.allocation} txHash={completed.hash} />
         {data?.enabled && maximum >= Math.max(1, data.minShares) ? <button type="button" className={`btn btn-outline ${styles.continueButton}`} onClick={() => setCompleted(null)}>继续认购其他份额<ArrowRight size={14} /></button> : null}
       </div> : <>
-      <RelationNotice />
-
-      <ShareOptions value={quantity} onChange={setQuantity} config={data} available={maximum} disabled={busy} />
+      <ShareOptions value={quantity} onChange={setQuantity} config={data} available={maximum} disabled={busy || Boolean(awaitingShipping)} />
       <div className={styles.accountStats}><span>已认购 <strong>{data && state.connected ? data.purchased : "—"}</strong> 份</span><span>此钱包还可认购 <strong>{data && state.connected ? remaining : "—"}</strong> 份</span></div>
 
       <div className={styles.receipt}>
@@ -272,7 +287,8 @@ function PurchasePanelForm() {
 
       <div className="mt-4 rounded-xl border border-line bg-well p-4">
         <p className="text-sm font-semibold text-strong">蟹礼收货信息</p>
-        <p className="mt-1 text-xs leading-6 text-mute">付款确认后，后台会按这份信息记录并安排发货。</p>
+        <p className="mt-1 text-xs leading-6 text-mute">付款可以先完成；填写后点击登记，后台会保存信息并安排发货。</p>
+        {awaitingShipping ? <p role="status" className="mt-2 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-xs leading-5 text-strong">付款已确认，请补充收货信息后登记本次认购。</p> : null}
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="block space-y-2 text-xs text-mute"><span>收货人</span><input value={shipping.name} onChange={event => setShipping(value => ({ ...value, name: event.target.value }))} maxLength={60} autoComplete="name" className="field min-h-11 w-full px-3 text-sm" disabled={busy} /></label>
           <label className="block space-y-2 text-xs text-mute"><span>联系电话</span><input type="tel" value={shipping.phone} onChange={event => setShipping(value => ({ ...value, phone: event.target.value }))} maxLength={25} autoComplete="tel" className="field min-h-11 w-full px-3 text-sm" disabled={busy} /></label>
@@ -285,7 +301,7 @@ function PurchasePanelForm() {
       {statusKind ? <div ref={statusResult} tabIndex={-1} aria-label="本次认购状态"><PurchaseStatus kind={statusKind} message={statusMessage} hash={pending?.hash || unregisteredHash || tx.transaction?.hash} onQuery={pending ? () => void recheck() : confirming ? () => void resumeTransfer() : undefined} querying={checking || resuming} /></div> : null}
       {unregisteredHash ? <a href="/dapp/support" className={`btn btn-outline ${styles.continueButton}`}>联系支持核对登记<ArrowRight size={14} /></a> : null}
       <div ref={inlineActions} className={styles.actions}>
-        {!state.connected ? <button type="button" onClick={connect} className={`btn btn-gold ${styles.primaryButton}`}><Wallet size={16} />连接钱包，开始认购<ArrowRight size={16} /></button> : <button type="button" onClick={() => void submit()} disabled={Boolean(reason) || busy} className={`btn btn-gold ${styles.primaryButton}`}>{actionLabel}{!reason && !busy ? <ArrowRight size={16} /> : null}</button>}
+        {!state.connected ? <button type="button" onClick={connect} className={`btn btn-gold ${styles.primaryButton}`}><Wallet size={16} />连接钱包，开始认购<ArrowRight size={16} /></button> : <button type="button" onClick={() => void (awaitingShipping ? completeShipping() : submit())} disabled={Boolean(reason) || busy} className={`btn btn-gold ${styles.primaryButton}`}>{actionLabel}{!reason && !busy ? <ArrowRight size={16} /> : null}</button>}
       </div>
       <p className={styles.actionHint}><Wallet size={12} />BSC 网络 · USDT 转账 · 确认后登记认购</p>
       </>}
@@ -295,7 +311,7 @@ function PurchasePanelForm() {
     {!completed ? <div className={styles.mobileCheckout} data-inline-visible={inlineActionVisible} role="region" aria-label="快捷认购">
       <div className={styles.mobileCheckoutInner}>
         <div className={styles.mobileTotal}><span>本次支付 · {quantity} 份</span><strong aria-live="polite">{data ? formatAssetAmount(amount, data.usdtDecimals) : "—"}<small>USDT</small></strong></div>
-        <button type="button" disabled={mobileDisabled} onClick={() => { if (!state.connected) connect(); else if (pending) void recheck(); else if (confirming) void resumeTransfer(); else void submit(); }} className={styles.mobileSubmit}>{mobileLabel}{!mobileDisabled ? <ArrowRight size={16} /> : null}</button>
+        <button type="button" disabled={mobileDisabled} onClick={() => { if (!state.connected) connect(); else if (awaitingShipping) void completeShipping(); else if (pending) void recheck(); else if (confirming) void resumeTransfer(); else void submit(); }} className={styles.mobileSubmit}>{mobileLabel}{!mobileDisabled ? <ArrowRight size={16} /> : null}</button>
       </div>
     </div> : null}
     </>

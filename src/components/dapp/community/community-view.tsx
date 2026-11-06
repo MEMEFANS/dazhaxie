@@ -3,10 +3,10 @@
 // 社群主视图：服务端成员 / 管理员 / 消息 / 禁言状态；免签名登录后参与发言与群管理
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Send, ShieldAlert, ShieldCheck, UserMinus, UserX, Users, Wallet, X } from "lucide-react";
+import { Loader2, Send, Settings, ShieldAlert, ShieldCheck, UserMinus, UserX, Users, Wallet, X } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { shortAddr, timeAgo } from "@/lib/constants";
-import { communityRequest, signInCommunity, type CommunityMemberView, type CommunityMessageView } from "@/lib/community-client";
+import { communityRequest, setCommunityName, signInCommunity, type CommunityMemberView, type CommunityMessageView } from "@/lib/community-client";
 import { AdminBadge } from "@/components/dapp/community/admin-badge";
 import { EmptyRow, Notice } from "@/components/dapp/ui";
 
@@ -27,6 +27,9 @@ export function CommunityView() {
   const [sending, setSending] = useState(false);
   const [input, setInput] = useState("");
   const [membersOpen, setMembersOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
   const [kickTarget, setKickTarget] = useState<CommunityMemberView | null>(null);
   const [busy, setBusy] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -76,6 +79,7 @@ export function CommunityView() {
   const adminSet = useMemo(() => new Set((data?.admins || []).map(admin => admin.address.toLowerCase())), [data?.admins]);
   const canModerate = Boolean(data?.me?.isAdmin && !data.me.isKicked);
   const showMembers = useCallback(() => setMembersOpen(true), []);
+  const openSettings = useCallback(() => { setNameInput(data?.me?.member?.name || ""); setSettingsOpen(true); }, [data?.me?.member?.name]);
 
   async function signIn() {
     if (!state.address || signing) return;
@@ -83,6 +87,15 @@ export function CommunityView() {
     try { await signInCommunity(state.address); await load(); showToast("已加入社群"); }
     catch (e) { showToast(e instanceof Error ? e.message : "加入社群失败"); }
     finally { setSigning(false); }
+  }
+
+  async function saveName() {
+    const name = nameInput.trim();
+    if (!name || name.length > 32 || nameSaving) return;
+    setNameSaving(true);
+    try { await setCommunityName(name); setSettingsOpen(false); await load(); showToast("名称已更新"); }
+    catch (e) { showToast(e instanceof Error ? e.message : "名称保存失败"); }
+    finally { setNameSaving(false); }
   }
 
   async function send() {
@@ -180,6 +193,7 @@ export function CommunityView() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {data?.me?.member && !data.me.isKicked ? <button onClick={openSettings} className="btn btn-outline h-8 px-3 text-[11px]" aria-label="社群设置"><Settings size={12} /> 设置</button> : null}
                 <button onClick={showMembers} className="btn btn-outline h-8 px-3 text-[11px] lg:hidden" aria-label="查看成员列表"><Users size={12} /> 成员 <span className="num">{loading ? "—" : members.length}</span></button>
               </div>
             </div>
@@ -269,6 +283,14 @@ export function CommunityView() {
           </div>
         </div>
       ) : null}
+      {settingsOpen ? <div className="fixed inset-0 z-50 grid place-items-center bg-plum/45 p-4 backdrop-blur-sm" onClick={() => setSettingsOpen(false)}>
+        <div role="dialog" aria-modal="true" aria-labelledby="community-settings-title" className="card w-full max-w-[400px] p-6 shadow-pop" onClick={event => event.stopPropagation()}>
+          <div className="flex items-center justify-between gap-3"><div><p className="kicker">COMMUNITY SETTINGS</p><h2 id="community-settings-title" className="mt-1 text-lg font-semibold">设置社群名称</h2></div><button onClick={() => setSettingsOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg text-mute hover:bg-plum/5" aria-label="关闭设置"><X size={16} /></button></div>
+          <p className="mt-3 text-xs leading-6 text-mute">这个名称会显示在社群成员列表和你之后发送的消息中。</p>
+          <input aria-label="社群名称" value={nameInput} onChange={event => setNameInput(event.target.value)} maxLength={32} autoFocus className="field mt-4 min-h-11 w-full px-3 text-sm" />
+          <div className="mt-5 flex gap-2"><button onClick={() => setSettingsOpen(false)} className="btn btn-outline h-11 flex-1 text-sm">取消</button><button onClick={() => void saveName()} disabled={nameSaving || !nameInput.trim() || nameInput.trim().length > 32} className="btn btn-gold h-11 flex-1 text-sm">{nameSaving ? "保存中…" : "保存名称"}</button></div>
+        </div>
+      </div> : null}
     </>
   );
 }

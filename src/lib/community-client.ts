@@ -52,3 +52,8 @@ export async function signInCommunity(address: string): Promise<void> {
   const result = await communityRequest<{ session: { address: string } }>("/api/community/auth/auto", { method: "POST", body: JSON.stringify({ address }) });
   if (result.session.address.toLowerCase() !== address.toLowerCase()) throw new Error("会话与当前钱包不一致，请重新进入");
 }
+
+export async function setCommunityName(name: string): Promise<CommunityMemberView> {
+  const result = await communityRequest<{ member: CommunityMemberView }>("/api/community", { method: "POST", body: JSON.stringify({ action: "rename", name }) });
+  return result.member;
+}

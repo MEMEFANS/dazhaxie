@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronRight, Coins, Headphones, House,
-  Check, CircleAlert, LoaderCircle, MessageCircle, MoreHorizontal, Network, ShoppingBag, Users, Wallet, X,
+  LoaderCircle, MessageCircle, MoreHorizontal, Network, ShoppingBag, Users, Wallet, X,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { shortAddr } from "@/lib/constants";
@@ -47,7 +47,6 @@ export function DAppShell({ children }: { children: React.ReactNode }) {
   const communityPage = pathname === "/dapp/community";
   const { state, hydrated, connecting, connect, showToast } = useStore();
   const [open, setOpen] = useState(false);
-  const [switching, setSwitching] = useState(false);
   const [addingToken, setAddingToken] = useState(false);
   const [previousPath, setPreviousPath] = useState(pathname);
   const drawerRef = useRef<HTMLElement>(null);
@@ -55,22 +54,17 @@ export function DAppShell({ children }: { children: React.ReactNode }) {
   const switchPending = useRef(false);
   const automaticAttempt = useRef<string | null>(null);
   const connected = hydrated && state.connected;
-  const wrongNetwork = connected && state.chainId !== chainConfig.id;
 
   const switchNetwork = useCallback(async () => {
     if (switchPending.current) return;
     switchPending.current = true;
-    setSwitching(true);
     try {
       const actualChain = await wallet.switchChain(chainConfig.id);
       if (actualChain !== chainConfig.id) throw new Error("网络尚未切换，请在钱包中确认");
       showToast(`已切换至 ${chainConfig.shortName}`);
     } catch (error) {
       showToast(error instanceof Error ? error.message : "切换未完成，请在钱包中检查网络");
-    } finally {
-      switchPending.current = false;
-      setSwitching(false);
-    }
+    } finally { switchPending.current = false; }
   }, [showToast]);
 
   useEffect(() => {
@@ -169,15 +163,6 @@ export function DAppShell({ children }: { children: React.ReactNode }) {
               <MoreHorizontal size={22} />
             </button>
           </div>
-        </div>
-        <div className={styles.networkBar} role="status" aria-live="polite">
-          <span className={styles.networkIdentity}><i data-testnet={chainConfig.isTestnet} />{chainConfig.shortName}{chainConfig.isTestnet ? " · 测试资产" : ""}</span>
-          {wrongNetwork ? (
-            <button onClick={switchNetwork} disabled={switching} className={styles.switchNetwork}>
-              {switching ? <LoaderCircle size={13} className="animate-spin" /> : <CircleAlert size={13} />}
-              {switching ? "等待钱包确认" : `切换至 ${chainConfig.shortName}`}
-            </button>
-          ) : <span className={styles.networkState}>{connected ? <><Check size={12} /> 网络已匹配</> : "连接钱包查看个人资产"}</span>}
         </div>
       </header>
       <main id="home" className={communityPage ? styles.communityContent : overviewPage ? styles.overviewContent : invitePage ? styles.inviteContent : styles.content}>

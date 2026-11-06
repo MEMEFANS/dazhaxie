@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useSyncExternalStore } from "react";
 import { createPublicClient, fallback, http, isAddress, getAddress, parseAbi, zeroAddress, type Address } from "viem";
-import { appChain, chainConfig, chainConfigurationValid, contracts, tradingMode } from "./chain-config";
+import { appChain, chainConfig, chainConfigurationValid, contracts, tradingMode, tokenLaunchMode } from "./chain-config";
 export const pancakeTaxAbi = parseAbi([
   "function owner() view returns (address)", "function pendingOwner() view returns (address)",
   "function usdt() view returns (address)", "function dexRouter() view returns (address)", "function tradingPair() view returns (address)",
@@ -13,12 +13,13 @@ export const pancakeTaxAbi = parseAbi([
   "function setTaxReceivers(address,address)",
   "function setSwapSettings(uint256,uint256,uint256,bool)", "function processTax(uint256,uint256,uint256) returns (uint256)",
   "function claimPayout(address)", "function setMaxWalletExempt(address,bool)",
+  "function isTradingOpen() view returns (bool)",
   "function transferOwnership(address)", "function acceptOwnership()",
 ]);
 const assetAbi = parseAbi(["function decimals() view returns (uint8)","function balanceOf(address) view returns (uint256)"]);
 const pairAbi = parseAbi(["function token0() view returns (address)","function token1() view returns (address)","function getReserves() view returns (uint112,uint112,uint32)"]);
 export const pancakeClient = createPublicClient({chain:appChain,transport:fallback(chainConfig.rpcUrls.map(url=>http(url,{timeout:10_000,retryCount:0})),{retryCount:0})});
-export interface PancakeTaxData {owner:Address;pendingOwner:Address;usdt:Address;router:Address;pair:Address;distributionReceiver:Address;buybackPool:Address;threshold:bigint;maxAmount:bigint;slippageBps:bigint;automatic:boolean;accruedTokens:bigint;pendingTotal:bigint;pendingAmount?:bigint;usdtDecimals:number;bound:boolean;liquid:boolean;}
+export interface PancakeTaxData {owner:Address;pendingOwner:Address;usdt:Address;router:Address;pair:Address;distributionReceiver:Address;buybackPool:Address;threshold:bigint;maxAmount:bigint;slippageBps:bigint;automatic:boolean;accruedTokens:bigint;pendingTotal:bigint;pendingAmount?:bigint;usdtDecimals:number;bound:boolean;liquid:boolean;tradingOpen:boolean;}
 type Snapshot={status:"unconfigured"|"loading"|"error"|"ready";data?:PancakeTaxData;error?:string};
 type Entry={initial:Snapshot;snapshot:Snapshot;listeners:Set<()=>void>;subscribe:(listener:()=>void)=>()=>void;refresh:()=>void};
 const entries=new Map<string,Entry>();
@@ -30,6 +31,7 @@ async function load(account?:Address):Promise<PancakeTaxData>{
   const names=["owner","pendingOwner","usdt","dexRouter","tradingPair","distributionReceiver","buybackPool","swapThreshold","maxSwapAmount","swapSlippageBps","autoSwapEnabled","taxTokenBalance","totalPendingPayouts"] as const;
   const [owner,pendingOwner,usdt,router,pair,distributionReceiver,buybackPool,threshold,maxAmount,slippageBps,automatic,accruedTokens,pendingTotal]=await Promise.all(names.map(functionName=>pancakeClient.readContract({address,abi:pancakeTaxAbi,functionName,blockNumber}))) as [Address,Address,Address,Address,Address,Address,Address,bigint,bigint,bigint,boolean,bigint,bigint];
   const bound=pair!==zeroAddress&&router!==zeroAddress&&usdt!==zeroAddress;let liquid=false,usdtDecimals=18;
+  const tradingOpen=tokenLaunchMode?await pancakeClient.readContract({address,abi:pancakeTaxAbi,functionName:"isTradingOpen",blockNumber}):true;
   if(bound){
     if(!contracts.usdt||usdt.toLowerCase()!==contracts.usdt.toLowerCase())throw new Error("代币绑定 USDT 与网站配置不一致，已关闭交易入口。");
     const [first,second,reserves,decimals]=await Promise.all([pancakeClient.readContract({address:pair,abi:pairAbi,functionName:"token0",blockNumber}),pancakeClient.readContract({address:pair,abi:pairAbi,functionName:"token1",blockNumber}),pancakeClient.readContract({address:pair,abi:pairAbi,functionName:"getReserves",blockNumber}),pancakeClient.readContract({address:usdt,abi:assetAbi,functionName:"decimals",blockNumber})]);
@@ -37,7 +39,7 @@ async function load(account?:Address):Promise<PancakeTaxData>{
     liquid=reserves[0]>0n&&reserves[1]>0n;usdtDecimals=decimals;
   }
   const pendingAmount=account?await pancakeClient.readContract({address,abi:pancakeTaxAbi,functionName:"pendingPayouts",args:[account],blockNumber}):undefined;
-  return {owner,pendingOwner,usdt,router,pair,distributionReceiver,buybackPool,threshold,maxAmount,slippageBps,automatic,accruedTokens,pendingTotal,pendingAmount,usdtDecimals,bound,liquid};
+  return {owner,pendingOwner,usdt,router,pair,distributionReceiver,buybackPool,threshold,maxAmount,slippageBps,automatic,accruedTokens,pendingTotal,pendingAmount,usdtDecimals,bound,liquid,tradingOpen};
 }
 function entryFor(account?:string):Entry{
  const key=`${chainConfig.id}:${contracts.token||""}:${account?.toLowerCase()||"public"}`;const entry=entries.get(key);if(entry)return entry;

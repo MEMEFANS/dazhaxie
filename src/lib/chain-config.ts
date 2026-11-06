@@ -68,6 +68,7 @@ export const contracts = {
 
 // Pancake mode uses the token's transfer-tax implementation, without a gateway.
 export const tradingMode = process.env.NEXT_PUBLIC_TRADING_MODE === "gateway" ? "gateway" : "pancake";
+export const tokenLaunchMode = process.env.NEXT_PUBLIC_TOKEN_LAUNCH_MODE === "staged";
 export function getSwapUrl(): string | undefined {
   if (tradingMode !== "pancake" || !contracts.token || chainConfig.isTestnet) return undefined;
   const configured = process.env.NEXT_PUBLIC_SWAP_URL?.trim();

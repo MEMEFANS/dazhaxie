@@ -21,6 +21,7 @@ npm run dev
 | NEXT_PUBLIC_CHAIN_ID | 56主网 / 97测试网 |
 | NEXT_PUBLIC_TRADING_MODE | pancake（新版 CaBiPancakeToken）/ gateway（旧网关版） |
 | NEXT_PUBLIC_TOKEN_ADDRESS | 与所选模式对应的 CaBi 合约 |
+| NEXT_PUBLIC_TOKEN_LAUNCH_MODE | 新版分阶段代币填写 staged，交易入口额外检查链上开盘状态 |
 | NEXT_PUBLIC_USDT_ADDRESS | 当前链 USDT，业务界面支持6/18位精度 |
 | NEXT_PUBLIC_SALE_ADDRESS | **已废弃并移除读取**。认购改为用户直接向后台配置的收款地址转 USDT，由服务器核验记账；不要填写或重新引入 |
 | NEXT_PUBLIC_CLAIM_POOL_ADDRESS | CaBiSignedClaimPool(token, signer, owner)，签名自领领取池；用户支付 30% USDT 组 LP、70% 到账 |

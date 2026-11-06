@@ -9,7 +9,7 @@ export function PancakeSwapLink({ className = "" }: { className?: string }) {
   if (tradingMode !== "pancake") return null;
   const url = getSwapUrl();
   const failed = query.status === "error" || Boolean(query.error);
-  const ready = Boolean(contracts.token && !chainConfig.isTestnet && query.status === "ready" && !failed && query.data?.bound && query.data.liquid && url);
+  const ready = Boolean(contracts.token && !chainConfig.isTestnet && query.status === "ready" && !failed && query.data?.bound && query.data.liquid && query.data.tradingOpen !== false && url);
   const reason = query.status === "loading" ? "正在加载交易信息" : failed ? "交易暂不可用，请稍后重试" : "交易暂未开放";
   return <div className={className}>
     {ready && url ? <a href={url} target="_blank" rel="noopener noreferrer" className="btn btn-gold min-h-11 w-full gap-2 px-4 text-sm">去交易 <ExternalLink size={14} /></a>

@@ -4,7 +4,7 @@ import { RefreshCw, ShieldAlert } from "lucide-react";
 import { formatUnits } from "viem";
 import { useStore } from "@/lib/store";
 import { useTokenData } from "@/lib/chain-data";
-import { chainConfig, contracts, getExplorerAddressUrl, tradingMode } from "@/lib/chain-config";
+import { chainConfig, contracts, getExplorerAddressUrl, tradingMode, tokenLaunchMode } from "@/lib/chain-config";
 import { PancakeSwapLink } from "@/components/dapp/pancake-swap-link";
 import { BUY_FEE_BPS, MAX_WALLET_BALANCE, SELL_FEE_BPS, TOTAL_SUPPLY, fmt } from "@/lib/constants";
 import { Badge, Card, ContractRow, DataRow, Metric, SectionHead } from "@/components/dapp/ui";
@@ -42,6 +42,7 @@ export default function EconomicsPanel() {
         <DataRow label="钱包转账手续费" value="0%" />
       </div>
       <p className="mt-3 text-[12px] leading-6 text-mute">{tradingMode === "pancake" ? "买入和卖出手续费以 CaBi 收取，普通钱包之间转账不收手续费。请以交易页面显示的实际到账数量为准。" : "买入手续费以 USDT 收取，卖出手续费以 CaBi 收取，普通钱包之间转账不收手续费。请以交易页面显示的实际到账数量为准。"}</p>
+      {tokenLaunchMode ? <p className="mt-2 text-[12px] leading-6 text-mute">领取和交易分阶段开放，公开交易开放前普通转账暂停。</p> : null}
       <PancakeSwapLink className="mt-4" />
     </div>
 

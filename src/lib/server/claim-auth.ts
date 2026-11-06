@@ -79,7 +79,7 @@ function rateLimitPerMinute() {
 export function claimSigningStatus() {
   const account = claimSigner();
   return {
-    configured: Boolean(account),
+    configured: Boolean(account && contracts.claimPool && contracts.token && chainConfigurationValid),
     signer: account?.address ?? null,
     claimPool: contracts.claimPool ?? null,
     chainId: chainConfig.id,

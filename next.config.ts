@@ -4,8 +4,6 @@ const nextConfig: NextConfig = {
   /* config options here */
   // 生产部署使用独立运行包：.next/standalone/server.js（无需完整 node_modules）。
   output: "standalone",
-  cacheComponents: true,
-  partialPrefetching: true,
   images: {
     // 图片 URL 不带内容哈希，默认 4 小时的优化缓存会产生周期性回源。
     // 31 天由 CDN 兜住首次转码；更新同名图片需清理 .next/cache/images 并刷新 CDN。

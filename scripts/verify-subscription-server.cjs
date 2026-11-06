@@ -245,6 +245,13 @@ function order(address, shares, index) {
     assert.equal(dbModule.claimRootBatchByRoot(pendingD.root, pendingD.epoch).id, pendingD.batch.id);
     pass('current root lookups return the persisted wallet proof and match its epoch');
 
+    const shipped = dbModule.shipSubscriptionOrder(dbModule.subscriptionOrderByHash(hash(1)).id, '测试物流', 'TEST-001');
+    assert.equal(shipped.status, 'shipped');
+    assert.equal(shipped.shipping.name, '测试用户');
+    assert.equal(dbModule.globalSold(), 8, 'shipping must not remove shares from the sale total');
+    assert.equal(dbModule.purchasedOf(A), 2, 'shipping must not remove a wallet purchase');
+    pass('shipping records keep the subscription in sale totals and claim entitlements');
+
     console.log(results.length + ' subscription server checks passed.');
   } catch (error) {
     console.error(error);

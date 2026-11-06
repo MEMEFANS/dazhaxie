@@ -74,12 +74,12 @@ function serialize(row: Row): SubscriptionOrder {
 }
 
 export function globalSold(chainId = chainConfig.id): number {
-  const row = subscriptionDatabase().prepare("SELECT COALESCE(SUM(shares), 0) AS sold FROM subscription_orders WHERE chain_id=? AND status='confirmed'").get(chainId);
+  const row = subscriptionDatabase().prepare("SELECT COALESCE(SUM(shares), 0) AS sold FROM subscription_orders WHERE chain_id=? AND status IN ('confirmed','shipped')").get(chainId);
   return Number(row?.sold || 0);
 }
 
 export function purchasedOf(address: string, chainId = chainConfig.id): number {
-  const row = subscriptionDatabase().prepare("SELECT COALESCE(SUM(shares), 0) AS shares FROM subscription_orders WHERE chain_id=? AND status='confirmed' AND address=?").get(chainId, address.toLowerCase());
+  const row = subscriptionDatabase().prepare("SELECT COALESCE(SUM(shares), 0) AS shares FROM subscription_orders WHERE chain_id=? AND status IN ('confirmed','shipped') AND address=?").get(chainId, address.toLowerCase());
   return Number(row?.shares || 0);
 }
 
@@ -139,7 +139,7 @@ export function searchSubscriptions(options: { page?: number; pageSize?: number;
 }
 
 export function allSubscriptionShares(): Map<string, number> {
-  const rows = subscriptionDatabase().prepare("SELECT address, SUM(shares) AS shares FROM subscription_orders WHERE chain_id=? AND status='confirmed' GROUP BY address").all(chainConfig.id);
+  const rows = subscriptionDatabase().prepare("SELECT address, SUM(shares) AS shares FROM subscription_orders WHERE chain_id=? AND status IN ('confirmed','shipped') GROUP BY address").all(chainConfig.id);
   return new Map(rows.map(row => [String(row.address).toLowerCase(), Number(row.shares)]));
 }
 

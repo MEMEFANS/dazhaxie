@@ -336,3 +336,8 @@ html {
   }
   .chat-scroll::-webkit-scrollbar-track { background: transparent; }
 }
+
+@media (max-width: 720px) {
+  input.field, textarea.field, select.field { font-size: 16px; }
+  .btn { min-height: 44px; }
+}

@@ -71,7 +71,6 @@ export function assertSharesAllowed(shares: unknown): number {
  */
 export async function verifySubscriptionTransfer(input: { address: string; hash: unknown; shares: number }) {
   const settings = readOperationalSettings();
-  if (settings.subscribeLocked) throw new AdminRequestError("认购暂时关闭", 403);
   if (!settings.subscribePayee) throw new AdminRequestError("后台尚未设置认购收款地址", 503);
   const payee = getAddress(normalizePayee(settings.subscribePayee));
   const usdt = contracts.usdt;

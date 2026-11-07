@@ -104,7 +104,7 @@ export default function AdminConsoleShell({ children }: { children: React.ReactN
             <Link
               key={item.href}
               href={item.href}
-              className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-4 text-[11px] transition ${
+              className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 text-xs transition ${
                 active
                   ? "border-purple/30 bg-purple/[0.08] font-medium text-purple-deep"
                   : "border-line text-mute hover:text-strong"

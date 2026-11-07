@@ -1,192 +1,95 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- Isolated real React DOM checks; no RPC, private files, or owner signing. */
-// 用假 fetch 验证认购后台：收款地址、开关、认购单、Merkle root 生成与发布登记，全程不接触私钥。
+/* eslint-disable @typescript-eslint/no-require-imports -- Isolated React DOM verification. */
+// Synthetic orders and fetch only; no production records, keys, or wallet transactions.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), ts = require('typescript'), viem = require('viem');
 const { JSDOM } = require('jsdom');
-const ROOT = path.resolve(__dirname, '..');
-const A = '0x1111111111111111111111111111111111111111', B = '0x2222222222222222222222222222222222222222';
-const PAYEE = '0x3333333333333333333333333333333333333333', TX = '0x' + 'ab'.repeat(32), unit = 10n ** 18n;
-const ROOT_1 = '0x' + 'ab'.repeat(32), ROOT_2 = '0x' + 'cd'.repeat(32);
-const ZERO_ADDRESS = '0x' + '0'.repeat(40);
 const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://localhost:3000/admin/subscribe' });
 global.window = dom.window; global.document = dom.window.document; global.IS_REACT_ACT_ENVIRONMENT = true;
 Object.defineProperty(global, 'navigator', { configurable: true, value: dom.window.navigator });
 const React = require('react'), { createRoot } = require('react-dom/client');
-const results = [];
-function pass(name) { results.push(name); console.log('PASS ' + name); }
-function load(file, replacements = {}) {
-  const filename = path.join(ROOT, file), runtimeModule = { exports: {} };
-  const javascript = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
-  vm.runInNewContext(javascript, {
-    module: runtimeModule, exports: runtimeModule.exports,
-    require: name => Object.hasOwn(replacements, name) ? replacements[name] : require(name),
-    window: dom.window, document: dom.window.document, Event: dom.window.Event, MouseEvent: dom.window.MouseEvent,
-    fetch: (request, init) => mockFetch(request, init), console, setTimeout, clearTimeout, Date, JSON, BigInt, Promise, Error, encodeURIComponent,
-  }, { filename });
-  return runtimeModule.exports;
-}
-
-let calls = [], listData, batchesData, generateResponse, applyResponse, claimPoolData, publishResponse;
-function order(id, address, shares, txHash) { return { id, address, shares, amount: String(BigInt(shares) * 50n * 10n ** 6n), txHash, status: 'confirmed', createdAt: 1700000000000 }; }
-function batch(id, epoch, root, addresses, total) { return { id, epoch, root, status: 'pending', addresses, total: String(total), txHash: null, note: null, createdAt: 1700000000000, appliedAt: null }; }
-function resetData() {
-  listData = { items: [order('o1', A, 2, TX), order('o2', B, 1, '0x' + 'cd'.repeat(32))], total: 12, page: 1, pageSize: 10, globalSold: 15000, hardCap: 20000, subscribeLocked: true, subscribePayee: PAYEE };
-  batchesData = { items: [batch('batch-1', 1, ROOT_1, 2, 70000n * unit)], total: 1, page: 1, pageSize: 10 };
-  generateResponse = { status: 200, body: { batch: batch('batch-2', 2, ROOT_2, 3, 105000n * unit), epoch: 2, root: ROOT_2, calldata: '0x' + 'ef'.repeat(40), instruction: '由当前 owner 钱包调用 setMerkleRoot(root, epoch)。', exportUrl: '/api/admin/claim-batches/batch-2/export', total: String(105000n * unit) } };
-  applyResponse = { status: 200, body: { idempotent: false } };
-  publishResponse = { status: 200, body: { claimPool: A, calldata: '0x' + 'ef'.repeat(40), instruction: '由当前 owner 钱包在 BscScan / 硬件钱包对领取池合约调用 setMerkleRoot(root, epoch)。' } };
-  claimPoolData = {
-    mode: 'merkle', pool: '0x4444444444444444444444444444444444444444',
-    chain: { owner: B, pendingOwner: ZERO_ADDRESS, usdt: PAYEE, lpReceiver: PAYEE, usdtDecimals: 6, merkleRoot: ROOT_1, epoch: 1, lpReady: true, poolBalance: String(500000n * unit), totalClaimed: '0', totalLpTokens: String(10500n * unit), totalUsdtCharged: String(15n * 10n ** 6n) },
-    batch: { ...batch('batch-1', 1, ROOT_1, 2, 70000n * unit), matchesChain: true },
-    entitlements: { total: String(70000n * unit), outstanding: String(70000n * unit), addresses: 2, rows: [{ address: A, tokens: String(35000n * unit), chainClaimed: '0', outstanding: String(35000n * unit), reason: ['认购单', '直推奖励'] }, { address: B, tokens: String(35000n * unit), chainClaimed: '0', outstanding: String(35000n * unit), reason: ['极差结算'] }] },
-  };
-  calls = [];
-}
-async function mockFetch(request, init) {
-  const url = String(request), method = (init && init.method) || 'GET';
-  calls.push({ url, method, body: init?.body ? JSON.parse(init.body) : undefined, options: init });
-  const reply = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
-  if (method === 'GET' && url.startsWith('/api/admin/subscriptions?')) {
-    const q = new URLSearchParams(url.split('?')[1]).get('q') || '';
-    const items = q ? listData.items.filter(row => row.address.includes(q) || row.txHash.includes(q)) : listData.items;
-    return reply({ ...listData, items, total: q ? items.length : listData.total });
+const A = '0x1111111111111111111111111111111111111111', B = '0x2222222222222222222222222222222222222222';
+const PAYEE = '0x3333333333333333333333333333333333333333', unit = 10n ** 18n;
+const calls = [], orders = [
+  { id: 'o1', address: A, shares: 1, amount: String(50n * unit), txHash: '0x' + 'ab'.repeat(32), status: 'confirmed', createdAt: 1700000000000 },
+  { id: 'o2', address: B, shares: 2, amount: String(100n * unit), txHash: '0x' + 'cd'.repeat(32), status: 'confirmed', createdAt: 1700000001000, shipping: { name: '合成测试用户', phone: '13800138000', address: '测试地址 1 号' } },
+];
+const settings = { subscribeLocked: true, subscribePayee: PAYEE };
+let shipError = false, checks = 0;
+function pass(message) { checks++; console.log('PASS ' + message); }
+async function mockFetch(url, init) {
+  const method = init?.method || 'GET', body = init?.body ? JSON.parse(init.body) : undefined;
+  calls.push({ url, method, body });
+  const reply = (data, status = 200) => ({ ok: status < 400, status, json: async () => data });
+  if (url.startsWith('/api/admin/subscriptions?')) {
+    const params = new URLSearchParams(url.split('?')[1]), q = params.get('q');
+    return reply({ items: q ? orders.filter(row => row.address.includes(q)) : orders, total: q ? 1 : 12, page: Number(params.get('page')), pageSize: 10, globalSold: 15000, hardCap: 20000, ...settings });
   }
-  if (method === 'GET' && url === '/api/subscribe/config') return reply({ payee: listData.subscribePayee, locked: listData.subscribeLocked });
-  if (method === 'GET' && url.startsWith('/api/admin/claim-batches')) return reply(batchesData);
-  if (method === 'GET' && url === '/api/admin/claim-pool') return reply(claimPoolData);
-  if (method === 'POST' && url === '/api/admin/claim-pool') return reply(publishResponse.body, publishResponse.status);
-  if (method === 'POST' && url === '/api/admin/subscriptions') {
-    const patch = JSON.parse(init.body);
-    if (patch.subscribePayee !== undefined) listData.subscribePayee = patch.subscribePayee;
-    if (patch.subscribeLocked !== undefined) listData.subscribeLocked = patch.subscribeLocked;
-    return reply({ settings: { subscribePayee: listData.subscribePayee, subscribeLocked: listData.subscribeLocked } });
+  if (url === '/api/subscribe/config') return reply({ payee: settings.subscribePayee, locked: settings.subscribeLocked });
+  if (url === '/api/admin/subscriptions' && method === 'POST') {
+    if (body.action === 'ship') {
+      if (shipError) return reply({ error: '模拟保存失败' }, 503);
+      const order = orders.find(row => row.id === body.id);
+      Object.assign(order, { status: 'shipped', carrier: body.carrier, trackingNumber: body.trackingNumber });
+      return reply({ order });
+    }
+    Object.assign(settings, body); return reply({ settings });
   }
-  if (method === 'POST' && url === '/api/admin/claim-batches') return reply(generateResponse.body, generateResponse.status);
-  if (method === 'POST' && url.includes('/apply')) return reply(applyResponse.body, applyResponse.status);
-  throw new Error('unexpected request ' + method + ' ' + url);
+  if (url === '/api/admin/claim-pool') return reply({
+    mode: 'signed', pool: A,
+    chain: { owner: B, signer: B, usdt: PAYEE, lpReceiver: B, usdtDecimals: 18, poolBalance: String(500000n * unit), totalClaimed: '0', totalLpTokens: String(10500n * unit), totalUsdtCharged: String(15n * unit), allocatedUnclaimed: String(35000n * unit), unusedBalance: String(465000n * unit), lpReady: true },
+    signing: { configured: true, signer: B, signerMatches: true },
+    entitlements: { total: String(35000n * unit), outstanding: String(35000n * unit), addresses: 1, rows: [{ address: A, tokens: String(35000n * unit), chainClaimed: '0', outstanding: String(35000n * unit), reason: ['认购 1 份'] }] },
+  });
+  throw new Error('Unexpected fixture request ' + url);
+}
+function load(relative, replacements = {}) {
+  const filename = path.join(__dirname, '..', relative), mod = { exports: {} };
+  const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
+  vm.runInNewContext(code, { module: mod, exports: mod.exports, require: name => Object.hasOwn(replacements, name) ? replacements[name] : require(name), window: dom.window, document: dom.window.document, Event: dom.window.Event, fetch: mockFetch, console, setTimeout, clearTimeout, Date, JSON, BigInt, Promise, Error }, { filename });
+  return mod.exports;
 }
 const container = ({ children }) => React.createElement('section', null, children), icon = () => null;
 const Component = load('src/components/admin/subscribe-admin.tsx', {
-  react: React, 'lucide-react': { Download: icon, ExternalLink: icon, Loader2: icon, Play: icon, RefreshCw: icon, Save: icon },
-  '@/lib/amounts': { formatAssetAmount: (amount, decimals) => viem.formatUnits(amount, decimals) },
-  '@/components/dapp/ui': {
-    Card: container, Badge: ({ children }) => React.createElement('span', { 'data-badge': true }, children),
-    DataRow: ({ label, value }) => React.createElement('p', { 'data-row': label }, label + ': ', value),
-    Progress: ({ value }) => React.createElement('div', { 'data-progress': true }, String(value)),
-    SectionHead: ({ title }) => React.createElement('h2', null, title),
-  },
+  react: React, 'lucide-react': { Download: icon, Loader2: icon, RefreshCw: icon, Save: icon },
+  '@/lib/constants': load('src/lib/constants.ts'),
+  '@/lib/amounts': { formatAssetAmount: viem.formatUnits },
+  '@/components/dapp/ui': { Card: container, DataRow: ({ label, value }) => React.createElement('p', { 'data-row': label }, label + ': ', value), Progress: () => null, SectionHead: ({ title }) => React.createElement('h2', null, title) },
 }).default;
-const rootHolder = { root: createRoot(document.getElementById('root')) }, pause = (ms = 20) => new Promise(resolve => setTimeout(resolve, ms));
-async function render() { await React.act(async () => { rootHolder.root.render(React.createElement(Component)); await pause(40); }); }
-const row = label => document.querySelector('[data-row="' + label + '"]').textContent;
-const byText = text => Array.from(document.querySelectorAll('button,a')).find(element => element.textContent.trim().includes(text));
-async function click(element, wait = 30) { assert(element, 'missing element'); await React.act(async () => { element.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); await pause(wait); }); }
-async function type(element, value) {
-  assert(element, 'missing input');
-  await React.act(async () => {
-    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set.call(element, value);
-    element.dispatchEvent(new dom.window.Event('input', { bubbles: true })); await pause();
-  });
-}
-
+const root = createRoot(document.getElementById('root')), pause = () => new Promise(resolve => setTimeout(resolve, 30));
+const byText = text => [...document.querySelectorAll('button,a')].find(element => element.textContent.includes(text));
+async function click(element) { assert(element); await React.act(async () => { element.click(); await pause(); }); }
+async function type(selector, value) { const input = document.querySelector(selector); assert(input); await React.act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set.call(input, value); input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); await pause(); }); }
 (async () => {
   try {
-    resetData(); await render();
-    assert(row('已认购 / 硬顶').includes('15000 / 20000'));
-    assert(row('剩余额度').includes('5000'));
-    assert(row('运营开关').includes('已暂停'));
-    assert(row('已登记认购单').includes('12 笔'));
-    assert.equal(document.querySelector('[data-progress]').textContent, '75');
-    assert(row('当前地址').includes(PAYEE));
-    assert(document.body.textContent.includes(A));
-    assert(document.body.textContent.includes('batch-1'));
-    assert(row('链上批次 / epoch').includes('#1'));
-    assert(row('待领额度（服务器聚合）').includes('70000'));
-    assert(document.body.textContent.includes('认购单') && document.body.textContent.includes('极差结算'));
-    pass('admin loads subscription totals, payee, the Merkle root batch and auto-aggregated entitlements');
-
-    const payeeInput = document.querySelector('[aria-label="认购收款地址"]');
-    await type(payeeInput, B);
-    await click(byText('保存收款地址'), 40);
-    const save = calls.find(call => call.method === 'POST' && call.url === '/api/admin/subscriptions');
-    assert.equal(save.body.subscribePayee, B);
-    assert.equal(save.options.credentials, 'same-origin');
-    assert.equal(save.options.cache, 'no-store');
-    assert(calls.some(call => call.method === 'GET' && call.url === '/api/subscribe/config'), 'saved payee must be checked against the public configuration');
+    await React.act(async () => { root.render(React.createElement(Component)); await pause(); });
+    assert(document.body.textContent.includes('待补收货信息'));
+    assert(document.body.textContent.includes('待发货'));
+    assert(document.body.textContent.includes('用户自动组 LP'));
+    assert(document.body.textContent.includes('已匹配'));
+    assert(!document.body.textContent.includes('50000000000000000000'));
+    pass('admin shows signed LP state, human-readable USDT and missing-shipping orders');
+    await type('[aria-label="认购收款地址"]', B); await click(byText('保存收款地址'));
+    assert.equal(settings.subscribePayee, B);
+    assert(calls.some(call => call.url === '/api/subscribe/config'));
     assert(document.body.textContent.includes('已保存。'));
-    assert(row('当前地址').includes(B));
-    pass('payee is saved through the server and the displayed value follows the saved settings');
-
-    await click(byText('开放认购'), 40);
-    const toggle = calls.filter(call => call.method === 'POST' && call.url === '/api/admin/subscriptions').at(-1);
-    assert.equal(toggle.body.subscribeLocked, false);
-    assert(row('运营开关').includes('开放中'));
+    pass('payee save is verified against the frontend configuration');
+    await click(byText('开放认购')); assert.equal(settings.subscribeLocked, false);
     assert(byText('暂停认购'));
-    pass('the operational subscribe switch round-trips through the admin API without touching any contract');
-
-    await click(byText('下一页'), 40);
-    const paged = calls.filter(call => call.method === 'GET' && call.url.includes('page=2')).at(-1);
-    assert(paged, 'missing page 2 request');
-    pass('pagination requests the next server page');
-
-    const search = document.querySelector('[aria-label="搜索认购单"]');
-    await type(search, '0x1111');
-    await React.act(async () => { document.querySelector('form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await pause(30); });
-    const queryCall = calls.filter(call => call.method === 'GET' && call.url.includes('q=')).at(-1);
-    assert(queryCall.url.includes('q=0x1111'));
-    assert.equal(document.querySelectorAll('table')[0].querySelectorAll('tbody tr').length, 1);
-    const exportLink = byText('导出 CSV');
-    assert(exportLink.getAttribute('href').includes('q=0x1111'));
-    pass('search filters the server-side list and the CSV export keeps the same query');
-
-    await click(byText('生成 root 与 proof'), 60);
-    const generated = calls.find(call => call.method === 'POST' && call.url === '/api/admin/claim-batches');
-    assert.equal(generated.body.action, 'generate');
-    assert(document.body.textContent.includes('已生成批次 #2'));
-    assert(document.body.textContent.includes(ROOT_2));
-    assert(document.body.textContent.includes('setMerkleRoot'));
-    assert(document.body.textContent.includes('下载 address / tokens / proof CSV'));
-    assert(calls.some(call => call.method === 'GET' && call.url.includes('/api/admin/claim-batches?page=')), 'batch list must refresh after generating');
-    pass('generating a Merkle batch shows root, epoch, calldata and a proof CSV download, then refreshes the list');
-
-    const batchInput = document.querySelector('[aria-label="批次 batch-1 交易哈希"]');
-    assert(batchInput, 'pending batch should offer a hash input');
-    await click(byText('登记哈希'), 30);
-    assert(document.querySelector('[role="alert"]').textContent.includes('有效的上链交易哈希'));
-    assert(!calls.some(call => call.url.includes('/apply')), 'invalid hash must not be posted');
-    await type(batchInput, TX);
-    await click(byText('登记哈希'), 50);
-    const applied = calls.find(call => call.url.includes('/apply'));
-    assert.equal(applied.body.txHash, TX);
-    assert(document.body.textContent.includes('已登记交易哈希'));
-    pass('a batch can only be marked applied with a valid transaction hash, then the list refreshes');
-
-    applyResponse = { status: 200, body: { idempotent: false } };
-    await click(byText('标记失败'), 50);
-    const failed = calls.filter(call => call.url.includes('/apply')).at(-1);
-    assert.equal(failed.body.status, 'failed');
-    assert(document.body.textContent.includes('可重新生成批次'));
-    applyResponse = { status: 200, body: { idempotent: true } };
-    await click(byText('登记哈希'), 50);
-    assert(document.body.textContent.includes('未重复发布'));
-    pass('failed batches are recorded for retry, and idempotent re-registration is reported');
-
-    generateResponse = { status: 409, body: { error: '没有需要生成可领额度的地址' } };
-    await click(byText('生成 root 与 proof'), 50);
-    assert(document.querySelector('[role="alert"]').textContent.includes('没有需要生成可领额度的地址'));
-    pass('batch generation errors surface the server reason instead of silently succeeding');
-
-    await click(byText('生成发布 calldata'), 50);
-    const publishCall = calls.find(call => call.method === 'POST' && call.url === '/api/admin/claim-pool');
-    assert.equal(publishCall.body.action, 'publish');
-    assert.equal(publishCall.body.batchId, 'batch-1');
-    assert(document.body.textContent.includes('setMerkleRoot(root, epoch)'));
-    assert(document.body.textContent.includes('owner 钱包'));
-    pass('publishing only returns setMerkleRoot calldata for the owner wallet and records an audit');
-
-    console.log(results.length + ' subscribe admin checks passed.');
-  } catch (error) {
-    console.error(error);
-    process.exitCode = 1;
-  }
+    pass('sales switch reflects the saved state');
+    await click(byText('下一页')); assert(calls.some(call => call.url.includes('page=2')));
+    pass('orders paginate through the backend');
+    await click(byText('登记发货')); assert(document.body.textContent.includes('请填写物流公司'));
+    await type('[aria-label="订单 o2 物流公司"]', '合成物流');
+    await type('[aria-label="订单 o2 运单号"]', 'TEST-0001');
+    shipError = true; await click(byText('登记发货')); assert(document.body.textContent.includes('模拟保存失败'));
+    shipError = false; await click(byText('登记发货'));
+    assert.equal(orders[1].status, 'shipped'); assert(document.body.textContent.includes('TEST-0001'));
+    pass('shipping validates fields, reports save failure and renders saved tracking');
+    await type('[aria-label="搜索认购单"]', '0x1111');
+    await React.act(async () => { document.querySelector('form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await pause(); });
+    assert(calls.at(-1).url.includes('q=0x1111'));
+    assert(byText('导出 CSV').getAttribute('href').includes('q=0x1111'));
+    pass('search and export share the same query');
+    console.log(checks + ' current subscribe admin checks passed.');
+  } catch (error) { console.error(error); process.exitCode = 1; }
+  finally { await React.act(async () => root.unmount()); dom.window.close(); }
 })();

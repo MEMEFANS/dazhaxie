@@ -44,7 +44,6 @@ function PurchasePanelForm() {
   const [serverState, setServerState] = useState<"idle" | "verifying" | "success" | "failed">("idle");
   const [serverMessage, setServerMessage] = useState("");
   const [pending, setPending] = useState<PurchaseSnapshot | null>(null);
-  const [awaitingShipping, setAwaitingShipping] = useState<PurchaseSnapshot | null>(null);
   const [completed, setCompleted] = useState<PurchaseSnapshot | null>(null);
   const [unregisteredHash, setUnregisteredHash] = useState("");
   const [copied, setCopied] = useState(false);
@@ -53,6 +52,20 @@ function PurchasePanelForm() {
   const submitted = useRef<Omit<PurchaseSnapshot, "hash"> | null>(null);
 
   const shippingKey = state.connected ? `cabi-subscribe-shipping:v1:${state.chainId}:${state.address.toLowerCase()}` : "";
+  const registrationKey = state.connected ? `cabi-subscribe-registration:v1:${state.chainId}:${state.address.toLowerCase()}` : "";
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = registrationKey ? JSON.parse(window.localStorage.getItem(registrationKey) || "null") as Partial<PurchaseSnapshot> | null : null;
+        if (saved && /^0x[0-9a-fA-F]{64}$/.test(saved.hash || "") && Number.isSafeInteger(saved.shares) && (saved.shares || 0) > 0) {
+          setPending({ hash: saved.hash!, shares: saved.shares!, paid: saved.paid || "", allocation: saved.allocation || "", shipping: emptyShipping });
+          setServerState("failed");
+          setServerMessage("上一笔付款已确认，请查询登记结果；无需再次付款。");
+        }
+      } catch { /* Invalid local recovery data is ignored. */ }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [registrationKey]);
   useEffect(() => {
     shippingLoaded.current = false;
     const timer = window.setTimeout(() => {
@@ -91,13 +104,17 @@ function PurchasePanelForm() {
   async function verifyOnServer(hash: string, shares: number, shippingInfo: RedemptionShipping): Promise<Response> {
     return fetch("/api/subscribe/orders", {
       method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-      body: JSON.stringify({ shares, hash, shipping: shippingInfo }),
+      body: JSON.stringify({ shares, hash, ...(validShipping(shippingInfo) ? { shipping: shippingInfo } : {}) }),
     });
   }
-  function reportServerResult(response: Response, body: { error?: string }, purchase: PurchaseSnapshot) {
+  function reportServerResult(response: Response, body: { error?: string; order?: { shipping?: RedemptionShipping } }, purchase: PurchaseSnapshot) {
     if (response.status === 202) { setServerState("verifying"); setServerMessage(body.error || "转账确认中，请稍后点击重新查询。"); return false; }
     if (!response.ok) { setServerState("failed"); setServerMessage(body.error || "暂未完成认购登记，请查询本次结果，无需再次支付。"); return false; }
-    setServerState("success"); setServerMessage(""); setCompleted(purchase); setPending(null); setAwaitingShipping(null);
+    setServerState("success"); setServerMessage(""); setCompleted({ ...purchase, shipping: body.order?.shipping || emptyShipping }); setPending(null);
+    tx.acknowledge(purchase.hash);
+    window.dispatchEvent(new Event("cabi-subscription-updated"));
+    window.dispatchEvent(new Event("cabi-chain-updated"));
+    try { if (registrationKey) window.localStorage.removeItem(registrationKey); } catch { /* Local recovery is optional. */ }
     setQuantity(Math.max(1, data?.minShares ?? 1)); void query.refresh(); orders.refresh();
     return true;
   }
@@ -150,7 +167,7 @@ function PurchasePanelForm() {
   async function verifyPurchase() { await verifyReferral(); await verifyConfiguration(); }
 
   async function submit() {
-    if (reason || !data?.payee || !data.usdt || !bound || operation.current || tx.busy || pending || awaitingShipping || unregisteredHash) return;
+    if (reason || !data?.payee || !data.usdt || !bound || operation.current || tx.busy || pending || unregisteredHash) return;
     operation.current = true; setChecking(true); setError(""); setCancelled(false); setCompleted(null); setServerState("idle"); setServerMessage(""); tx.clear();
     submitted.current = { shares: quantity, paid: formatAssetAmount(amount, data.usdtDecimals), allocation: formatAssetAmount(quota, data.tokenDecimals), shipping: { name: shipping.name.trim(), phone: shipping.phone.trim(), address: shipping.address.trim() } };
     try {
@@ -161,28 +178,18 @@ function PurchasePanelForm() {
         description: `认购 ${quantity} 份，向收款地址转入 ${formatAssetAmount(amount, data.usdtDecimals)} USDT`,
         beforeSend: verifyPurchase,
         allowUnsimulated: true,
+        retainReceipt: true,
       });
       if (!hash || !mounted.current || !submitted.current) return;
       const purchase = { hash, ...submitted.current };
-      if (validShipping(purchase.shipping)) await registerPurchase(purchase);
-      else { setAwaitingShipping(purchase); setServerState("idle"); setServerMessage(""); }
+      await registerPurchase(purchase);
     } catch (cause) {
       if (mounted.current) { setServerState("failed"); setCancelled(isUserCancelledError(cause)); setError(isUserCancelledError(cause) ? "你已取消钱包确认，可重新发起认购。" : cause instanceof Error ? cause.message : "本次认购未完成，请核对后重试。"); }
     } finally { operation.current = false; if (mounted.current) setChecking(false); }
   }
 
-  async function completeShipping() {
-    if (!awaitingShipping || !validShipping(shipping) || checking || operation.current) {
-      if (awaitingShipping && !validShipping(shipping)) setError("请补充完整收货姓名、联系电话和地址后再登记。");
-      return;
-    }
-    const purchase = { ...awaitingShipping, shipping: { name: shipping.name.trim(), phone: shipping.phone.trim(), address: shipping.address.trim() } };
-    submitted.current = purchase;
-    setError(""); setAwaitingShipping(null);
-    await registerPurchase(purchase);
-  }
-
   async function registerPurchase(purchase: PurchaseSnapshot) {
+    try { if (registrationKey) window.localStorage.setItem(registrationKey, JSON.stringify({ hash: purchase.hash, shares: purchase.shares, paid: purchase.paid, allocation: purchase.allocation })); } catch { /* Local recovery is optional. */ }
     setPending(purchase); setServerState("verifying"); setServerMessage("");
     try {
       const response = await verifyOnServer(purchase.hash, purchase.shares, purchase.shipping);
@@ -222,8 +229,7 @@ function PurchasePanelForm() {
       }
       if (snapshot) {
         const purchase = { hash, ...snapshot };
-        if (validShipping(purchase.shipping)) await registerPurchase(purchase);
-        else setAwaitingShipping(purchase);
+        await registerPurchase(purchase);
       }
       else { setUnregisteredHash(hash); setServerState("failed"); setServerMessage("转账已确认，请联系支持核对本笔认购登记，无需再次支付。"); }
     } catch {
@@ -240,9 +246,9 @@ function PurchasePanelForm() {
   const maximum = data ? Math.min(data.maxShares, data.remainingGlobal, state.connected ? remaining : data.maxShares) : 1;
   const shortPayee = data?.payee ? `${data.payee.slice(0, 6)}…${data.payee.slice(-4)}` : "等待配置";
   const confirming = tx.transaction?.status === "pending";
-  const actionLabel = awaitingShipping ? "补填收货信息并登记" : tx.busy ? tx.transaction?.status === "wallet" ? "等待钱包确认" : "等待链上确认" : checking ? "正在核对认购" : pending ? "等待认购登记" : unregisteredHash ? "请核对认购登记" : reason || "确认认购";
-  const mobileLabel = !state.connected ? "连接钱包" : awaitingShipping ? actionLabel : pending || confirming ? checking || resuming ? "正在查询…" : confirming ? "查询转账结果" : "查询认购结果" : actionLabel;
-  const mobileDisabled = state.connected && (awaitingShipping ? busy : pending || confirming ? checking || resuming : Boolean(reason) || busy);
+  const actionLabel = tx.busy ? tx.transaction?.status === "wallet" ? "等待钱包确认" : "等待链上确认" : checking ? "正在核对认购" : pending ? "等待认购登记" : unregisteredHash ? "请核对认购登记" : reason || "确认认购";
+  const mobileLabel = !state.connected ? "连接钱包" : pending || confirming ? checking || resuming ? "正在查询…" : confirming ? "查询转账结果" : "查询认购结果" : actionLabel;
+  const mobileDisabled = state.connected && (pending || confirming ? checking || resuming : Boolean(reason) || busy);
   let statusKind: PurchaseStatusKind | undefined;
   let statusMessage: string | undefined;
   if (pending || unregisteredHash) { statusKind = serverState === "failed" ? "registration-failed" : "registering"; statusMessage = serverMessage || undefined; }
@@ -268,50 +274,49 @@ function PurchasePanelForm() {
       <div className={styles.purchaseHeading}><h2 id="purchase-title"><ShoppingBag size={19} strokeWidth={1.7} />选择认购份额</h2><span><Wallet size={13} />USDT 支付</span></div>
       <p className={styles.purchaseIntro}>先完成认购付款，再补填蟹礼收货信息；代币配额不变，价格按全局认购进度分档。</p>
       {completed ? <div ref={successResult} tabIndex={-1} className={styles.successTarget} aria-label="本次认购结果">
-        <PurchaseSuccess shares={completed.shares} paid={completed.paid} allocation={completed.allocation} txHash={completed.hash} />
+        <PurchaseSuccess shares={completed.shares} paid={completed.paid} allocation={completed.allocation} txHash={completed.hash} shippingComplete={validShipping(completed.shipping)} />
         {data?.enabled && maximum >= Math.max(1, data.minShares) ? <button type="button" className={`btn btn-outline ${styles.continueButton}`} onClick={() => setCompleted(null)}>继续认购其他份额<ArrowRight size={14} /></button> : null}
       </div> : <>
-      <ShareOptions value={quantity} onChange={setQuantity} config={data} available={maximum} disabled={busy || Boolean(awaitingShipping)} />
+      <ShareOptions value={quantity} onChange={setQuantity} config={data} available={maximum} disabled={busy} />
       <div className={styles.accountStats}><span>已认购 <strong>{data && state.connected ? data.purchased : "—"}</strong> 份</span><span>此钱包还可认购 <strong>{data && state.connected ? remaining : "—"}</strong> 份</span></div>
 
       <div className={styles.receipt}>
         <div className={styles.payment}><span>本次支付</span><strong aria-live="polite">{data ? formatAssetAmount(amount, data.usdtDecimals) : "—"}<small>USDT</small></strong></div>
         <div className={styles.allocation}><span><Coins size={14} />对应 CaBi 配额</span><strong>{data ? formatAssetAmount(quota, data.tokenDecimals) : "—"}<small>CaBi</small></strong></div>
-        <p className={styles.receiptHint}>认购后前往代币中心领取：需支付 30% USDT 等值组建流动性，30% CaBi 进入项目 LP，70% 到账可交易。</p>
+        <p className={styles.receiptHint}>认购后到代币中心组 LP，每份另付 15 USDT；领取开放后，70% CaBi 到账。</p>
         <div className={styles.claimOptions}>
           <div><span>领取到账 · 70%</span><strong>{data ? formatAssetAmount(quota * 70n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong></div>
-          <div><span>组建流动性 · 30%</span><strong>{data ? formatAssetAmount(quota * 30n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong><p className={styles.claimRequirement}>领取时另付 30% USDT 等值</p></div>
+          <div><span>组建流动性 · 30%</span><strong>{data ? formatAssetAmount(quota * 30n / 100n, data.tokenDecimals) : "—"}<small>CaBi</small></strong><p className={styles.claimRequirement}>组 LP 另付 {quantity * 15} USDT</p></div>
         </div>
       </div>
       {data ? <p className="mt-2 text-xs leading-5 text-mute">当前销售档位：{data.unitPrice} USDT / 份；价格档位为 50、55、60、70 USDT，每 5,000 份进入下一档。每份 CaBi 配额保持不变。</p> : null}
 
-      <div className="mt-4 rounded-xl border border-line bg-well p-4">
-        <p className="text-sm font-semibold text-strong">蟹礼收货信息</p>
-        <p className="mt-1 text-xs leading-6 text-mute">付款可以先完成；填写后点击登记，后台会保存信息并安排发货。</p>
-        {awaitingShipping ? <p role="status" className="mt-2 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-xs leading-5 text-strong">付款已确认，请补充收货信息后登记本次认购。</p> : null}
+      <details className="mt-4 rounded-xl border border-line bg-well p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-strong">蟹礼收货信息 · 可稍后填写</summary>
+        <p className="mt-1 text-xs leading-6 text-mute">可先付款；未填写时，认购份额仍会立即登记。收货信息可在下方认购记录中补填。</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="block space-y-2 text-xs text-mute"><span>收货人</span><input value={shipping.name} onChange={event => setShipping(value => ({ ...value, name: event.target.value }))} maxLength={60} autoComplete="name" className="field min-h-11 w-full px-3 text-sm" disabled={busy} /></label>
           <label className="block space-y-2 text-xs text-mute"><span>联系电话</span><input type="tel" value={shipping.phone} onChange={event => setShipping(value => ({ ...value, phone: event.target.value }))} maxLength={25} autoComplete="tel" className="field min-h-11 w-full px-3 text-sm" disabled={busy} /></label>
         </div>
         <label className="mt-3 block space-y-2 text-xs text-mute"><span>完整收货地址</span><textarea value={shipping.address} onChange={event => setShipping(value => ({ ...value, address: event.target.value }))} minLength={5} maxLength={500} autoComplete="street-address" rows={3} className="field w-full px-3 py-3 text-sm" disabled={busy} /></label>
-      </div>
+      </details>
 
       <details className={styles.payee}><summary><span>收款地址与网络</span><span>{shortPayee}<ChevronDown size={14} /></span></summary><div className={styles.payeeAddress}><code>{data?.payee || "暂未开放"}</code><button type="button" onClick={() => void copyPayee()} disabled={!data?.payee} className={styles.copyButton}>{copied ? <><Check size={12} />已复制</> : <><Copy size={12} />复制</>}</button></div><p>请使用 BSC 网络 USDT 支付，转账前核对收款地址与金额。</p></details>
 
       {statusKind ? <div ref={statusResult} tabIndex={-1} aria-label="本次认购状态"><PurchaseStatus kind={statusKind} message={statusMessage} hash={pending?.hash || unregisteredHash || tx.transaction?.hash} onQuery={pending ? () => void recheck() : confirming ? () => void resumeTransfer() : undefined} querying={checking || resuming} /></div> : null}
       {unregisteredHash ? <a href="/dapp/support" className={`btn btn-outline ${styles.continueButton}`}>联系支持核对登记<ArrowRight size={14} /></a> : null}
       <div ref={inlineActions} className={styles.actions}>
-        {!state.connected ? <button type="button" onClick={connect} className={`btn btn-gold ${styles.primaryButton}`}><Wallet size={16} />连接钱包，开始认购<ArrowRight size={16} /></button> : <button type="button" onClick={() => void (awaitingShipping ? completeShipping() : submit())} disabled={Boolean(reason) || busy} className={`btn btn-gold ${styles.primaryButton}`}>{actionLabel}{!reason && !busy ? <ArrowRight size={16} /> : null}</button>}
+        {!state.connected ? <button type="button" onClick={connect} className={`btn btn-gold ${styles.primaryButton}`}><Wallet size={16} />连接钱包，开始认购<ArrowRight size={16} /></button> : <button type="button" onClick={() => void submit()} disabled={Boolean(reason) || busy} className={`btn btn-gold ${styles.primaryButton}`}>{actionLabel}{!reason && !busy ? <ArrowRight size={16} /> : null}</button>}
       </div>
       <p className={styles.actionHint}><Wallet size={12} />BSC 网络 · USDT 转账 · 确认后登记认购</p>
       </>}
       {orders.error ? <p role="status" className={styles.feedback}>{orders.error}</p> : null}
-      <PurchaseRecords orders={orders.orders} usdtDecimals={data?.usdtDecimals} />
+      <PurchaseRecords orders={orders.orders} usdtDecimals={data?.usdtDecimals} onUpdated={orders.refresh} />
     </section>
     {!completed ? <div className={styles.mobileCheckout} data-inline-visible={inlineActionVisible} role="region" aria-label="快捷认购">
       <div className={styles.mobileCheckoutInner}>
         <div className={styles.mobileTotal}><span>本次支付 · {quantity} 份</span><strong aria-live="polite">{data ? formatAssetAmount(amount, data.usdtDecimals) : "—"}<small>USDT</small></strong></div>
-        <button type="button" disabled={mobileDisabled} onClick={() => { if (!state.connected) connect(); else if (awaitingShipping) void completeShipping(); else if (pending) void recheck(); else if (confirming) void resumeTransfer(); else void submit(); }} className={styles.mobileSubmit}>{mobileLabel}{!mobileDisabled ? <ArrowRight size={16} /> : null}</button>
+        <button type="button" disabled={mobileDisabled} onClick={() => { if (!state.connected) connect(); else if (pending) void recheck(); else if (confirming) void resumeTransfer(); else void submit(); }} className={styles.mobileSubmit}>{mobileLabel}{!mobileDisabled ? <ArrowRight size={16} /> : null}</button>
       </div>
     </div> : null}
     </>

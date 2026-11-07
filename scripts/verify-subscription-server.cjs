@@ -100,7 +100,7 @@ function order(address, shares, index) {
     assert.equal(dbModule.globalSold(), 2);
     assert.equal(dbModule.purchasedOf(A), 2);
     assert.equal(dbModule.purchasedOf(B), 0);
-    await assertStatus(async () => order(A, 2, 1), 409, 'same hash');
+    assert.equal(order(A, 2, 1).id, first.id, 'same payment is idempotent');
     assert.equal(dbModule.globalSold(), 2, 'duplicate hash must not be recorded');
     assert(dbModule.subscriptionOrderByHash(hash(1)));
     order(B, 1, 2); order(C, 2, 3); order(C, 1, 4);
@@ -112,7 +112,15 @@ function order(address, shares, index) {
     assert.equal(searched.items.length, 1);
     assert.equal(searched.total, 1);
     assert.equal(searched.globalSold, 6);
-    pass('subscription orders persist, aggregate globalSold/purchased and reject duplicate transaction hashes');
+    await assertStatus(async () => dbModule.createSubscriptionOrder({ address: B, shares: 2, amount: 100n * 10n ** 6n, txHash: hash(1) }), 409, 'other wallet replay');
+    const missing = dbModule.createSubscriptionOrder({ address: D, shares: 1, amount: 50n * 10n ** 6n, txHash: hash(8) });
+    assert.equal(missing.shipping, undefined);
+    assert.equal(dbModule.purchasedOf(D), 1, 'shipping must not block shares');
+    await assertStatus(async () => dbModule.saveSubscriptionShipping(missing.id, A, { name: '测试', phone: '13800138000', address: '测试地址 1 号' }), 404, 'other wallet shipping');
+    assert.equal(dbModule.saveSubscriptionShipping(missing.id, D, { name: '测试', phone: '13800138000', address: '测试地址 1 号' }).shipping.name, '测试');
+    await assertStatus(async () => dbModule.saveSubscriptionShipping(missing.id, D, { name: '测试', phone: '13800138000', address: '测试地址 1 号' }), 409, 'shipping overwrite');
+    dbModule.subscriptionDatabase().prepare('DELETE FROM subscription_orders WHERE id=?').run(missing.id);
+    pass('payments are idempotent, shares count without shipping, and only the owner can fill shipping once');
 
     // ---------------------------------------------------------- 销售价格档位
     assert.equal(constants.subscriptionUnitPrice(0), 50);
@@ -233,7 +241,7 @@ function order(address, shares, index) {
     liveTransfer();
     await assertStatus(() => chainModule.verifySubscriptionTransfer({ address: A, hash: '0x12', shares: 2 }), 400, 'bad hash');
     settings.subscribeLocked = true;
-    await assertStatus(() => chainModule.verifySubscriptionTransfer({ address: A, hash: hash(11), shares: 2 }), 403, 'locked');
+    assert.equal(await chainModule.verifySubscriptionTransfer({ address: A, hash: hash(11), shares: 2 }), 100n * 10n ** 6n, 'already-paid transfer must register after sales pause');
     settings.subscribeLocked = false; settings.subscribePayee = '';
     await assertStatus(() => chainModule.verifySubscriptionTransfer({ address: A, hash: hash(11), shares: 2 }), 503, 'no payee');
     settings.subscribePayee = PAYEE;

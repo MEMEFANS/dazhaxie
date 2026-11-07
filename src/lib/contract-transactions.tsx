@@ -12,8 +12,8 @@ import { isUserCancelledError } from "./transaction-cancellation";
 const client = createPublicClient({ chain: appChain, transport: fallback(chainConfig.rpcUrls.map(url => http(url, { timeout: 12_000, retryCount: 0 })), { retryCount: 0 }) });
 type Phase = "approval" | "action";
 export type ContractTransaction = { status: "wallet" | "pending" | "success" | "failed"; description: string; phase: Phase; hash?: Hash; message: string; cancelled?: boolean };
-type Pending = { version: 1; scope: string; chainId: number; account: Address; address: Address; data: Hex; hash: Hash; description: string; phase: Phase };
-export type ContractRequest = { address: Address; abi: Abi; functionName: string; args?: readonly unknown[]; description: string; approval?: { token: Address; amount: bigint }; beforeSend?: () => Promise<void>; allowUnsimulated?: boolean };
+type Pending = { version: 1; scope: string; chainId: number; account: Address; address: Address; data: Hex; hash: Hash; description: string; phase: Phase; retainReceipt?: boolean };
+export type ContractRequest = { address: Address; abi: Abi; functionName: string; args?: readonly unknown[]; description: string; approval?: { token: Address; amount: bigint }; beforeSend?: () => Promise<void>; allowUnsimulated?: boolean; retainReceipt?: boolean };
 const inFlight = new Set<string>();
 const configuredTargets = () => Object.values(contracts).filter((value): value is Address => Boolean(value));
 const isConfigured = (address: string) => configuredTargets().some(value => value.toLowerCase() === address.toLowerCase());
@@ -91,11 +91,16 @@ export function useContractTransaction(scope: string, options?: { audit?: boolea
         if (auditEnabled) recordChainAudit({ action: record.description, status: "failed", txHash: receipt.transactionHash, wallet: record.account, error: "交易已被替换或取消" });
         return undefined;
       }
-      removePending(storageKey); pending.current = null;
       if (receipt.status !== "success") {
+        removePending(storageKey); pending.current = null;
         publish({ status: "failed", phase: record.phase, hash: receipt.transactionHash, description: record.description, message: "交易执行失败，本次业务未生效。" });
         if (auditEnabled) recordChainAudit({ action: record.description, status: "failed", txHash: receipt.transactionHash, wallet: record.account, error: "交易执行失败" });
         return undefined;
+      }
+      if (!record.retainReceipt) { removePending(storageKey); pending.current = null; }
+      else {
+        const confirmedRecord = { ...record, hash: receipt.transactionHash };
+        savePending(storageKey, confirmedRecord); pending.current = { key: storageKey, record: confirmedRecord };
       }
       publish({ status: "success", phase: record.phase, hash: receipt.transactionHash, description: record.description, message: record.phase === "approval" ? "授权已确认；授权不代表业务已完成，请继续提交原操作。" : "链上交易已确认，业务数据正在刷新。" });
       if (auditEnabled) recordChainAudit({ action: record.description, status: "success", txHash: receipt.transactionHash, wallet: record.account, after: { phase: record.phase } });
@@ -140,7 +145,7 @@ export function useContractTransaction(scope: string, options?: { audit?: boolea
         const signer = createWalletClient({ chain: appChain, transport: custom(fresh.provider) });
         hash = await signer.sendTransaction({ account, chain: appChain, to: address, data, value: 0n });
       }
-      const record: Pending = { version: 1, scope, chainId: chainConfig.id, account, address, data, hash, description, phase: stage };
+      const record: Pending = { version: 1, scope, chainId: chainConfig.id, account, address, data, hash, description, phase: stage, ...(stage === "action" && request.retainReceipt ? { retainReceipt: true } : {}) };
       savePending(key, record); pending.current = { key, record };
       publish({ status: "pending", phase: stage, description, hash, message: "交易已广播，等待两个区块确认。" });
       if (auditEnabled) recordChainAudit({ action: description, status: "pending", txHash: hash, wallet: account, after: { address, functionName, args } });
@@ -156,6 +161,8 @@ export function useContractTransaction(scope: string, options?: { audit?: boolea
         if (allowance < request.approval.amount) {
           if (allowance > 0n && !await send(request.approval.token, erc20Abi, "approve", [request.address, 0n], "重置原授权额度", "approval")) return undefined;
           if (!await send(request.approval.token, erc20Abi, "approve", [request.address, request.approval.amount], "授权本次所需金额", "approval")) return undefined;
+          const approved = await client.readContract({ address: request.approval.token, abi: erc20Abi, functionName: "allowance", args: [account, request.address] });
+          if (approved < request.approval.amount) throw new Error("钱包实际授权额不足，请重新授权本次所需金额后再组 LP。");
         }
       }
       return await send(request.address, request.abi, request.functionName, request.args || [], request.description, "action");
@@ -181,7 +188,12 @@ export function useContractTransaction(scope: string, options?: { audit?: boolea
     } finally { inFlight.delete(key); }
   }
   function clear() { if (!busy) setVisible({ identity, transaction: null }); }
-  return { run, busy, transaction, resume, clear };
+  function acknowledge(hash: string) {
+    if (!account) return;
+    const record = pending.current?.key === key ? pending.current.record : readPending(key, account, scope);
+    if (record?.hash.toLowerCase() === hash.toLowerCase()) { removePending(key); pending.current = null; }
+  }
+  return { run, busy, transaction, resume, clear, acknowledge };
 }
 
 export type ContractTransactionController = ReturnType<typeof useContractTransaction>;

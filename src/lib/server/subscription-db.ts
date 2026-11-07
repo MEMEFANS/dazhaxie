@@ -91,25 +91,43 @@ export function subscriptionOrderByHash(txHash: string, chainId = chainConfig.id
 /**
  * 同一哈希只允许登记一次；硬顶在同一个写事务内复核，避免并发请求把总量推过上限。
  */
-export function createSubscriptionOrder(input: { address: string; shares: number; amount: bigint; txHash: string; shipping: RedemptionShipping }) {
+export function createSubscriptionOrder(input: { address: string; shares: number; amount: bigint; txHash: string; shipping?: RedemptionShipping }) {
   const db = subscriptionDatabase(), address = input.address.toLowerCase(), txHash = input.txHash.toLowerCase();
   db.exec("BEGIN IMMEDIATE");
   try {
-    const duplicate = db.prepare("SELECT id FROM subscription_orders WHERE chain_id=? AND tx_hash=?").get(chainConfig.id, txHash);
-    if (duplicate) throw new AdminRequestError("该交易哈希已登记过认购，请勿重复提交", 409);
+    const duplicate = db.prepare("SELECT * FROM subscription_orders WHERE chain_id=? AND tx_hash=?").get(chainConfig.id, txHash);
+    if (duplicate) {
+      if (String(duplicate.address) !== address || Number(duplicate.shares) !== input.shares || String(duplicate.amount) !== input.amount.toString())
+        throw new AdminRequestError("该交易哈希已用于其他认购单", 409);
+      const order = serialize(duplicate);
+      db.exec("COMMIT");
+      return order;
+    }
     const sold = globalSold();
     if (sold + input.shares > HARD_CAP) throw new AdminRequestError("认购将超过全局硬顶，本笔未登记", 409);
     const id = randomUUID();
     db.prepare("INSERT INTO subscription_orders (id, chain_id, address, shares, amount, tx_hash, status, created_at, shipping) VALUES (?,?,?,?,?,?,?,?,?)")
-      .run(id, chainConfig.id, address, input.shares, input.amount.toString(), txHash, "confirmed", Date.now(), encryptShipping(input.shipping, id));
+      .run(id, chainConfig.id, address, input.shares, input.amount.toString(), txHash, "confirmed", Date.now(), input.shipping ? encryptShipping(input.shipping, id) : null);
+    const order = serialize(db.prepare("SELECT * FROM subscription_orders WHERE id=?").get(id)!);
     db.exec("COMMIT");
-    return { id, address, shares: input.shares, amount: input.amount.toString(), txHash, status: "confirmed", createdAt: Date.now() } as SubscriptionOrder;
+    return order;
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
 
+export function saveSubscriptionShipping(id: string, address: string, shipping: RedemptionShipping) {
+  const db = subscriptionDatabase();
+  const row = db.prepare("SELECT * FROM subscription_orders WHERE id=? AND chain_id=? AND address=?").get(id, chainConfig.id, address.toLowerCase());
+  if (!row) throw new AdminRequestError("认购单不存在", 404);
+  if (String(row.status) !== "confirmed" || row.shipping) throw new AdminRequestError("该订单已填写收货信息或已发货", 409);
+  const result = db.prepare("UPDATE subscription_orders SET shipping=? WHERE id=? AND chain_id=? AND address=? AND shipping IS NULL AND status='confirmed'")
+    .run(encryptShipping(shipping, id), id, chainConfig.id, address.toLowerCase()) as { changes: number };
+  if (!result.changes) throw new AdminRequestError("该订单收货信息已更新，请刷新记录", 409);
+  return serialize(db.prepare("SELECT * FROM subscription_orders WHERE id=?").get(id)!);
+}
+
 export function shipSubscriptionOrder(id: string, carrier: string, trackingNumber: string) {
-  const result = subscriptionDatabase().prepare("UPDATE subscription_orders SET status='shipped', carrier=?, tracking_number=?, shipped_at=? WHERE id=? AND status='confirmed'").run(carrier.trim().slice(0, 60), trackingNumber.trim().slice(0, 80), Date.now(), id) as { changes: number };
-  if (!result.changes) throw new AdminRequestError("仅已确认且未发货的认购单可发货", 409);
+  const result = subscriptionDatabase().prepare("UPDATE subscription_orders SET status='shipped', carrier=?, tracking_number=?, shipped_at=? WHERE id=? AND status='confirmed' AND shipping IS NOT NULL").run(carrier.trim().slice(0, 60), trackingNumber.trim().slice(0, 80), Date.now(), id) as { changes: number };
+  if (!result.changes) throw new AdminRequestError("仅收货信息完整且未发货的认购单可发货", 409);
   const row = subscriptionDatabase().prepare("SELECT * FROM subscription_orders WHERE id=?").get(id);
   return row ? serialize(row) : null;
 }

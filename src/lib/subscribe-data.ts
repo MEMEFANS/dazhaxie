@@ -79,7 +79,8 @@ export function usePromotionStats(enabled: boolean) {
     const timer = window.setTimeout(refresh, 0);
     const interval = window.setInterval(refresh, 30_000);
     window.addEventListener("cabi-referral-updated", refresh);
-    return () => { sequence.current += 1; window.clearTimeout(timer); window.clearInterval(interval); window.removeEventListener("cabi-referral-updated", refresh); };
+    window.addEventListener("cabi-subscription-updated", refresh);
+    return () => { sequence.current += 1; window.clearTimeout(timer); window.clearInterval(interval); window.removeEventListener("cabi-referral-updated", refresh); window.removeEventListener("cabi-subscription-updated", refresh); };
   }, [refresh]);
   return { stats: result?.stats, branches: result?.branches || [], error, refresh };
 }

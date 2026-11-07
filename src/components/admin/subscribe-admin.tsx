@@ -22,6 +22,7 @@ interface ClaimPoolResponse {
 const emptyList: ListResponse = { items: [], total: 0, page: 1, pageSize: 10, globalSold: 0, hardCap: 20000, subscribeLocked: true, subscribePayee: "" };
 
 function time(value: number) { return new Date(value).toLocaleString("zh-CN", { hour12: false }); }
+function orderLabel(row: SubscriptionRow) { return row.status === "confirmed" ? row.shipping ? "待发货" : "待补收货信息" : row.status === "shipped" ? "已发货" : row.status === "cancelled" ? "已取消" : row.status; }
 
 // 纯读取函数放在组件外，effect 里只在异步回调中写状态。
 async function fetchSubscriptions(next: number, nextQ: string): Promise<ListResponse> {
@@ -106,7 +107,7 @@ export default function SubscribeAdmin() {
   const pages = Math.max(1, Math.ceil(list.total / list.pageSize));
   return <div className="space-y-5">
     <Card>
-      <SectionHead title="认购管理" desc="USDT 直接转账 + 服务器核验记账；页面不保存任何私钥" />
+      <SectionHead title="认购管理" desc="查看认购进度、收货信息和发货状态" />
       <div className="mt-4 grid gap-x-6 sm:grid-cols-2">
         <DataRow label="已认购 / 硬顶" value={`${list.globalSold} / ${list.hardCap} 份`} />
         <DataRow label="剩余额度" value={`${Math.max(0, list.hardCap - list.globalSold)} 份`} />
@@ -131,19 +132,32 @@ export default function SubscribeAdmin() {
     </Card>
 
     <Card>
-      <SectionHead title="认购单列表" desc="全部由服务器核验后落库；globalSold、直推与团队业绩均从这里聚合" />
+      <SectionHead title="认购单列表" desc="付款确认即记份额；收货信息可后补，不影响组 LP 额度。" />
       <form className="mt-3 flex flex-col gap-2 sm:flex-row" onSubmit={event => { event.preventDefault(); setPage(1); void loadSubscriptions(1, q).catch(cause => setError(cause instanceof Error ? cause.message : "读取失败")); }}>
         <input aria-label="搜索认购单" value={q} onChange={event => setQ(event.target.value)} placeholder="按地址或交易哈希搜索" className="field min-h-11 w-full min-w-0 px-3 font-mono text-xs" />
         <button type="submit" className="btn btn-outline min-h-11 px-4 text-xs">搜索</button>
         <a href={`/api/admin/subscriptions/export?q=${encodeURIComponent(q)}`} className="btn btn-outline min-h-11 px-4 text-xs"><Download size={13} />导出 CSV</a>
       </form>
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 space-y-3 md:hidden">
+        {list.items.length ? list.items.map(row => <article key={row.id} className="rounded-xl border border-line bg-well p-4">
+          <div className="flex items-center justify-between gap-2 text-sm"><strong>{row.shares} 份 · {formatAssetAmount(BigInt(row.amount), 18)} USDT</strong><span className="text-xs text-mute">{orderLabel(row)}</span></div>
+          <p className="mt-2 break-all font-mono text-xs leading-5 text-mute">{row.address}</p>
+          <p className="mt-1 text-xs text-faint">{time(row.createdAt)}</p>
+          {row.shipping ? <p className="mt-3 text-xs leading-6">{row.shipping.name} · {row.shipping.phone}<br />{row.shipping.address}</p> : <p className="mt-3 text-xs text-mute">等待用户补填蟹礼收货信息</p>}
+          {row.status === "confirmed" && row.shipping ? <div className="mt-3 space-y-2">
+            <input aria-label={`订单 ${row.id} 物流公司`} value={shipping[row.id]?.carrier || ""} onChange={event => setShipping(prev => ({ ...prev, [row.id]: { carrier: event.target.value, trackingNumber: prev[row.id]?.trackingNumber || "" } }))} placeholder="物流公司" className="field min-h-11 w-full px-3 text-sm" />
+            <input aria-label={`订单 ${row.id} 运单号`} value={shipping[row.id]?.trackingNumber || ""} onChange={event => setShipping(prev => ({ ...prev, [row.id]: { trackingNumber: event.target.value, carrier: prev[row.id]?.carrier || "" } }))} placeholder="运单号" className="field min-h-11 w-full px-3 text-sm" />
+            <button onClick={() => void ship(row)} disabled={Boolean(busy)} className="btn btn-outline min-h-11 w-full text-xs">{busy === row.id ? "保存中…" : "登记发货"}</button>
+          </div> : row.trackingNumber ? <p className="mt-3 break-all text-xs leading-6 text-mute">{row.carrier} · {row.trackingNumber}</p> : null}
+        </article>) : <p className="py-4 text-sm text-mute">暂无认购单</p>}
+      </div>
+      <div className="mt-4 hidden overflow-x-auto md:block">
         <table className="w-full min-w-[1160px] text-left text-xs">
-          <thead className="border-b border-line text-mute"><tr><th className="py-2 pr-3">地址</th><th className="pr-3">份数</th><th className="pr-3">USDT 金额（最小单位）</th><th className="pr-3">交易哈希</th><th className="pr-3">收货信息</th><th className="pr-3">状态</th><th className="pr-3">发货</th><th>时间</th></tr></thead>
+          <thead className="border-b border-line text-mute"><tr><th className="py-2 pr-3">地址</th><th className="pr-3">份数</th><th className="pr-3">实付 USDT</th><th className="pr-3">交易哈希</th><th className="pr-3">收货信息</th><th className="pr-3">状态</th><th className="pr-3">发货</th><th>时间</th></tr></thead>
           <tbody className="divide-y divide-line">{list.items.length ? list.items.map(row => <tr key={row.id}>
-            <td className="py-2 pr-3 font-mono">{row.address}</td><td className="pr-3">{row.shares}</td><td className="pr-3 font-mono">{row.amount}</td><td className="pr-3 font-mono">{row.txHash.slice(0, 14)}…</td>
-            <td className="max-w-[240px] pr-3 leading-5">{row.shipping ? <>{row.shipping.name} · {row.shipping.phone}<br /><span className="text-mute">{row.shipping.address}</span></> : <span className="text-warn">历史订单未填写</span>}</td>
-            <td className="pr-3">{row.status === "confirmed" ? "待发货" : row.status === "shipped" ? "已发货" : row.status === "cancelled" ? "已取消" : row.status}</td>
+            <td className="py-2 pr-3 font-mono">{row.address}</td><td className="pr-3">{row.shares}</td><td className="pr-3 font-mono">{formatAssetAmount(BigInt(row.amount), 18)}</td><td className="pr-3 font-mono">{row.txHash.slice(0, 14)}…</td>
+            <td className="max-w-[240px] pr-3 leading-5">{row.shipping ? <>{row.shipping.name} · {row.shipping.phone}<br /><span className="text-mute">{row.shipping.address}</span></> : <span className="text-warn">待补收货信息</span>}</td>
+            <td className="pr-3">{orderLabel(row)}</td>
             <td className="pr-3">{row.status === "confirmed" && row.shipping ? <div className="flex min-w-[260px] flex-col gap-1"><div className="flex gap-1"><input aria-label={`订单 ${row.id} 物流公司`} value={shipping[row.id]?.carrier || ""} onChange={event => setShipping(prev => ({ ...prev, [row.id]: { carrier: event.target.value, trackingNumber: prev[row.id]?.trackingNumber || "" } }))} placeholder="物流公司" className="field h-8 min-w-0 flex-1 px-2 text-[11px]" /><input aria-label={`订单 ${row.id} 运单号`} value={shipping[row.id]?.trackingNumber || ""} onChange={event => setShipping(prev => ({ ...prev, [row.id]: { trackingNumber: event.target.value, carrier: prev[row.id]?.carrier || "" } }))} placeholder="运单号" className="field h-8 min-w-0 flex-1 px-2 text-[11px]" /></div><button onClick={() => void ship(row)} disabled={busy === row.id} className="btn btn-outline h-8 px-2 text-[11px]">{busy === row.id ? "保存中…" : "登记发货"}</button></div> : row.trackingNumber ? <span className="text-mute">{row.carrier} · {row.trackingNumber}</span> : "—"}</td>
             <td className="text-mute">{time(row.createdAt)}</td>
           </tr>) : <tr><td colSpan={8} className="py-4 text-mute">暂无认购单</td></tr>}</tbody>

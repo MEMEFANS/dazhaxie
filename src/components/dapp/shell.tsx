@@ -164,6 +164,10 @@ export function DAppShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </div>
+        {connected && state.chainId > 0 && state.chainId !== chainConfig.id ? <div className={styles.networkBar}>
+          <span>当前钱包网络不匹配</span>
+          <button type="button" className={styles.switchNetwork} onClick={() => void switchNetwork()}>切换至 {chainConfig.shortName}</button>
+        </div> : null}
       </header>
       <main id="home" className={communityPage ? styles.communityContent : overviewPage ? styles.overviewContent : invitePage ? styles.inviteContent : styles.content}>
         {children}

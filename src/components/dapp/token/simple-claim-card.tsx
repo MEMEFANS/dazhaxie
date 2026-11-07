@@ -18,7 +18,7 @@ export default function SimpleClaimCard() {
 }
 function ClaimForm() {
   const { state, connect } = useStore(), query = useClaimPoolData(state.connected ? state.address : undefined);
-  const data = query.status === "ready" && !query.error ? query.data : undefined;
+  const data = query.data;
   const prepareTx = useContractTransaction("claim-pool-prepare"), claimTx = useContractTransaction("claim-pool-claim");
   const [error, setError] = useState(""), [checking, setChecking] = useState(false), [signingIn, setSigningIn] = useState(false);
   const active = useRef(true), operation = useRef(false), latest = useRef("");
@@ -33,9 +33,11 @@ function ClaimForm() {
   let reason = "";
   if (!state.connected) reason = "请连接钱包";
   else if (state.chainId !== chainConfig.id) reason = "请切换到" + chainConfig.shortName;
+  else if (query.status === "unconfigured") reason = "领取通道暂未开放";
+  else if (query.error) reason = "信息更新失败，请刷新后重试";
   else if (!data?.wallet) reason = query.status === "error" || query.error ? "领取信息暂时无法更新" : "正在更新领取信息";
   else if (!server?.configured) reason = server?.error || "领取通道暂未开放，请稍后再试";
-  else if (server.needsSignIn) reason = "";
+  else if (server.needsSignIn) reason = "请先签名登录查看额度";
   else if (server.error && claimable !== 0n) reason = server.error;
   else if (canClaimNow) {
     const payout = preparedOutstanding * 70n / 100n;
@@ -81,22 +83,21 @@ function ClaimForm() {
   const statusLabel = !server?.configured ? "暂未开放" : canClaimNow ? "可领取" : preparedOutstanding ? "已组 LP" : claimable ? "可组 LP" : "等待额度";
   const buttonLabel = canClaimNow ? "领取 70% CaBi" : preparedOutstanding ? "等待领取开放" : "确认组 LP";
   return <Card className="p-5 sm:p-6">
-    <SectionHead eyebrow="CABI CLAIM" title="认购与奖励领取" desc="服务器核验额度，用户钱包自动组 LP" right={<Badge tone={statusTone}>{statusLabel}</Badge>} />
+    <SectionHead eyebrow="CABI CLAIM" title="组 LP 与领取" desc="先组 LP，开放后领取 CaBi" right={<Badge tone={statusTone}>{statusLabel}</Badge>} />
     <ServiceQueryNotice {...query} label="CaBi 领取" />
     <div id="allocation" className="mt-4 scroll-mt-36 rounded-lg border border-line bg-well px-4 py-2">
       <DataRow label="可组 LP 额度" value={claimable !== undefined ? formatAssetAmount(claimable, data?.tokenDecimals ?? 18) + " CaBi" : "—"} />
       <DataRow label="已组 LP 额度" value={data ? formatAssetAmount(data.prepared, data.tokenDecimals) + " CaBi" : "—"} />
-      <DataRow label="已到账额度" value={data ? formatAssetAmount(data.claimed, data.tokenDecimals) + " CaBi" : "—"} />
+      <DataRow label="已领取 CaBi" value={data ? formatAssetAmount(data.claimed * 70n / 100n, data.tokenDecimals) + " CaBi" : "—"} />
       <DataRow label="本次支付 USDT" value={quote && data ? formatAssetAmount(quote.usdtRequired, data.usdtDecimals) + " USDT" : "—"} />
     </div>
-    {quote && data ? <p className="mt-2 text-xs leading-6 text-mute">点击确认组 LP 后，系统会自动授权本次所需的 {formatAssetAmount(quote.usdtRequired, data.usdtDecimals)} USDT；已有足够授权时会自动跳过授权。</p> : null}
+    {quote && data ? <p className="mt-2 text-xs leading-6 text-mute">本次需授权 {formatAssetAmount(quote.usdtRequired, data.usdtDecimals)} USDT。钱包弹窗的自定义额度可编辑，请保持该金额；授权确认后将继续组 LP。已有足额授权时会跳过此步。</p> : null}
     <div id="claim-center" className="mt-4 rounded-xl border border-line bg-well p-4">
-      <strong className="text-sm">自动组 LP 领取（唯一领取方式）</strong>
+      <strong className="text-sm">每份另付 15 USDT 组 LP</strong>
       <span className="mt-2 block text-xs leading-6 text-mute">按固定比例组 LP：每份 35,000 CaBi 配额中，10,500 CaBi 与 15 USDT 进入 LP，24,500 CaBi 在开放后到账。</span>
       {quote && data ? <div className="mt-3 grid grid-cols-1 gap-2 text-xs leading-6 text-mute sm:grid-cols-3"><span>进入 LP：{formatAssetAmount(quote.lpTokens, data.tokenDecimals)} CaBi</span><span>支付：{formatAssetAmount(quote.usdtRequired, data.usdtDecimals)} USDT</span><span>到账：{formatAssetAmount(quote.payout, data.tokenDecimals)} CaBi</span></div> : null}
     </div>
-    {!data?.lpReady ? <p className="mt-2 text-xs leading-6 text-mute">{data?.lpError || "LP 接收地址尚未配置，请等待管理员完成配置。"}</p> : null}
-    {!server?.configured ? <p className="mt-2 text-xs leading-6 text-mute">领取通道暂未开放，请稍后再试或联系客服。</p> : null}
+    {data && !data.lpReady ? <p className="mt-2 text-xs leading-6 text-mute">{data.lpError || "组 LP 暂未开放，请稍后再试。"}</p> : null}
     {server?.configured && data && data.signer.toLowerCase() !== (server.signer || "").toLowerCase() ? <p className="mt-2 text-xs leading-6 text-down">领取签名服务与链上配置不一致，请联系管理员。</p> : null}
     {!state.connected ? <button onClick={connect} className="btn btn-outline mt-3 min-h-11 px-4 text-sm">连接钱包</button> : null}
     {state.connected && server?.needsSignIn && server.configured ? <button onClick={() => void signIn()} disabled={signingIn} className="btn btn-outline mt-3 min-h-11 w-full text-sm">{signingIn ? "正在登录…" : "登录后查看可领额度"}</button> : null}

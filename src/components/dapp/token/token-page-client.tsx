@@ -22,12 +22,12 @@ export default function TokenPageClient() {
         desc={`总量 ${fmt(TOTAL_SUPPLY / 100000000)} 亿枚 · 永不增发`}
       />
 
-      <EconomicsPanel />
-
       <ClaimCard />
 
+      <EconomicsPanel />
+
       <p className="flex items-center justify-center gap-1.5 text-center text-xs leading-6 text-faint">
-        <Sparkles size={12} /> 余额、认购与奖励以当前网络的合约状态为准；实物订单在蟹礼页查询
+        <Sparkles size={12} /> 认购蟹礼请在认购记录中补填收货信息；兑换订单在蟹礼页查看。
       </p>
     </PageStack>
   );

@@ -30,6 +30,18 @@
 .copyError { margin-top: 8px; color: #9c5050; font-size: 12px; line-height: 1.8; }
 .copyError > p { margin: 0; }
 .copyError > code { display: block; margin-top: 5px; color: #745a81; font-size: 12px; overflow-wrap: anywhere; user-select: all; }
+.shippingState { margin: 10px 0 0; color: #477351; font-size: 12px; line-height: 1.7; }
+.shippingDetails { margin-top: 12px; border-top: 1px solid #e9dff0; padding-top: 12px; }
+.shippingDetails summary { min-height: 44px; color: #755287; font-size: 13px; font-weight: 650; cursor: pointer; }
+.shippingDetails summary span { margin-left: 8px; color: #796187; font-size: 12px; font-weight: 400; }
+.shippingForm { display: grid; gap: 12px; }
+.shippingFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.shippingForm label { display: grid; min-width: 0; gap: 6px; color: #725680; font-size: 12px; }
+.shippingForm input, .shippingForm textarea { width: 100%; min-width: 0; min-height: 44px; padding: 9px 11px; border: 1px solid #e0d2e9; border-radius: 7px; color: #513363; background: #fff; font: inherit; font-size: 14px; }
+.shippingForm textarea { resize: vertical; }
+.shippingForm button { min-height: 44px; padding: 10px 14px; border: 0; border-radius: 7px; color: #fff; background: #755287; font-size: 13px; font-weight: 650; cursor: pointer; }
+.shippingForm button:disabled { opacity: .6; cursor: wait; }
+.shippingError { margin: 0; color: #a54e4e; font-size: 12px; }
 .spinner { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 540px) {
@@ -37,6 +49,8 @@
   .details { align-items: flex-start; flex-direction: column; gap: 4px; }
   .recordActions > button, .recordActions > a { padding-inline: 8px; }
   .explorerText { display: none; }
+  .shippingFields { grid-template-columns: 1fr; }
+  .shippingForm input, .shippingForm textarea { font-size: 16px; }
 }
 @media (max-width: 360px) {
   .recordHeading { gap: 6px; }

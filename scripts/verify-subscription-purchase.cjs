@@ -64,7 +64,7 @@ function fixture() {
     priceTiers: [{ until: 5000, price: 50 }, { until: 10000, price: 55 }, { until: 15000, price: 60 }, { until: 20000, price: 70 }],
   };
 }
-const tx = { transaction: null, busy: false, clear() { tx.transaction = null; }, resume: async () => txResult, run: async request => { if (request.beforeSend) await request.beforeSend(); writes.push(request); return txResult; } };
+const tx = { transaction: null, busy: false, clear() { tx.transaction = null; }, acknowledge() {}, resume: async () => txResult, run: async request => { if (request.beforeSend) await request.beforeSend(); writes.push(request); return txResult; } };
 const container = ({ children }) => React.createElement('section', null, children);
 const icon = () => null;
 const Component = load('src/components/dapp/subscribe/purchase-panel.tsx', {
@@ -94,6 +94,7 @@ const root = createRoot(document.getElementById('root'));
 const pause = (ms = 12) => new Promise(resolve => setTimeout(resolve, ms));
 async function render() { await React.act(async () => { root.render(React.createElement(Component, { key: version })); await pause(); }); }
 async function reset() {
+  dom.window.localStorage.clear();
   store.state = { connected: true, address: A, chainId: 56 };
   configQuery.status = 'ready'; delete configQuery.error; configQuery.data = fixture();
   freshConfig = undefined;
@@ -114,7 +115,7 @@ function setInput(selector, value) {
   input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
 }
 async function fillShipping() {
-  await pause(20);
+  await React.act(async () => { await pause(20); });
   await React.act(async () => {
     setInput('input[autocomplete="name"]', '测试收货人');
     setInput('input[autocomplete="tel"]', '13800138000');
@@ -143,15 +144,6 @@ async function click(element, wait = 24) {
 
     await click(action(), 60);
     assert.equal(writes.length, 1);
-    assert.equal(requests.length, 0);
-    assert(document.body.textContent.includes('付款已确认，请补充收货信息后登记本次认购'));
-    await fillShipping();
-    assert.equal(document.querySelector('input[autocomplete="name"]').value, '测试收货人');
-    assert.equal(document.querySelector('input[autocomplete="tel"]').value, '13800138000');
-    assert.equal(document.querySelector('textarea[autocomplete="street-address"]').value, '测试省测试市测试路 1 号');
-    assert.equal(action().disabled, false);
-    await click(action(), 60);
-    assert.equal(writes.length, 1);
     const write = writes[0];
     assert.equal(write.address.toLowerCase(), USDT.toLowerCase());
     assert.equal(write.functionName, 'transfer');
@@ -162,11 +154,29 @@ async function click(element, wait = 24) {
     assert.equal(requests[0].init.method, 'POST');
     assert.equal(JSON.parse(requests[0].init.body).shares, 1);
     assert.equal(JSON.parse(requests[0].init.body).hash, hash);
-    assert.deepEqual(JSON.parse(requests[0].init.body).shipping, { name: '测试收货人', phone: '13800138000', address: '测试省测试市测试路 1 号' });
+    assert.equal(JSON.parse(requests[0].init.body).shipping, undefined);
     assert(document.body.textContent.includes('认购已登记'));
+    assert(document.body.textContent.includes('蟹礼收货信息待补填'));
     assert.equal(configRefreshes, 1);
     assert.equal(orderRefreshes, 1);
-    pass('submission sends USDT directly to the payee and posts the hash to the server ledger without any sale contract');
+    pass('payment immediately registers shares even when shipping has not been filled');
+
+    ordersQuery.orders = [{ id: 'o1', shares: 1, amount: '50000000', txHash: hash, status: 'confirmed', createdAt: Date.now() }];
+    await render();
+    const shippingDetails = Array.from(document.querySelectorAll('summary')).find(item => item.textContent.includes('待补收货信息'));
+    assert(shippingDetails, 'missing shipping editor');
+    await click(shippingDetails);
+    await React.act(async () => {
+      setInput('details input[autocomplete="name"]', '测试收货人');
+      setInput('details input[autocomplete="tel"]', '13800138000');
+      setInput('details textarea', '测试省测试市测试路 1 号');
+      await pause();
+    });
+    const shippingForm = shippingDetails.parentElement.querySelector('form');
+    await React.act(async () => { shippingForm.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await pause(30); });
+    assert.equal(requests.at(-1).init.method, 'PATCH');
+    assert.equal(JSON.parse(requests.at(-1).init.body).id, 'o1');
+    pass('confirmed orders can add shipping later without another payment');
 
     await reset(); await fillShipping(); freshConfig = { ...fixture(), payee: B };
     await click(action(), 60);
@@ -180,6 +190,9 @@ async function click(element, wait = 24) {
     await click(action(), 60);
     assert(requests[0].url === '/api/subscribe/orders');
     assert(document.body.textContent.includes('等待区块确认'));
+    version++; await render();
+    await React.act(async () => { await pause(30); });
+    assert(document.body.textContent.includes('上一笔付款已确认'));
     const retry = Array.from(document.querySelectorAll('button')).find(button => button.textContent.includes('查询认购结果'));
     assert(retry, 'missing query button');
     serverResponse = { status: 200, body: { order: { id: 'o1' } } };
@@ -187,7 +200,7 @@ async function click(element, wait = 24) {
     assert.equal(writes.length, 1, 'recheck must not transfer again');
     assert.equal(requests.length, 2);
     assert(document.body.textContent.includes('认购已登记'));
-    pass('a 202 verification keeps the hash for a transfer-free recheck that completes without paying twice');
+    pass('a 202 verification survives remount and rechecks without another payment');
 
     await reset(); await fillShipping(); serverResponse = { status: 409, body: { error: '该交易哈希已登记过认购' } };
     await click(action(), 60);

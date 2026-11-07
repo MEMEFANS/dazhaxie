@@ -13,7 +13,7 @@ export default function AdminSubscribePage() {
 
   return (
     <PageStack>
-      <PageHeader eyebrow="SUBSCRIBE" title="认购管理" desc="收款地址 · 认购单核验记账 · 可领额度生成与链上写入登记" />
+      <PageHeader eyebrow="SUBSCRIBE" title="认购管理" desc="认购订单 · 蟹礼发货 · 组 LP 额度" />
       <SubscribeAdmin />
     </PageStack>
   );

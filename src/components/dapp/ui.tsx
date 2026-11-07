@@ -31,7 +31,7 @@ export function PageStack({
   className?: string;
 }) {
   return (
-    <div className={`mx-auto w-full max-w-[1180px] space-y-6 ${className}`}>
+    <div className={`mx-auto w-full min-w-0 max-w-[1180px] space-y-4 sm:space-y-6 ${className}`}>
       {children}
     </div>
   );
@@ -46,7 +46,7 @@ export function Card({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <section className={`card p-6 ${className}`}>{children}</section>;
+  return <section className={`card min-w-0 p-4 sm:p-6 ${className}`}>{children}</section>;
 }
 
 /* ---------- 平面面板：次级区块（无阴影，与 .card 大卡区分层级） ---------- */
@@ -490,7 +490,7 @@ export function DataRow({
   return (
     <div className={`flex items-center justify-between gap-3 py-2 ${className}`}>
       <span className="shrink-0 text-[12px] leading-5 text-mute">{label}</span>
-      <span className={`${mono ? "num " : ""}min-w-0 break-words text-right text-[12px] font-medium leading-6 ${tones[tone]}`}>
+      <span className={`${mono ? "num " : ""}min-w-0 [overflow-wrap:anywhere] text-right text-[12px] font-medium leading-6 ${tones[tone]}`}>
         {value}
       </span>
     </div>

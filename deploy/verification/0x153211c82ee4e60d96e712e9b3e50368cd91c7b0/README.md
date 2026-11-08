@@ -7,7 +7,7 @@
 - 优化器：开启，200 runs；EVM：`shanghai`；未启用 viaIR；许可证：MIT。
 - 创建交易：[0xdb283b14c21095314eb2f809bd3b819e59dd222fedb10525057082aa6b2033f3](https://bscscan.com/tx/0xdb283b14c21095314eb2f809bd3b819e59dd222fedb10525057082aa6b2033f3)。
 
-已通过 [Sourcify 公开验证](https://sourcify.dev/server/v2/contract/56/0x153211c82ee4e60d96e712e9b3e50368cd91c7b0?fields=sources,metadata)：创建代码和运行代码均为 `exact_match`，源码可公开读取。验证服务也已向 BscScan 提交同步验证任务；提交编号及状态见 `verification.json` 和 `sourcify-result.json`，BscScan 展示状态需另行确认。
+已通过 [Sourcify 公开验证](https://sourcify.dev/server/v2/contract/56/0x153211c82ee4e60d96e712e9b3e50368cd91c7b0?fields=sources,metadata)：创建代码和运行代码均为 `exact_match`，源码可公开读取。BscScan 同步验证也已生效，其公开 Read Contract 页面返回的 92 项 ABI 与编译器输出完全一致。提交编号、匹配结果及确认时间见 `verification.json` 和 `sourcify-result.json`。
 
 本目录的 `standard-input.json` 保存部署时使用的完整 Solidity Standard JSON Input，包含准确的源码内容、文件名和编译配置，可直接用于区块浏览器验证。Git 可能转换独立 Solidity 文件的换行符，复现元数据哈希时应使用此 JSON 中的源码。
 

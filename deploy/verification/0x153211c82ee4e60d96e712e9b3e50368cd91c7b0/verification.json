@@ -80,12 +80,17 @@
     "address": "0x153211c82Ee4E60d96E712E9B3E50368CD91C7B0",
     "verifiedAt": "2026-11-08T21:19:56Z",
     "matchId": "58830878",
-    "url": "https://repo.sourcify.dev/56/0x153211c82ee4e60d96e712e9b3e50368cd91c7b0"
+    "url": "https://sourcify.dev/server/v2/contract/56/0x153211c82ee4e60d96e712e9b3e50368cd91c7b0?fields=sources,metadata"
   },
   "explorerSubmission": {
     "service": "BscScan",
     "verificationId": "cks4pmpnrzugpfdmkz5edwq6bncgfltiee7ebm1rzvidrfntx1",
-    "status": "submitted",
-    "url": "https://bscscan.com/address/0x153211c82ee4e60d96e712e9b3e50368cd91c7b0#code"
+    "status": "verified",
+    "url": "https://bscscan.com/address/0x153211c82ee4e60d96e712e9b3e50368cd91c7b0#code",
+    "confirmedAt": "2026-11-08T21:32:03.499538+00:00",
+    "confirmationMethod": "Public readContract ABI exactly matches the deployed compiler ABI",
+    "abiEntries": 92,
+    "abiMatches": true,
+    "readContractUrl": "https://bscscan.com/readContract?m=normal&a=0x153211c82ee4e60d96e712e9b3e50368cd91c7b0&v=0x153211c82ee4e60d96e712e9b3e50368cd91c7b0"
   }
 }

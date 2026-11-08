@@ -43,5 +43,10 @@ try {
   assert.throws(()=>reset(options),/never overwrite/);
   const clean=path.join(root,'clean-copy');fs.renameSync(directory,clean);fs.renameSync(path.join(backup,'data-before-reset'),directory);
   assert.equal(inspect(directory)['subscriptions.sqlite'].subscription_orders,1);
+  const rename = fs.renameSync;
+  fs.renameSync = (from,to) => { if (String(from).includes('.reset-')) throw Object.assign(new Error('synthetic cross-device mount'),{code:'EXDEV'}); return rename(from,to); };
+  try { reset({...options,backup:path.join(root,'cross-device-backup')}); } finally { fs.renameSync = rename; }
+  assert.equal(inspect(directory)['subscriptions.sqlite'].subscription_orders,0);
+  assert.equal(inspect(path.join(root,'cross-device-backup','data-before-reset'))['subscriptions.sqlite'].subscription_orders,1);
   console.log('PASS reset clears all business tables, preserves administrator/payees, closes services, stores payment cutoff, archives original files, refuses pending tx/overwrite; exact rollback restored original rows.');
 } finally { fs.rmSync(root,{recursive:true,force:true}); }

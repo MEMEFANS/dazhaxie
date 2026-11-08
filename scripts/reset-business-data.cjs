@@ -68,7 +68,26 @@ function reset(options) {
     // Services MUST be stopped by the caller. Rename retains all original DBs,
     // WALs and auxiliary files, and supports exact rollback without deleting them.
     fs.renameSync(directory, original); moved = true;
-    fs.renameSync(stage, directory);
+    try { fs.renameSync(stage, directory); }
+    catch (error) {
+      if (error.code !== 'EXDEV') throw error;
+      // Some Windows sandbox filesystems cannot rename a newly staged directory
+      // onto the original mount. Copy only the five closed, verified DB files.
+      const copied = [];
+      fs.mkdirSync(directory, { mode: 0o700 });
+      try {
+        for (const file of Object.keys(databases)) {
+          const target = path.join(directory, file);
+          fs.copyFileSync(path.join(stage, file), target, fs.constants.COPYFILE_EXCL); copied.push(target);
+          fs.chmodSync(target, 0o600);
+          if (!fs.readFileSync(target).equals(fs.readFileSync(path.join(stage, file)))) throw new Error('Staged database copy verification failed');
+        }
+      } catch (copyError) {
+        for (const file of copied) fs.unlinkSync(file);
+        fs.rmdirSync(directory);
+        throw copyError;
+      }
+    }
     return { backup: original, directory, minBlock, before, after };
   } catch (error) {
     if (moved && !fs.existsSync(directory)) fs.renameSync(original, directory);

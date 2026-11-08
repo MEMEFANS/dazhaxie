@@ -3,7 +3,7 @@
 // 我的工单列表：服务端记录 + 状态筛选 + 展开详情 + 客服回复
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, FileText, Headphones, Loader2, LogIn, ShieldCheck } from "lucide-react";
+import { ChevronDown, FileText, Headphones, Loader2, LogIn, RefreshCw, ShieldCheck } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { timeAgo } from "@/lib/constants";
 import { communityRequest, signInCommunity, TICKET_STATUS_LABEL, type TicketView } from "@/lib/community-client";
@@ -20,6 +20,7 @@ export function TicketList({ filter, onFilterChange }: { filter: FilterKey; onFi
 
   const load = useCallback(async () => {
     if (!state.connected) { setTickets([]); setLoading(false); setNeedSignIn(false); return; }
+    setLoading(true);
     try {
       const body = await communityRequest<{ tickets: TicketView[] }>("/api/tickets");
       setTickets(body.tickets);
@@ -51,7 +52,8 @@ export function TicketList({ filter, onFilterChange }: { filter: FilterKey; onFi
 
   return (
     <section className="card p-5 sm:p-6">
-      <SectionTitle icon={FileText} title="我的工单" extra={<StatusFilter value={filter} onChange={onFilterChange} />} />
+      <SectionTitle icon={FileText} title="我的工单" extra={<button type="button" onClick={() => void load()} disabled={loading || !state.connected} className="btn btn-outline min-h-11 gap-1.5 px-3 text-xs"><RefreshCw size={13} />刷新进度</button>} />
+      <div className="mb-4"><StatusFilter value={filter} onChange={onFilterChange} /></div>
 
       {needSignIn ? (
         <div className="mb-3 flex flex-col gap-3 rounded-lg border border-gold/25 bg-gold/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -82,7 +84,7 @@ export function TicketList({ filter, onFilterChange }: { filter: FilterKey; onFi
                 {open ? (
                   <div className="space-y-3 border-t border-line py-4">
                     <div className="flex justify-end">
-                      <div className="max-w-[85%] rounded-xl rounded-br-md border border-line bg-raise px-3.5 py-2.5 text-[13px] leading-6 text-strong">{t.content}</div>
+                      <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-xl rounded-br-md border border-line bg-raise px-3.5 py-2.5 text-[13px] leading-6 text-strong">{t.content}</div>
                     </div>
                     {t.replies.map(r => (
                       <div key={r.id} className="flex items-start gap-2.5">

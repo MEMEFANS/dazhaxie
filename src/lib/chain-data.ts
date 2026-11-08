@@ -12,6 +12,7 @@ export const tokenAbi = parseAbi([
   "function balanceOf(address) view returns (uint256)",
   "function owner() view returns (address)",
   "function maxWalletAmount() view returns (uint256)",
+  "function walletLimitEnabled() pure returns (bool)",
   "function isMaxWalletExempt(address) view returns (bool)",
   "function tradingGateway() view returns (address)",
   "function setMaxWalletAmount(uint256)",
@@ -42,6 +43,7 @@ export interface TokenData {
   decimals: number;
   totalSupply: bigint;
   maxWalletAmount: bigint;
+  walletLimitEnabled?: boolean;
   owner: Address;
   burned: bigint;
   balance?: bigint;
@@ -89,7 +91,7 @@ async function loadTokenData(account?: Address): Promise<TokenData> {
   if (!contracts.token) throw new ChainReadError("代币合约尚未配置。");
   const blockNumber = await checkedBlock(contracts.token);
   const contract = { address: contracts.token, abi: tokenAbi, blockNumber };
-  const [name, symbol, decimals, totalSupply, maxWalletAmount, owner, burned, balance, isExempt] = await Promise.all([
+  const [name, symbol, decimals, totalSupply, maxWalletAmount, owner, burned, balance, isExempt, walletLimitEnabled] = await Promise.all([
     client.readContract({ ...contract, functionName: "name" }),
     client.readContract({ ...contract, functionName: "symbol" }),
     client.readContract({ ...contract, functionName: "decimals" }),
@@ -99,8 +101,10 @@ async function loadTokenData(account?: Address): Promise<TokenData> {
     client.readContract({ ...contract, functionName: "balanceOf", args: [BURN_ADDRESS] }),
     account ? client.readContract({ ...contract, functionName: "balanceOf", args: [account] }) : undefined,
     account ? client.readContract({ ...contract, functionName: "isMaxWalletExempt", args: [account] }) : undefined,
+    // Historical deployments do not expose this immutable capability flag.
+    client.readContract({ ...contract, functionName: "walletLimitEnabled" }).catch(() => undefined),
   ]);
-  return { name, symbol, decimals, totalSupply, maxWalletAmount, owner, burned, balance, isExempt };
+  return { name, symbol, decimals, totalSupply, maxWalletAmount, owner, burned, balance, isExempt, walletLimitEnabled };
 }
 
 async function loadGatewayData(): Promise<GatewayData> {

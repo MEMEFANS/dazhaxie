@@ -7,9 +7,9 @@ const { bsc } = require('viem/chains');
 const { buildBundle, createSession } = require('./launch-deployment-session.cjs');
 const { createStage2Session } = require('./launch-stage2-session.cjs');
 const root = path.resolve(__dirname, '..');
-const output = path.join(root, 'output', 'launch-deployment');
-const deployConfig = JSON.parse(fs.readFileSync(path.join(root, 'deploy', 'launch-mainnet.template.json'), 'utf8'));
-const config = JSON.parse(fs.readFileSync(path.join(root, 'deploy', 'launch-stage2.json'), 'utf8'));
+const output = path.resolve(process.env.CABI_LAUNCH_OUTPUT || path.join(root, 'output', 'launch-deployment'));
+const deployConfig = JSON.parse(fs.readFileSync(process.env.CABI_LAUNCH_CONFIG || path.join(root, 'deploy', 'launch-mainnet.template.json'), 'utf8'));
+const config = JSON.parse(fs.readFileSync(process.env.CABI_LAUNCH_STAGE2_CONFIG || path.join(root, 'deploy', 'launch-stage2.json'), 'utf8'));
 const bundle = buildBundle();
 const port = Number(process.env.CABI_LAUNCH_STAGE2_PORT || 8791);
 const origin = `http://127.0.0.1:${port}`;
@@ -23,7 +23,7 @@ const files = {
   '/': ['deploy/launch-stage2-console/index.html', 'text/html; charset=utf-8'],
   '/wallet.js': ['deploy/launch-stage2-console/wallet.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['deploy/launch-console/style.css', 'text/css; charset=utf-8'],
-  '/manifest.json': ['output/launch-deployment/stage2-manifest.json', 'application/json; charset=utf-8'],
+  '/manifest.json': [path.join(output, 'stage2-manifest.json'), 'application/json; charset=utf-8'],
 };
 let queue = Promise.resolve();
 function sequential(action) { const operation = queue.then(action); queue = operation.catch(() => {}); return operation; }
@@ -61,7 +61,7 @@ async function main() {
       }
       const file = files[url.pathname];
       if (request.method !== 'GET' || !file) { response.writeHead(404).end('Not found'); return; }
-      response.writeHead(200, { 'Content-Type': file[1] }).end(fs.readFileSync(path.join(root, file[0])));
+      response.writeHead(200, { 'Content-Type': file[1] }).end(fs.readFileSync(path.resolve(root, file[0])));
     } catch (error) {
       const message = error.shortMessage || error.message || '操作未完成';
       if (/not found|could not be found|receipt.*missing/i.test(message)) json(202, { pending: true, message: '等待交易上链确认' });

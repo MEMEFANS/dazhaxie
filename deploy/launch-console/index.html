@@ -7,21 +7,24 @@
 </head>
 <body><main>
   <p class="eyebrow">BSC MAINNET · 分阶段发行</p>
-  <h1>部署新版 CaBi</h1>
+  <h1>部署新版 CaBi · 无持仓上限</h1>
   <p class="intro">部署代币与加池／领取合约，完成基础绑定。领取和交易时间由你之后设置，当前保持筹备阶段。</p>
   <section class="card">
     <h2>本次部署参数</h2>
     <dl>
       <div><dt>发行量</dt><dd>10 亿枚 CaBi，全部初始发给管理员</dd></div>
+      <div><dt>持仓限制</dt><dd>永久不设持仓上限，无需设置钱包豁免</dd></div>
       <div><dt>管理员</dt><dd id="owner">加载中…</dd></div>
       <div><dt>税款分配钱包</dt><dd id="distributionReceiver"></dd></div>
       <div><dt>回购钱包</dt><dd id="buybackPool"></dd></div>
-      <div><dt>LP 最终接收钱包</dt><dd id="lpReceiver"></dd></div>
+      <div><dt>认购组 LP 接收钱包</dt><dd id="lpReceiver"></dd></div>
       <div><dt>额度签名地址</dt><dd id="signer"></dd></div>
       <div><dt>配对资产</dt><dd>BSC USDT · <span id="usdt"></span></dd></div>
       <div><dt>首次加池</dt><dd id="initialLiquidity">加载中…</dd></div>
+      <div><dt>首次加池钱包</dt><dd>稍后由管理员指定；出资钱包持有初始 LP 凭证</dd></div>
     </dl>
-    <p class="muted">GAS 由管理员插件钱包支付。本页的五步操作只部署和绑定合约；7 亿枚储备注资、旧币迁移和首次加池另行操作。</p>
+    <p class="muted" id="scope">GAS 由管理员插件钱包支付。完成部署后，首次加池和开放时间另行设置。</p>
+    <p class="muted" id="legacyNotice" hidden></p>
   </section>
   <section class="card">
     <h2>连接管理员钱包</h2>
@@ -36,17 +39,24 @@
     </div>
   </section>
   <section class="card">
-    <h2>按顺序完成五步</h2>
+    <h2 id="stepsTitle">按顺序完成部署</h2>
     <p class="muted">每步会弹出插件钱包，并独立核对链上结果。已完成的步骤会自动跳过。</p>
     <div id="steps">
-      <article data-kind="token"><div><h3>1. 部署新版 CaBi 代币</h3><p>固定总量，分阶段开放</p></div><span class="status">待部署</span><button data-send="token" disabled>部署代币</button></article>
+      <article data-kind="token"><div><h3>1. 部署新版 CaBi 代币</h3><p>固定总量、永久无持仓上限、分阶段开放</p></div><span class="status">待部署</span><button data-send="token" disabled>部署代币</button></article>
       <article data-kind="pair"><div><h3>2. 创建 CaBi／USDT 交易对</h3><p>创建 PancakeSwap V2 空池，首次加池在后续进行</p></div><span class="status">待创建</span><button data-send="pair" disabled>创建交易对</button></article>
       <article data-kind="trading"><div><h3>3. 绑定交易对</h3><p>绑定 Router、USDT 和池地址</p></div><span class="status">待绑定</span><button data-send="trading" disabled>绑定交易对</button></article>
       <article data-kind="pool"><div><h3>4. 部署加池／领取合约</h3><p>真实组 LP，保留 70% 待领额度</p></div><span class="status">待部署</span><button data-send="pool" disabled>部署领取合约</button></article>
-      <article data-kind="bind"><div><h3>5. 绑定专用加池合约</h3><p>配置加池权限及持仓豁免</p></div><span class="status">待绑定</span><button data-send="bind" disabled>完成绑定</button></article>
+      <article data-kind="bind"><div><h3>5. 绑定专用加池合约</h3><p>配置新代币的专用加池和领取权限</p></div><span class="status">待绑定</span><button data-send="bind" disabled>完成绑定</button></article>
+      <article data-kind="fund" hidden><div><h3>6. 注入新币储备</h3><p id="reserveDescription">从管理员钱包转入新领取池</p></div><span class="status">待注资</span><button data-send="fund" disabled>转入新币</button></article>
     </div>
     <button id="continue" class="wide" disabled>按顺序部署并配置</button>
     <p class="muted">点击后依次在钱包确认，全部完成后仍为筹备阶段。管理员之后调用 scheduleLaunch 设置时间，再调用 openLiquidity 开始组 LP。</p>
+  </section>
+  <section class="card" id="handoff" hidden>
+    <h2>部署后的安排</h2>
+    <p id="nextSteps">新池储备就绪后，指定首次加池钱包并设置领取和交易时间。由指定钱包投入 100 USDT＋70,000 新 CaBi，初始 LP 归该钱包。</p>
+    <p class="muted" id="legacyInfo">网站切换时保留认购、邀请、奖励及收货数据。</p>
+    <div id="handoffFiles" hidden><a href="/website.env.pending" download>网站地址配置（待切换）</a> · <a href="/handoff.json" download>后续交接清单</a></div>
   </section>
   <section class="card">
     <h2>恢复已有交易</h2>

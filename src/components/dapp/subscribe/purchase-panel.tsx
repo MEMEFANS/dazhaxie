@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { erc20Abi, parseUnits } from "viem";
 import { ArrowRight, Check, ChevronDown, Coins, Copy, ShoppingBag, Wallet } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { chainConfig } from "@/lib/chain-config";
 import { formatAssetAmount } from "@/lib/amounts";
 import type { RedemptionShipping } from "@/lib/redemption";
-import { fetchSubscribeConfig, useSubscribeConfig, useSubscribeOrders } from "@/lib/subscribe-data";
+import { fetchSubscribeConfig, useSubscribeConfig, useSubscribeOrders, type SubscribeOrderView } from "@/lib/subscribe-data";
 import { fetchReferralData, useReferralData } from "@/lib/referral-data";
 import { useContractTransaction } from "@/lib/contract-transactions";
 import { isUserCancelledError } from "@/lib/transaction-cancellation";
@@ -20,7 +20,7 @@ import styles from "./subscribe.module.css";
 type PurchaseSnapshot = { hash: string; shares: number; paid: string; allocation: string; shipping: RedemptionShipping };
 const emptyShipping: RedemptionShipping = { name: "", phone: "", address: "" };
 function validShipping(value: RedemptionShipping) {
-  return Boolean(value.name.trim()) && /^[+0-9 ()-]{6,25}$/.test(value.phone.trim()) && value.address.trim().length >= 5;
+  return Boolean(value.name.trim()) && value.name.length <= 60 && /^[+0-9 ()-]{6,25}$/.test(value.phone.trim()) && value.address.trim().length >= 5 && value.address.length <= 500;
 }
 
 export function PurchasePanel() {
@@ -40,6 +40,10 @@ function PurchasePanelForm() {
   const [selectedQuantity, setQuantity] = useState(1), [error, setError] = useState("");
   const [cancelled, setCancelled] = useState(false), [resuming, setResuming] = useState(false);
   const [shipping, setShipping] = useState<RedemptionShipping>(emptyShipping);
+  const [shippingSaving, setShippingSaving] = useState(false), [shippingFeedback, setShippingFeedback] = useState("");
+  const [shippingFailed, setShippingFailed] = useState(false), [shippingOrderId, setShippingOrderId] = useState("");
+  const [savedShippingOrders, setSavedShippingOrders] = useState<Record<string, RedemptionShipping>>({});
+  const shippingOperation = useRef(false);
   const shippingLoaded = useRef(false);
   const [serverState, setServerState] = useState<"idle" | "verifying" | "success" | "failed">("idle");
   const [serverMessage, setServerMessage] = useState("");
@@ -89,7 +93,7 @@ function PurchasePanelForm() {
     });
     observer.observe(inlineActions.current);
     return () => observer.disconnect();
-  }, [completed]);
+  }, [completed?.hash]);
 
   useEffect(() => {
     if (!completed || !successResult.current) return;
@@ -242,7 +246,47 @@ function PurchasePanelForm() {
     try { await navigator.clipboard.writeText(data.payee); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { /* Clipboard may require a secure context. */ }
   }
 
-  const busy = checking || resuming || tx.busy || serverState === "verifying" || Boolean(pending) || Boolean(unregisteredHash);
+  const visibleOrders = orders.orders.map(order => ({ ...order, shipping: order.shipping || savedShippingOrders[order.id] }));
+  const shippingOrders = visibleOrders.filter(order => order.status === "confirmed" && !order.shipping);
+  const shippingOrder = shippingOrders.find(order => order.id === shippingOrderId) || shippingOrders[0];
+
+  function updateShipping(value: Partial<RedemptionShipping>) {
+    setShipping(previous => ({ ...previous, ...value }));
+    setShippingFeedback(""); setShippingFailed(false);
+  }
+
+  function shippingUpdated(order: SubscribeOrderView) {
+    if (order.shipping) setSavedShippingOrders(previous => ({ ...previous, [order.id]: order.shipping! }));
+    setCompleted(previous => previous?.hash.toLowerCase() === order.txHash.toLowerCase() && order.shipping ? { ...previous, shipping: order.shipping } : previous);
+    orders.refresh();
+  }
+
+  async function submitShipping(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (shippingOperation.current || busy || !state.connected) return;
+    const value = { name: shipping.name.trim(), phone: shipping.phone.trim(), address: shipping.address.trim() };
+    setShippingFeedback(""); setShippingFailed(false);
+    if (!validShipping(value)) { setShippingFailed(true); setShippingFeedback("请填写收货人、有效联系电话和完整收货地址。"); return; }
+    if (!shippingOrder) {
+      setShipping(value);
+      setShippingFeedback("收货信息已确认，认购成功后会随订单提交。尚未付款时不会安排发货。");
+      return;
+    }
+    shippingOperation.current = true; setShippingSaving(true);
+    try {
+      const response = await fetch("/api/subscribe/orders", { method: "PATCH", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: shippingOrder.id, shipping: value }) });
+      const body = await response.json().catch(() => ({})) as { error?: string; order?: SubscribeOrderView };
+      if (!response.ok) throw new Error(body.error || "收货信息提交失败，请重试。");
+      if (body.order?.id !== shippingOrder.id || !body.order.shipping) throw new Error("提交结果暂未确认，请刷新认购记录核对。");
+      if (!mounted.current) return;
+      shippingUpdated(body.order);
+      setShippingFeedback("收货信息提交成功，后台将按此地址安排发货。");
+    } catch (cause) {
+      if (mounted.current) { setShippingFailed(true); setShippingFeedback(cause instanceof Error ? cause.message : "提交失败，请稍后重试。"); }
+    } finally { shippingOperation.current = false; if (mounted.current) setShippingSaving(false); }
+  }
+
+  const busy = shippingSaving || checking || resuming || tx.busy || serverState === "verifying" || Boolean(pending) || Boolean(unregisteredHash);
   const maximum = data ? Math.min(data.maxShares, data.remainingGlobal, state.connected ? remaining : data.maxShares) : 1;
   const shortPayee = data?.payee ? `${data.payee.slice(0, 6)}…${data.payee.slice(-4)}` : "等待配置";
   const confirming = tx.transaction?.status === "pending";
@@ -293,12 +337,17 @@ function PurchasePanelForm() {
 
       <details className="mt-4 rounded-xl border border-line bg-well p-4">
         <summary className="cursor-pointer text-sm font-semibold text-strong">蟹礼收货信息 · 可稍后填写</summary>
-        <p className="mt-1 text-xs leading-6 text-mute">可先付款；未填写时，认购份额仍会立即登记。收货信息可在下方认购记录中补填。</p>
+        <p className="mt-1 text-xs leading-6 text-mute">{shippingOrder ? "填写后点击提交，直接保存到已认购订单，无需再次付款。" : "可先确认收货信息，认购成功后随订单提交；也可付款后在认购记录中补填。"}</p>
+        <form onSubmit={event => void submitShipping(event)}>
+        {shippingOrders.length > 1 ? <label className="mt-3 block space-y-2 text-xs text-mute"><span>选择收货订单</span><select aria-label="选择收货订单" value={shippingOrder?.id || ""} onChange={event => { setShippingOrderId(event.target.value); setShippingFeedback(""); }} disabled={busy || shippingSaving} className="field min-h-11 w-full px-3 text-sm">{shippingOrders.map(order => <option key={order.id} value={order.id}>{order.shares} 份 · 订单 {order.id.slice(-8)}</option>)}</select></label> : null}
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="block space-y-2 text-xs text-mute"><span>收货人</span><input value={shipping.name} onChange={event => setShipping(value => ({ ...value, name: event.target.value }))} maxLength={60} autoComplete="name" className="field min-h-11 w-full px-3 text-sm" disabled={busy} /></label>
-          <label className="block space-y-2 text-xs text-mute"><span>联系电话</span><input type="tel" value={shipping.phone} onChange={event => setShipping(value => ({ ...value, phone: event.target.value }))} maxLength={25} autoComplete="tel" className="field min-h-11 w-full px-3 text-sm" disabled={busy} /></label>
+          <label className="block space-y-2 text-xs text-mute"><span>收货人</span><input value={shipping.name} onChange={event => updateShipping({ name: event.target.value })} maxLength={60} autoComplete="name" className="field min-h-11 w-full px-3 text-base sm:text-sm" required disabled={busy || shippingSaving} /></label>
+          <label className="block space-y-2 text-xs text-mute"><span>联系电话</span><input type="tel" value={shipping.phone} onChange={event => updateShipping({ phone: event.target.value })} maxLength={25} autoComplete="tel" className="field min-h-11 w-full px-3 text-base sm:text-sm" required disabled={busy || shippingSaving} /></label>
         </div>
-        <label className="mt-3 block space-y-2 text-xs text-mute"><span>完整收货地址</span><textarea value={shipping.address} onChange={event => setShipping(value => ({ ...value, address: event.target.value }))} minLength={5} maxLength={500} autoComplete="street-address" rows={3} className="field w-full px-3 py-3 text-sm" disabled={busy} /></label>
+        <label className="mt-3 block space-y-2 text-xs text-mute"><span>完整收货地址</span><textarea value={shipping.address} onChange={event => updateShipping({ address: event.target.value })} minLength={5} maxLength={500} autoComplete="street-address" rows={3} className="field w-full px-3 py-3 text-base sm:text-sm" required disabled={busy || shippingSaving} /></label>
+        <button type="submit" disabled={busy || shippingSaving || !state.connected} className="btn btn-outline mt-3 min-h-11 w-full text-sm">{shippingSaving ? "正在提交…" : shippingOrder ? "提交收货信息" : "确认收货信息"}</button>
+        {shippingFeedback ? <p role={shippingFailed ? "alert" : "status"} className={`mt-2 text-xs leading-6 ${shippingFailed ? "text-down" : "text-up"}`}>{shippingFeedback}</p> : null}
+        </form>
       </details>
 
       <details className={styles.payee}><summary><span>收款地址与网络</span><span>{shortPayee}<ChevronDown size={14} /></span></summary><div className={styles.payeeAddress}><code>{data?.payee || "暂未开放"}</code><button type="button" onClick={() => void copyPayee()} disabled={!data?.payee} className={styles.copyButton}>{copied ? <><Check size={12} />已复制</> : <><Copy size={12} />复制</>}</button></div><p>请使用 BSC 网络 USDT 支付，转账前核对收款地址与金额。</p></details>
@@ -311,7 +360,7 @@ function PurchasePanelForm() {
       <p className={styles.actionHint}><Wallet size={12} />BSC 网络 · USDT 转账 · 确认后登记认购</p>
       </>}
       {orders.error ? <p role="status" className={styles.feedback}>{orders.error}</p> : null}
-      <PurchaseRecords orders={orders.orders} usdtDecimals={data?.usdtDecimals} onUpdated={orders.refresh} />
+      <PurchaseRecords orders={visibleOrders} usdtDecimals={data?.usdtDecimals} onUpdated={shippingUpdated} />
     </section>
     {!completed ? <div className={styles.mobileCheckout} data-inline-visible={inlineActionVisible} role="region" aria-label="快捷认购">
       <div className={styles.mobileCheckoutInner}>

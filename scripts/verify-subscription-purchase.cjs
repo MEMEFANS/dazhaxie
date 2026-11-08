@@ -173,10 +173,37 @@ async function click(element, wait = 24) {
       await pause();
     });
     const shippingForm = shippingDetails.parentElement.querySelector('form');
+    serverResponse = { status: 200, body: { order: { ...ordersQuery.orders[0], shipping: { name: '测试收货人', phone: '13800138000', address: '测试省测试市测试路 1 号' } } } };
     await React.act(async () => { shippingForm.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await pause(30); });
     assert.equal(requests.at(-1).init.method, 'PATCH');
     assert.equal(JSON.parse(requests.at(-1).init.body).id, 'o1');
+    assert(document.body.textContent.includes('收货信息已提交，待安排发货'));
+    assert(document.body.textContent.includes('蟹礼收货信息已保存'));
+    assert(document.querySelector('a[href*="category=after-sales"][href*="order=o1"]'));
     pass('confirmed orders can add shipping later without another payment');
+
+    await reset();
+    ordersQuery.orders = [{ id: 'o2', shares: 1, amount: '50000000', txHash: hash, status: 'confirmed', createdAt: Date.now() }];
+    await render(); await fillShipping();
+    const topShippingForm = document.querySelector('details form');
+    serverResponse = { status: 503, body: { error: '暂时无法提交，请重试' } };
+    await React.act(async () => { topShippingForm.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await pause(30); });
+    assert(document.body.textContent.includes('暂时无法提交，请重试'));
+    assert.equal(document.querySelector('input[autocomplete="name"]').value, '测试收货人');
+    serverResponse = { status: 200, body: { order: { ...ordersQuery.orders[0], shipping: { name: '测试收货人', phone: '13800138000', address: '测试省测试市测试路 1 号' } } } };
+    await React.act(async () => { topShippingForm.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await pause(30); });
+    assert.equal(writes.length, 0);
+    assert(requests.every(request => request.init.method === 'PATCH'));
+    assert(document.body.textContent.includes('收货信息提交成功'));
+    assert(document.body.textContent.includes('收货信息已提交，待安排发货'));
+    pass('upper shipping form submits to an existing order, keeps input on failure and updates the receipt on retry');
+
+    await reset(); await fillShipping();
+    await React.act(async () => { document.querySelector('details form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await pause(); });
+    assert.equal(requests.length, 0);
+    assert.equal(writes.length, 0);
+    assert(document.body.textContent.includes('认购成功后会随订单提交'));
+    pass('pre-purchase shipping confirmation clearly waits for payment instead of claiming server submission');
 
     await reset(); await fillShipping(); freshConfig = { ...fixture(), payee: B };
     await click(action(), 60);

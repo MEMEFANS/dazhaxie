@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Local-only launch transactions; the browser wallet signs. */
 const fs = require('node:fs');
 const path = require('node:path');
-const { decodeFunctionData, encodeFunctionData, formatEther, formatUnits, getAddress, keccak256, parseAbi, parseUnits } = require('viem');
+const { decodeFunctionData, encodeFunctionData, formatEther, formatUnits, getAddress, keccak256, parseAbi, parseUnits, zeroAddress } = require('viem');
 const same = (a, b) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
 const tokenAbi = parseAbi([
   'function owner() view returns(address)', 'function launchPool() view returns(address)', 'function tradingPair() view returns(address)',
@@ -18,6 +18,7 @@ const poolAbi = parseAbi([
   'function token() view returns(address)', 'function usdt() view returns(address)', 'function tradingPair() view returns(address)',
   'function lpReceiver() view returns(address)', 'function previousPool() view returns(address)', 'function poolBalance() view returns(uint256)',
   'function previewSeed(uint256) view returns(uint256,uint256)', 'function seedLiquidity(uint256,uint256,uint256,uint256)',
+  'function seedProvider() view returns(address)', 'function setSeedProvider(address)',
 ]);
 const previousPoolAbi = parseAbi(['function signer() view returns(address)', 'function poolBalance() view returns(uint256)']);
 const pairAbi = parseAbi([
@@ -26,13 +27,20 @@ const pairAbi = parseAbi([
 ]);
 const kinds = ['schedule', 'approveToken', 'approveUsdt', 'open', 'seed'];
 const labels = {
+  provider: '指定首次加池钱包',
   schedule: '设置领取与交易时间', approveToken: '授权 70,000 枚 CaBi', approveUsdt: '授权 100 USDT',
   open: '开启组 LP', seed: '首次加入 100 USDT＋70,000 CaBi',
 };
 
 function createStage2Session({ client, config, recordFile, confirmations = 2 }) {
   for (const field of ['owner', 'token', 'pool', 'pair', 'usdt', 'previousPool', 'lpReceiver']) config[field] = getAddress(config[field]);
+  const delegated = Object.hasOwn(config, 'seedProvider');
+  if (delegated && (!config.seedProvider || same(config.seedProvider, zeroAddress))) throw new Error('请先填写首次加池钱包地址');
+  const funder = delegated ? getAddress(config.seedProvider) : config.owner;
+  const steps = delegated ? ['provider', 'schedule', 'open'] : kinds;
+  const hasPreviousPool = !same(config.previousPool, zeroAddress);
   const tokenAmount = parseUnits(config.seedTokens, 18), quoteAmount = parseUnits(config.seedUsdt, 18);
+  if (!config.claimStartsAt || !config.tradingStartsAt || !config.claimStartsAtBeijing || !config.tradingStartsAtBeijing) throw new Error('请先设置本次领取和交易开放时间');
   const claimAt = BigInt(config.claimStartsAt), tradingAt = BigInt(config.tradingStartsAt);
   if (tradingAt < claimAt) throw new Error('交易开放时间早于领取时间');
   for (const [time, text] of [[claimAt, config.claimStartsAtBeijing], [tradingAt, config.tradingStartsAtBeijing]]) {
@@ -59,9 +67,9 @@ function createStage2Session({ client, config, recordFile, confirmations = 2 }) 
     const blockNumber = await client.getBlockNumber({ cacheTime: 0 });
     const [tokenCode, poolCode, pairCode, previousCode] = await Promise.all([
       client.getCode({ address: config.token, blockNumber }), client.getCode({ address: config.pool, blockNumber }),
-      client.getCode({ address: config.pair, blockNumber }), client.getCode({ address: config.previousPool, blockNumber }),
+      client.getCode({ address: config.pair, blockNumber }), hasPreviousPool ? client.getCode({ address: config.previousPool, blockNumber }) : null,
     ]);
-    if ([tokenCode, poolCode, pairCode, previousCode].some(code => !code || code === '0x')) throw new Error('目标合约链上代码缺失');
+    if ([tokenCode, poolCode, pairCode, ...(hasPreviousPool ? [previousCode] : [])].some(code => !code || code === '0x')) throw new Error('目标合约链上代码缺失');
     const [owner, launchPool, tradingPair, configuredUsdt, phase, scheduledClaim, scheduledTrading, liquidityEnabled,
       ownerTokens, tokenAllowance, usdtDecimals, ownerUsdt, usdtAllowance, oldSigner, oldBalance, poolToken, poolUsdt,
       poolPair, receiver, previousPool, poolTokens, token0, token1, reserves, pairSupply, pairTokens, pairUsdt, lpOwner,
@@ -70,23 +78,26 @@ function createStage2Session({ client, config, recordFile, confirmations = 2 }) 
       read(config.token, tokenAbi, 'tradingPair', [], blockNumber), read(config.token, tokenAbi, 'usdt', [], blockNumber),
       read(config.token, tokenAbi, 'phase', [], blockNumber), read(config.token, tokenAbi, 'claimStartsAt', [], blockNumber),
       read(config.token, tokenAbi, 'tradingStartsAt', [], blockNumber), read(config.token, tokenAbi, 'liquidityEnabled', [], blockNumber),
-      read(config.token, tokenAbi, 'balanceOf', [config.owner], blockNumber), read(config.token, tokenAbi, 'allowance', [config.owner, config.pool], blockNumber),
-      read(config.usdt, erc20Abi, 'decimals', [], blockNumber), read(config.usdt, erc20Abi, 'balanceOf', [config.owner], blockNumber),
-      read(config.usdt, erc20Abi, 'allowance', [config.owner, config.pool], blockNumber),
-      read(config.previousPool, previousPoolAbi, 'signer', [], blockNumber), read(config.previousPool, previousPoolAbi, 'poolBalance', [], blockNumber),
+      read(config.token, tokenAbi, 'balanceOf', [funder], blockNumber), read(config.token, tokenAbi, 'allowance', [funder, config.pool], blockNumber),
+      read(config.usdt, erc20Abi, 'decimals', [], blockNumber), read(config.usdt, erc20Abi, 'balanceOf', [funder], blockNumber),
+      read(config.usdt, erc20Abi, 'allowance', [funder, config.pool], blockNumber),
+      hasPreviousPool ? read(config.previousPool, previousPoolAbi, 'signer', [], blockNumber) : zeroAddress,
+      hasPreviousPool ? read(config.previousPool, previousPoolAbi, 'poolBalance', [], blockNumber) : 0n,
       read(config.pool, poolAbi, 'token', [], blockNumber), read(config.pool, poolAbi, 'usdt', [], blockNumber),
       read(config.pool, poolAbi, 'tradingPair', [], blockNumber), read(config.pool, poolAbi, 'lpReceiver', [], blockNumber),
       read(config.pool, poolAbi, 'previousPool', [], blockNumber), read(config.pool, poolAbi, 'poolBalance', [], blockNumber),
       read(config.pair, pairAbi, 'token0', [], blockNumber), read(config.pair, pairAbi, 'token1', [], blockNumber),
       read(config.pair, pairAbi, 'getReserves', [], blockNumber), read(config.pair, pairAbi, 'totalSupply', [], blockNumber),
       read(config.token, erc20Abi, 'balanceOf', [config.pair], blockNumber), read(config.usdt, erc20Abi, 'balanceOf', [config.pair], blockNumber),
-      read(config.pair, pairAbi, 'balanceOf', [config.owner], blockNumber), read(config.pool, poolAbi, 'previewSeed', [tokenAmount], blockNumber),
+      read(config.pair, pairAbi, 'balanceOf', [funder], blockNumber), read(config.pool, poolAbi, 'previewSeed', [tokenAmount], blockNumber),
       client.getBlock({ blockNumber }),
     ]);
+    const actualSeedProvider = delegated ? await read(config.pool, poolAbi, 'seedProvider', [], blockNumber) : funder;
+    if (delegated && liquidityEnabled && !same(actualSeedProvider, funder)) throw new Error('已锁定的首次加池钱包与配置不符');
     if (!same(owner, config.owner) || !same(launchPool, config.pool) || !same(tradingPair, config.pair) || !same(configuredUsdt, config.usdt)) throw new Error('代币 owner、交易对或加池合约与公开配置不符');
     if (!same(poolToken, config.token) || !same(poolUsdt, config.usdt) || !same(poolPair, config.pair) || !same(receiver, config.lpReceiver) || !same(previousPool, config.previousPool)) throw new Error('加池合约参数与公开配置不符');
     if (Number(usdtDecimals) !== 18 || !((same(token0, config.token) && same(token1, config.usdt)) || (same(token1, config.token) && same(token0, config.usdt)))) throw new Error('BSC USDT 精度或交易对资产不符');
-    if (!same(oldSigner, config.pool) || oldBalance !== 0n) throw new Error('旧领取池尚未停用或余额尚未取空');
+    if (hasPreviousPool && (!same(oldSigner, config.pool) || oldBalance !== 0n)) throw new Error('旧领取池尚未停用或余额尚未取空');
     const isToken0 = same(token0, config.token);
     const [r0, r1] = reserves;
     const reserveToken = isToken0 ? r0 : r1, reserveUsdt = isToken0 ? r1 : r0;
@@ -97,11 +108,12 @@ function createStage2Session({ client, config, recordFile, confirmations = 2 }) 
     if (seeded && (reserveToken !== tokenAmount || reserveUsdt !== quoteAmount || pairTokens !== reserveToken || pairUsdt !== reserveUsdt || lpOwner === 0n)) throw new Error('交易对已有流动性但数量或接收地址不符，请人工核对');
     if (BigInt(phase) >= 3) throw new Error('公开交易已经开放，拒绝执行筹备阶段操作');
     if (liquidityEnabled && (scheduledClaim !== claimAt || scheduledTrading !== tradingAt)) throw new Error('已锁定的开放时间与本次计划不符');
-    if (pairSupply === 0n && (BigInt(poolTokens) !== parseUnits('700000000', 18) || BigInt(ownerTokens) < tokenAmount || BigInt(ownerUsdt) < quoteAmount)) throw new Error('新池储备或管理员钱包余额不足');
+    if (!delegated && pairSupply === 0n && (BigInt(poolTokens) !== parseUnits('700000000', 18) || BigInt(ownerTokens) < tokenAmount || BigInt(ownerUsdt) < quoteAmount)) throw new Error('新池储备或出资钱包余额不足');
     if (seedPreview[0] !== quoteAmount || (pairSupply === 0n && seedPreview[1] === 0n)) throw new Error('初始加池预估与 100 USDT＋70,000 CaBi 不一致');
     const record = load();
     await reconcileUnexpectedApproval(record, { tokenAllowance, blockNumber });
     const state = {
+      seedProvider: actualSeedProvider, fundingAddress: funder, providerSet: same(actualSeedProvider, funder), delegated,
       blockNumber: String(blockNumber), phase: Number(phase), liquidityEnabled, claimStartsAt: String(scheduledClaim),
       tradingStartsAt: String(scheduledTrading), now: String(block.timestamp),
       claimStartsAtConfigured: config.claimStartsAt, tradingStartsAtConfigured: config.tradingStartsAt,
@@ -115,7 +127,7 @@ function createStage2Session({ client, config, recordFile, confirmations = 2 }) 
       tokenApproved: seeded || tokenAllowance === tokenAmount, usdtApproved: seeded || usdtAllowance === quoteAmount,
     };
     const done = completion(state);
-    for (const kind of kinds) if (done[kind] && record.pending?.kind !== kind && !record.actions[kind]) record.actions[kind] = { kind, observedAt: new Date().toISOString(), blockNumber: state.blockNumber };
+    for (const kind of steps) if (done[kind] && record.pending?.kind !== kind && !record.actions[kind]) record.actions[kind] = { kind, observedAt: new Date().toISOString(), blockNumber: state.blockNumber };
     save(record);
     return { record, state };
   }
@@ -142,9 +154,10 @@ function createStage2Session({ client, config, recordFile, confirmations = 2 }) 
     }
   }
   function completion(state) {
-    return { schedule: state.scheduleSet, approveToken: state.tokenApproved, approveUsdt: state.usdtApproved, open: state.liquidityEnabled, seed: state.seeded };
+    return { provider: state.providerSet, schedule: state.scheduleSet, approveToken: state.tokenApproved, approveUsdt: state.usdtApproved, open: state.liquidityEnabled, seed: state.seeded };
   }
   function transaction(kind, state, fixedDeadline) {
+    if (kind === 'provider') return { to: config.pool, data: encodeFunctionData({ abi: poolAbi, functionName: 'setSeedProvider', args: [funder] }), detail: `指定 ${funder} 负责首次出资并接收初始 LP；管理员权限不变` };
     if (kind === 'schedule') return { to: config.token, data: encodeFunctionData({ abi: tokenAbi, functionName: 'scheduleLaunch', args: [claimAt, tradingAt] }), detail: `领取 ${config.claimStartsAtBeijing}（北京时间）；交易 ${config.tradingStartsAtBeijing}（北京时间）` };
     if (kind === 'approveToken') {
       if (BigInt(state.tokenAllowance) !== 0n && BigInt(state.tokenAllowance) !== tokenAmount) {
@@ -165,14 +178,14 @@ function createStage2Session({ client, config, recordFile, confirmations = 2 }) 
   }
   async function plan(kind, fixedDeadline) {
     const { record, state } = await status();
-    if (!kinds.includes(kind)) throw new Error('未知操作');
+    if (!steps.includes(kind)) throw new Error('未知操作');
     if (record.pending) throw new Error('上一笔操作尚未核对，请先查询交易状态');
     const done = completion(state);
     if (done[kind]) throw new Error('该步骤已在链上完成，不要重复提交');
-    const index = kinds.indexOf(kind);
-    if (kinds.slice(0, index).some(item => !done[item])) throw new Error('请先完成前一个步骤');
+    const index = steps.indexOf(kind);
+    if (steps.slice(0, index).some(item => !done[item])) throw new Error('请先完成前一个步骤');
     if (kind === 'schedule' && state.liquidityEnabled) throw new Error('组 LP 已开启，时间已锁定');
-    if (kind === 'open' && (!done.schedule || !done.approveToken || !done.approveUsdt)) throw new Error('先确认时间和两项精确授权');
+    if (kind === 'open' && (!done.schedule || (delegated ? !done.provider : !done.approveToken || !done.approveUsdt))) throw new Error('请先完成时间和前面的设置');
     if (kind === 'seed' && (!state.liquidityEnabled || !done.approveToken || !done.approveUsdt || state.seeded)) throw new Error('先开启组 LP 并完成两项授权');
     const call = transaction(kind, state, fixedDeadline);
     const [estimatedGas, gasPrice, nativeBalance] = await Promise.all([
@@ -204,7 +217,7 @@ function createStage2Session({ client, config, recordFile, confirmations = 2 }) 
     record.pending = null; save(record);
   }
   async function verify(kind, hash) {
-    if (!kinds.includes(kind) || !/^0x[0-9a-f]{64}$/i.test(hash)) throw new Error('操作类型或交易哈希无效');
+    if (!steps.includes(kind) || !/^0x[0-9a-f]{64}$/i.test(hash)) throw new Error('操作类型或交易哈希无效');
     const record = load();
     if (record.actions[kind]?.hash === hash) return { verified: record.actions[kind], record, state: (await status()).state };
     if (!record.pending || record.pending.kind !== kind) throw new Error('没有对应待核对交易，请先刷新链上状态');
@@ -235,6 +248,6 @@ function createStage2Session({ client, config, recordFile, confirmations = 2 }) 
     record.actions[kind] = verified; record.pending = null; save(record);
     return { verified, state, record };
   }
-  return { config, fingerprint, kinds, labels, status, plan, begin, attachHash, cancelled, verify };
+  return { config, fingerprint, kinds: steps, labels, status, plan, begin, attachHash, cancelled, verify };
 }
 module.exports = { createStage2Session, kinds, labels };

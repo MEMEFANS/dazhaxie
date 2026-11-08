@@ -45,8 +45,6 @@
 .status i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .status[data-tone="live"] { color: #4f8365; background: #edf6ef; }
 .status[data-tone="error"] { color: #b95454; background: #fff1f1; }
-.progressTrack { height: 7px; overflow: hidden; margin-top: 15px; border-radius: 10px; background: #f0e9f5; }
-.progressTrack > div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #9759d4, #c08ee8); transition: width .4s ease; }
 .progressLabels { margin-top: 10px; color: #9d8aa8; font-size: 11px; line-height: 1.6; }
 .progressLabels strong { color: #76538c; font-weight: 650; }
 .workspace { display: grid; grid-template-columns: minmax(0, 1.58fr) minmax(0, 1fr); align-items: start; gap: 24px; }
@@ -296,7 +294,6 @@
   .heroMetrics small { display: block; margin: 3px 0 0; font-size: 11px; }
   .heroMetrics > div > span { font-size: 12px; }
   .capProgress { padding: 15px 20px; }
-  .progressTrack { margin-top: 11px; }
   .progressLabels { margin-top: 7px; font-size: 12px; }
   .progressHeading h2 { font-size: 13px; }
   .status { padding: 3px 6px; font-size: 11px; }

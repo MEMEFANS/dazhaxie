@@ -31,6 +31,7 @@ export function PurchaseSuccess({ shares, paid, allocation, txHash, shippingComp
       </dl>
       <p className={styles.note}>{shippingComplete ? "后台将按收货信息安排蟹礼发货。" : "请在下方认购记录补填收货信息，以便安排蟹礼发货。"}领取 CaBi 前需另付 USDT 组 LP，完成后领取 70% CaBi。</p>
       <div className={styles.nextSteps}>
+        {!shippingComplete ? <a href="#subscription-records" className={`${styles.viewAllocation} ${styles.shippingLink}`}>填写收货信息</a> : null}
         <Link href="/dapp/token#allocation" className={styles.viewAllocation}>查看配额</Link>
         <Link href="/dapp/token#claim-center" className={styles.claimTokens}>前往领取<ArrowRight size={15} aria-hidden="true" /></Link>
       </div>

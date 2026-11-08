@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { decodeFunctionData, encodeFunctionData, parseAbi, parseUnits } = require('viem');
+const { decodeFunctionData, encodeFunctionData, parseAbi, parseUnits, zeroAddress } = require('viem');
 const { JSDOM } = require('jsdom');
 const { createStage2Session } = require('./launch-stage2-session.cjs');
 const owner = '0xf8ada5c5052a47dc6e28a07c8a321fb1ad257d70';
@@ -70,6 +70,41 @@ const client = {
   },
 };
 async function main() {
+  const freshClient = {
+    ...client,
+    async getCode(args) {
+      assert(![zeroAddress, previousPool].includes(args.address.toLowerCase()), 'fresh launch must not read old or zero-address code');
+      return client.getCode(args);
+    },
+    async readContract(args) {
+      assert(![zeroAddress, previousPool].includes(args.address.toLowerCase()), 'fresh launch must not read old-pool state');
+      if (args.address.toLowerCase() === pool && args.functionName === 'previousPool') return zeroAddress;
+      return client.readContract(args);
+    },
+  };
+  const fresh = createStage2Session({ client: freshClient, config: { ...config, previousPool: zeroAddress }, recordFile: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cabi-stage2-fresh-')), 'result.json') });
+  assert.equal((await fresh.status()).state.phase, 0);
+  assert.equal((await fresh.plan('schedule')).tx.to.toLowerCase(), token);
+  console.log('PASS 独立新池可设置时间与准备初始加池，不读取或要求清空旧测试池');
+  const funder = '0x1111111111111111111111111111111111111111';
+  let assigned = zeroAddress;
+  const delegatedClient = { ...freshClient, async readContract(args) {
+    if (args.address.toLowerCase() === pool && args.functionName === 'seedProvider') return assigned;
+    return freshClient.readContract(args);
+  } };
+  const delegated = createStage2Session({ client: delegatedClient, config: { ...config, previousPool: zeroAddress, seedProvider: funder }, recordFile: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cabi-stage2-delegated-')), 'result.json') });
+  assert.deepEqual(delegated.kinds, ['provider', 'schedule', 'open']);
+  const providerPlan = await delegated.plan('provider');
+  assert.equal(decodeFunctionData({ abi: parseAbi(['function setSeedProvider(address)']), data: providerPlan.tx.data }).args[0].toLowerCase(), funder);
+  assert.equal(providerPlan.tx.from.toLowerCase(), owner);
+  assigned = funder; fixture.claimStartsAt = claimAt; fixture.tradingStartsAt = tradingAt;
+  const delegatedState = await delegated.status();
+  assert.equal(delegatedState.state.ownerTokenBalance, '0');
+  assert.equal(delegatedState.state.ownerUsdtBalance, '0');
+  assert.equal((await delegated.plan('open')).tx.from.toLowerCase(), owner);
+  fixture.claimStartsAt = 0n; fixture.tradingStartsAt = 0n;
+  console.log('PASS 管理员只指定出资钱包和开放时间，出资钱包尚未转入资产也可完成筹备设置');
+  assert.throws(() => createStage2Session({ client, config: { ...config, claimStartsAt: null }, recordFile: 'unused.json' }), /请先设置本次领取和交易开放时间/);
   assert.throws(() => createStage2Session({ client, config: { ...config, tradingStartsAt: String(claimAt - 1n) }, recordFile: path.join(os.tmpdir(), 'cabi-stage2-invalid-time.json') }), /交易开放时间早于领取时间/);
   assert.throws(() => createStage2Session({ client, config: { ...config, tradingStartsAtBeijing: '2026-11-08 21:00' }, recordFile: path.join(os.tmpdir(), 'cabi-stage2-mismatched-time.json') }), /北京时间显示和交易时间戳不一致/);
   const recoveryFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cabi-stage2-recovery-')), 'result.json');

@@ -75,7 +75,7 @@ export function TicketsAdmin() {
         <form onSubmit={e => { e.preventDefault(); setPage(1); setSearch(q.trim()); }} className="flex min-w-0 items-center gap-2">
           <label className="relative min-w-0 flex-1 lg:w-64">
             <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜索地址 / 标题 / 工单号" className="field h-9 w-full pl-8 pr-3 text-[12px]" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜索地址 / 标题 / 工单号 / 订单号" className="field h-9 w-full pl-8 pr-3 text-[12px]" />
           </label>
           <button type="submit" className="btn btn-outline h-9 px-3 text-[11px]">搜索</button>
         </form>
@@ -105,7 +105,7 @@ export function TicketsAdmin() {
                 </button>
                 {open ? (
                   <div className="space-y-3 border-t border-line py-4">
-                    <div className="well p-3.5 text-[12px] leading-6 text-strong">
+                    <div className="well whitespace-pre-wrap break-words p-3.5 text-[12px] leading-6 text-strong">
                       <p className="kicker mb-1">用户描述</p>{ticket.content}
                     </div>
                     {ticket.replies.map(r => (

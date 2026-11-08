@@ -42,7 +42,7 @@ async function context() {
   if (!$('switch').hidden) throw new Error('请将插件钱包切换到 BSC 主网');
   if (!same(account, manifest.owner)) throw new Error('请切换到管理员钱包：' + manifest.owner);
 }
-function completed(kind) { return ({ token: Boolean(state.token), pair: Boolean(state.pair), trading: state.tradingReady, pool: Boolean(state.pool), bind: state.bindReady })[kind]; }
+function completed(kind) { return ({ token: Boolean(state.token), pair: Boolean(state.pair), trading: state.tradingReady, pool: Boolean(state.pool), bind: state.bindReady, fund: state.funded })[kind]; }
 function link(id, address) { $(id).textContent = address || '等待部署'; if (address) $(id).href = 'https://bscscan.com/address/' + address; }
 function render() {
   const ready = Boolean(manifest && provider && account && !busy && !pending);
@@ -59,6 +59,7 @@ function render() {
     article.querySelector('button').disabled = !ready || done || kinds.slice(0, index).some(prior => !completed(prior));
   }
   if (state.token) { $('result').hidden = false; link('tokenLink', state.token); link('pairLink', state.pair); link('poolLink', state.pool); }
+  $('handoffFiles').hidden = !state.complete;
 }
 async function refresh() {
   const next = await api('state'); state = next.state; record = next.record;
@@ -121,7 +122,7 @@ async function run(kind, sequence = false) {
         await refresh();
         if (pending) throw new Error('有一笔钱包操作等待核对，请先查询已有交易');
         const next = manifest.kinds.find(item => !completed(item));
-        if (!next) { message('五步部署与绑定全部完成。当前为筹备阶段，领取和交易时间由你之后设置。', 'success'); break; }
+        if (!next) { message('本次部署步骤全部完成。当前为筹备阶段，下一步设置新的领取和交易时间并添加初始流动性。', 'success'); break; }
         if (!await send(next)) break;
       }
     } else await send(kind);
@@ -172,6 +173,25 @@ async function initialize() {
   manifest = await response.json(); storageKey = 'cabi-launch-deployment:' + manifest.fingerprint;
   for (const field of ['owner', 'distributionReceiver', 'buybackPool', 'lpReceiver', 'signer', 'usdt']) $(field).textContent = manifest[field];
   $('initialLiquidity').textContent = Number(manifest.initialUsdtAmount).toLocaleString('zh-CN') + ' USDT ＋ ' + Number(manifest.initialTokenAmount).toLocaleString('zh-CN') + ' CaBi';
+  $('stepsTitle').textContent = '按顺序完成 ' + manifest.kinds.length + ' 步';
+  for (const article of document.querySelectorAll('[data-kind]')) article.hidden = !manifest.kinds.includes(article.dataset.kind);
+  if (manifest.fundReserve) {
+    const reserve = Number(manifest.newTokenClaimReserve).toLocaleString('zh-CN');
+    $('reserveDescription').textContent = reserve + ' 枚新 CaBi，从管理员钱包转入新领取池';
+    $('scope').textContent = '前五步部署和绑定新合约，第六步转入 ' + reserve + ' 枚新币储备。每笔交易由管理员钱包签名并支付 GAS。';
+    const option = document.createElement('option'); option.value = 'fund'; option.textContent = '注入新币储备'; $('kind').appendChild(option);
+  }
+  $('handoff').hidden = !manifest.release;
+  if (manifest.legacyPolicy === 'skip-owner-test') {
+    $('legacyInfo').textContent = '本次新池独立运行，旧测试币与旧 LP 不迁移。后续组 LP 和领取无需等待旧池清空。';
+  } else if (manifest.preflight.previous) {
+    $('nextSteps').textContent = '新池储备就绪后，先结算旧池权益，再设置新的领取和交易时间。首次加池为 100 USDT＋70,000 新 CaBi。';
+    $('legacyInfo').textContent = '旧币和旧 LP 不会自动转换。网站切换前保留认购、邀请、奖励及收货数据，并核对旧池待领记录。';
+  }
+  if (manifest.preflight.previous?.reservedPayout && BigInt(manifest.preflight.previous.reservedPayout) > 0n) {
+    $('legacyNotice').hidden = false;
+    $('legacyNotice').textContent = '准备时核对：旧池有 ' + (Number(manifest.preflight.previous.reservedPayout) / 1e18).toLocaleString('zh-CN') + ' 枚待领旧 CaBi。本页保留旧池权益，旧币兑换新币和网站切换需要后续处理。';
+  }
   discover(); await refresh();
   $('fee').textContent = '代币部署当前预估 GAS：' + manifest.preflight.tokenEstimatedFeeBnb + ' BNB，签名前会重新估算。';
   message(pending ? '已恢复上一次钱包操作，请查询并核对交易。' : state.complete ? '链上部署已完成，合约处于筹备阶段。' : '请连接管理员插件钱包，在 BSC 主网确认部署。');

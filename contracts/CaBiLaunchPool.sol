@@ -55,6 +55,7 @@ contract CaBiLaunchPool {
     uint256 public constant TOKEN_PRICE_DENOMINATOR = 700 * 1e18;
     uint256 public constant PAYOUT_RATIO = 70;
     address public signer;
+    address public seedProvider;
     uint256 private locked = 1;
     uint256 public reservedPayout;
     uint256 public escrowedLp;
@@ -76,13 +77,15 @@ contract CaBiLaunchPool {
     event LiquidityPrepared(address indexed user, uint256 amount, uint256 payout, uint256 lpTokens, uint256 usdtPaid, uint256 liquidity, uint256 nonce);
     event PreparationCancelled(address indexed user, uint256 amount, uint256 tokensReturned, uint256 usdtRefunded, uint256 liquidityBurned);
     event Claimed(address indexed user, uint256 amount, uint256 payout);
-    event SeedLiquidityAdded(address indexed owner, uint256 tokens, uint256 usdtPaid, uint256 liquidity);
-    event SeedLiquidityRemoved(address indexed owner, uint256 tokens, uint256 usdtReturned, uint256 liquidity);
+    event SeedProviderUpdated(address indexed previousProvider, address indexed newProvider);
+    event SeedLiquidityAdded(address indexed provider, uint256 tokens, uint256 usdtPaid, uint256 liquidity);
+    event SeedLiquidityRemoved(address indexed provider, uint256 tokens, uint256 usdtReturned, uint256 liquidity);
     event ProjectLpReleased(address indexed receiver, uint256 liquidity);
     event SignerChanged(address indexed previousSigner, address indexed newSigner);
     event WithdrawUnused(address indexed owner, uint256 amount);
 
     modifier onlyOwner() { require(msg.sender == ILaunchToken(token).owner(), "not token owner"); _; }
+    modifier onlySeedProvider() { require(msg.sender == seedProvider, "not seed provider"); _; }
     modifier nonReentrant() { require(locked == 1, "operation active"); locked = 2; _; locked = 1; }
 
     constructor(address token_, address signer_, address receiver_, address previous_) {
@@ -130,9 +133,15 @@ contract CaBiLaunchPool {
         if (supply == 0) { uint256 root = _sqrt(tokenAmount * usdtRequired); estimatedLiquidity = root > 1000 ? root - 1000 : 0; }
         else estimatedLiquidity = tokenAmount * supply / rt;
     }
-    /// Owner supplies both assets; initial LP belongs to that owner. Users must
+    /// The owner designates the funder during Setup; opening liquidity freezes it.
+    function setSeedProvider(address provider) external onlyOwner nonReentrant {
+        require(!ILaunchToken(token).liquidityEnabled() && ILaunchPair(tradingPair).totalSupply() == 0, "seed provider locked");
+        require(provider != address(0) && provider != address(this) && provider != token && provider != usdt && provider != tradingPair, "invalid seed provider");
+        emit SeedProviderUpdated(seedProvider, provider); seedProvider = provider;
+    }
+    /// The designated provider supplies both assets and receives the LP. Users must
     /// wait for this seed to exist, so they do not bear the initial 1000 LP burn.
-    function seedLiquidity(uint256 tokenAmount, uint256 usdtAmount, uint256 minLiquidity, uint256 deadline) external onlyOwner nonReentrant {
+    function seedLiquidity(uint256 tokenAmount, uint256 usdtAmount, uint256 minLiquidity, uint256 deadline) external onlySeedProvider nonReentrant {
         _checkParticipation(); require(deadline >= block.timestamp, "deadline expired");
         require(tokenAmount > 0 && usdtAmount == _ceil(tokenAmount * quoteUnit, TOKEN_PRICE_DENOMINATOR), "wrong initial ratio");
         uint256 beforeBalance = poolBalance();
@@ -154,7 +163,7 @@ contract CaBiLaunchPool {
     }
     function _prepare(uint256 amount, uint256 nonce, uint256 maxUsdt, uint256 minLiquidity) private {
         (uint256 payout, uint256 lpTokens, uint256 paid, uint256 estimate) = previewPrepare(amount);
-        require(estimate > 0, "owner must seed liquidity first"); require(paid <= maxUsdt, "USDT exceeds maximum");
+        require(estimate > 0, "seed liquidity first"); require(paid <= maxUsdt, "USDT exceeds maximum");
         require(poolBalance() >= reservedPayout + amount, "insufficient payout reserve");
         preparedOf[msg.sender] += amount; payoutAvailable[msg.sender] += payout;
         reservedPayout += payout; totalPrepared += amount;
@@ -166,8 +175,8 @@ contract CaBiLaunchPool {
     function claim() external nonReentrant {
         _claim(preparedOf[msg.sender] - claimedHere[msg.sender]);
     }
-    /// Entitlement units, before the 70/30 split. Allows bounded claims within
-    /// the token's holding limit. The final claim receives rounding remainders.
+    /// Entitlement units, before the 70/30 split. The final claim receives
+    /// rounding remainders; the unlimited token also permits claiming all at once.
     function claimPartial(uint256 amount) external nonReentrant { _claim(amount); }
     function _claim(uint256 amount) private {
         require(ILaunchToken(token).isClaimOpen(), "claims not open");
@@ -202,7 +211,7 @@ contract CaBiLaunchPool {
     }
     /// Seed LP can exit through the wrapper before claims only when no user
     /// preparations remain. After trading opens, normal DEX removal is available.
-    function removeSeedLiquidity(uint256 liquidity, uint256 minUsdtOut, uint256 minTokensOut, uint256 deadline) external onlyOwner nonReentrant {
+    function removeSeedLiquidity(uint256 liquidity, uint256 minUsdtOut, uint256 minTokensOut, uint256 deadline) external onlySeedProvider nonReentrant {
         _checkParticipation(); require(!ILaunchToken(token).isClaimOpen() && totalPrepared == 0 && deadline >= block.timestamp, "seed removal closed");
         _safeTransferFrom(tradingPair, msg.sender, address(this), liquidity);
         (uint256 tokensReturned, uint256 usdtReturned) = _removeLiquidity(liquidity, minUsdtOut);

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { ArrowUpRight, Sparkles, Ticket } from "lucide-react";
 import { useSubscribeConfig } from "@/lib/subscribe-data";
+import { TierProgress } from "./tier-progress";
 import styles from "./subscribe.module.css";
 import mascotStyles from "./mobile-mascot.module.css";
 
@@ -55,7 +56,7 @@ export function CapHeader() {
           <div><h2>认购进度</h2><span className={styles.status} data-tone={query.status === "error" ? "error" : ready && !closed ? "live" : "neutral"}><i />{status}</span></div>
           <p>{data ? percentage.toFixed(1) : "—"}<span>%</span></p>
         </div>
-        <div className={styles.progressTrack} role="progressbar" aria-label="已认购份额占比" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage} aria-valuetext={data ? `已认购 ${data.globalSold} 份，共 ${data.hardCap} 份` : "正在读取认购进度"}><div style={{ width: `${percentage}%` }} /></div>
+        <TierProgress sold={data?.globalSold} tiers={data?.priceTiers} />
         <div className={styles.progressLabels}><span>已认购 <strong>{data ? number(data.globalSold) : "—"}</strong><span> / {data ? number(data.hardCap) : "—"} 份</span></span><span>剩余 <strong>{data ? number(data.remainingGlobal) : "—"}</strong> 份</span></div>
       </div>
     </section>

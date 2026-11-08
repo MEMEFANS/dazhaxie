@@ -1,6 +1,6 @@
 # CaBi 分阶段发行合约
 
-本方案使用新部署的 `CaBiLaunchToken` 和 `CaBiLaunchPool`，实现「真实组 LP → 定时领取 → 定时开放交易」。旧链上代币不可升级，修改源码不会改变旧地址。这里是已实现的合约和本地部署产物，尚未部署主网、切换网站或迁移资产。
+本方案使用 `CaBiLaunchToken` 和 `CaBiLaunchPool`，实现「真实组 LP → 定时领取 → 定时开放交易」。当前源码是准备重新部署的**无持仓上限版本**。线上历史版本仍使用旧字节码，修改源码不会改变旧地址。此次重新部署入口和旧池权益处理见 [RELAUNCH.md](./RELAUNCH.md)。
 
 ## 用户确认的规则
 
@@ -10,9 +10,9 @@
 - 组 LP 阶段没有买入白名单；普通买卖和持币人转账统一暂停。owner 可以直接划拨初始资金，不能通过普通 Router 买卖。未开放交易前，其它池也不能从本代币取得普通买入输出。
 - 领取时间与交易时间分别设置，交易时间不得早于领取时间。可以设为同一时间。开始组 LP 后时间锁定，不能延后，时间到自动开放，无需管理员补发开盘交易。
 - 专用合约实际执行的加池和退出免交易税；组 LP 阶段不进行税币兑换或池内销毁。普通用户不能借这些入口进行兑换。
-- 领取时不再次收 USDT，不再次组 LP。额度较大可以 `claimPartial` 分次领取；原有 20 万 CaBi 持仓上限仍适用，领取后至正式交易开放前不能普通转出。
-- 公开交易开始后保留原有买 3%、卖 3%、买税兑换 USDT 后 50/50 分配、持仓上限和每 8 小时池内 CaBi 销毁 1%。池内销毁从正式交易时间开始计时，首次最早在开盘 8 小时后执行，仍需有人发送交易。
-- 没有开盘后暂停按钮，也不提供可增删的交易白名单。owner 原有的持仓上限、豁免、税款地址和兑换参数管理权保留。
+- 领取时不再次收 USDT，不再次组 LP。新版本永久取消持仓上限，可以一次领取全部已准备额度，也保留 `claimPartial`。领取后至正式交易开放前不能普通转出。
+- 公开交易开始后保留原有买 3%、卖 3%、买税兑换 USDT 后 50/50 分配和每 8 小时池内 CaBi 销毁 1%。池内销毁从正式交易时间开始计时，首次最早在开盘 8 小时后执行，仍需有人发送交易。
+- 没有开盘后暂停按钮，也不提供可增删的交易白名单。`walletLimitEnabled()` 固定返回 false，owner 不能重新启用持仓上限。旧的上限 getter 返回总发行量，仅为兼容现有网站；豁免接口不再影响收币资格。税款地址和兑换参数管理权保留。
 
 ## 阶段与退出规则
 
@@ -27,7 +27,7 @@
 
 开放领取后，任何人都可以调用 `releaseProjectLp()`，把已承诺的 LP 发给构造时确定的项目 `lpReceiver`。这不是把最终 LP 发给用户，也不宣称项目 LP 永久锁仓。项目钱包和 LP 归属在用户付款前必须展示。领取前各用户的 70% 已准备额度作为 `reservedPayout` 保留，owner 的 `withdrawUnused` 不能提取这部分。
 
-初始 LP 发给出资的 owner。开放领取前，只有全部用户准备额度都已撤销时，owner 才能通过 `removeSeedLiquidity` 包装入口撤出初始 LP。普通 Router 在公开交易前不能撤池；开盘后普通撤池按原代币的池输出税处理。
+初始 LP 直接发给管理员指定的 `seedProvider` 出资钱包。管理员在 Setup 阶段通过 `setSeedProvider` 设置地址，开启组 LP 后地址锁定。开放领取前，只有全部用户准备额度都已撤销时，出资钱包才能通过 `removeSeedLiquidity` 包装入口撤出其持有的初始 LP，资金退回该钱包。普通 Router 在公开交易前不能撤池；开盘后普通撤池按原代币的池输出税处理。
 
 ## 固定金额的范围
 
@@ -48,7 +48,7 @@
 - `claimedOf` 返回旧池已领＋新池已领的完整额度，用于服务端累计结算；`payoutAvailable` 是实际待到账 CaBi。
 - `totalLpTokens`、`totalUsdtCharged` 是历史成功准备的累计投入，包含后来撤销的准备；撤销记录以事件和当前 `preparedOf/lpOf` 为准。
 
-本分支没有把新的 Prepare 凭证接到现有网站，现有签名池或 Merkle 池的凭证都不能直接用于本合约。上线必须同时完成服务端、前端的新入口与地址切换，不能只替换环境变量里的领取池地址。
+网站已使用 Prepare 凭证及分阶段领取入口。新池的 EIP-712 domain 包含新地址，因此旧池凭证不能用于新池。切换时必须保留数据库历史记录、核对新池 signer，重新构建网站以更新前后端地址。
 
 ## 构建与本地验证
 
@@ -61,6 +61,8 @@ npm run test:launch-deploy
 `output/launch-contracts/` 包含两份 ABI/bytecode、完整 standard JSON 源码与编译器版本，可用于部署和 BscScan 源码验证。优化设置为 200 runs，EVM Shanghai；编译器版本以生成的 manifest 为准。测试仅使用本地 Ganache 合成账户、6/18 位测试 USDT 和真实 V2 Factory/Router/Pair 字节码，不读取私钥文件或调用公共 RPC。
 
 ## 插件钱包部署页面
+
+**本次换币请运行 `npm run deploy:relaunch`，使用 `http://127.0.0.1:8792/`。** 下方 `launch-deployment`、`launch-migration`、`launch-stage2` 描述保留用于解释历史流程，不要把旧配置或旧结果文件用作本次的新部署记录。新版本的六步控制台使用 `deploy/relaunch-unlimited.json`，输出到 `output/relaunch-unlimited/`。
 
 运行 `npm run deploy:launch`，预检 BSC 主网、USDT、Router/Factory、管理员余额与旧池参数后，在 `http://127.0.0.1:8789/` 提供本机部署页面。用装有 MetaMask／OKX 的 Chrome 或 Edge 打开，连接公开模板中的 owner，点击「按顺序部署并配置」，依次在钱包确认：部署新代币、创建交易对、绑定交易对、部署新加池／领取合约、绑定专用合约。钱包可以逐步确认，也可以取消后继续；已完成步骤不重复发送。
 
@@ -88,8 +90,8 @@ npm run test:launch-deploy
 4. 新代币 owner 调用 `configureLaunchPool(newPool)`，只允许配置一次，同时设置新池持仓豁免。
 5. 若迁移旧签名池，暂停旧网站签发，先备份认购、奖励与回执数据。由旧池 owner 调用旧池 `setSigner(newPool)`，使旧签名不再可用；随后核对并提取旧池全部可用余额。新池在准备和领取时检查旧池已退役且余额为零；不能再把旧池恢复为有效 signer。`claimedOf` 承接旧池已领记录，不能清零重发。
 6. **旧代币和新代币是不同资产**。提取旧池的旧币不会自动给新池充值；需由 owner 从新币供应量向新池转入对应储备，例如 7 亿枚新 CaBi。新币的发行及旧币兑换安排需在正式切换前明确。
-7. owner 调用 `scheduleLaunch(claimAt,tradingAt)` 设置未来时间，再调用 `openLiquidity()`，锁定时间。先核对日期及时区；开始后不能修改。
-8. owner 对新池分别授权 70,000 CaBi 和 100 USDT。先读 `previewSeed(70000e18)`，核对 100 USDT 和预估 LP，设置合理 `minLiquidity` 与交易 deadline，再调用 `seedLiquidity(70000e18, 100e18, minLiquidity, deadline)`（BSC USDT 为 18 位精度）。确认初始 LP 接收地址为 owner。
+7. owner 在新池调用 `setSeedProvider` 指定首次出资钱包，调用代币 `scheduleLaunch(claimAt,tradingAt)` 设置未来时间，再调用 `openLiquidity()`，锁定出资地址和时间。先核对日期及时区；开始后不能修改。
+8. 指定出资钱包对新池分别授权 70,000 CaBi 和 100 USDT。先读 `previewSeed(70000e18)`，核对 100 USDT 和预估 LP，设置合理 `minLiquidity` 与交易 deadline，再调用 `seedLiquidity(70000e18, 100e18, minLiquidity, deadline)`（BSC USDT 为 18 位精度）。初始 LP 归指定出资钱包。网站独立入口为 `/liquidity/seed`。
 9. 接入网站：先申请新 Prepare 凭证，再精确授权本次 USDT，调用 `prepareLiquidity`。必须显示 70% 待领、30% 配对、LP 最终归项目、退出截止、领取和交易时间。余额或授权不足时由交易流程提示，不重复收费。
 10. 读取链上阶段和准备记录，验证小额真实流程后再开放网站参与。正式交易前不得继续运行旧的池销毁 keeper；新币池销毁需等开盘 8 小时后才可执行。
 

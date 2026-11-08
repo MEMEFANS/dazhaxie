@@ -31,6 +31,10 @@
 .copyError > p { margin: 0; }
 .copyError > code { display: block; margin-top: 5px; color: #745a81; font-size: 12px; overflow-wrap: anywhere; user-select: all; }
 .shippingState { margin: 10px 0 0; color: #477351; font-size: 12px; line-height: 1.7; }
+.shippingState p + p { margin-top: 5px; color: #725680; overflow-wrap: anywhere; }
+.afterSales { display: flex; min-height: 44px; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; padding-top: 9px; border-top: 1px solid #e9dff0; color: #755287; font-size: 13px; font-weight: 600; }
+.afterSales > span { color: #796187; font-size: 11px; font-weight: 400; }
+.records { scroll-margin-top: 115px; }
 .shippingDetails { margin-top: 12px; border-top: 1px solid #e9dff0; padding-top: 12px; }
 .shippingDetails summary { min-height: 44px; color: #755287; font-size: 13px; font-weight: 650; cursor: pointer; }
 .shippingDetails summary span { margin-left: 8px; color: #796187; font-size: 12px; font-weight: 400; }

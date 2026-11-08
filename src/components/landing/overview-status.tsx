@@ -11,6 +11,7 @@ import { useSubscribeConfig, usePromotionStats } from "@/lib/subscribe-data";
 import { useClaimPoolData } from "@/lib/claim-pool-data";
 import { useRedemptionConfig } from "@/lib/redemption-client";
 import { formatAssetAmount } from "@/lib/amounts";
+import { TierProgress } from "@/components/dapp/subscribe/tier-progress";
 import styles from "./landing.module.css";
 
 export function OverviewStatus() {
@@ -49,7 +50,7 @@ export function OverviewStatus() {
     <div className={styles.statusCard}>
       <div className={styles.statusHeading}><h2><Sparkles size={16} /> 认购进度</h2><span className={styles.demoBadge}>{stateLabel(subscribeQuery.status)}</span></div>
       <div className={styles.progressSummary}><strong>{config ? sold.toLocaleString("en-US") : "—"}<small> / {hardCap ? hardCap.toLocaleString("en-US") : "—"} 份</small></strong><span>{config ? progress.toFixed(1) + "%" : "—"}</span></div>
-      <div className={styles.overviewProgress} role="progressbar" aria-label="认购进度" aria-valuemin={0} aria-valuemax={hardCap} aria-valuenow={sold} aria-valuetext={config ? undefined : "等待服务器记账数据"}><span style={{ width: `${progress}%` }} /></div>
+      <TierProgress sold={config?.globalSold} tiers={config?.priceTiers} />
       <div className={styles.progressFooter}><span>{config ? subscriptionClosed ? "认购已关闭" : `剩余 ${config.remainingGlobal.toLocaleString("en-US")} 份` : "等待服务器记账数据"}</span><Link href="/dapp/subscribe">查看详情 <ArrowUpRight size={12} /></Link></div>
       <p className={styles.statusNote}>转账认购：{stateLabel(subscribeQuery.status)} · 领取池：{stateLabel(rewardQuery.status)} · 蟹礼：{redemption.data?.configured ? redemption.data.enabled ? "开放中" : "暂停" : stateLabel(redemption.status)}</p>
     </div>

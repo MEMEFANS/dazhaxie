@@ -31,7 +31,7 @@ async function scenario(decimals) {
   const chain = { id: 31337, name: 'Local launch workflow', nativeCurrency: { name: 'Test', symbol: 'TEST', decimals: 18 }, rpcUrls: { default: { http: [] } } };
   const client = createPublicClient({ chain, transport: custom(provider), pollingInterval: 10 });
   const wallet = createWalletClient({ chain, transport: custom(provider) });
-  const [owner, alice, bob, project, distribution, buyback, buyer] = await wallet.getAddresses();
+  const [owner, alice, bob, project, distribution, buyback, buyer, largeHolder, seedProvider] = await wallet.getAddresses();
   const signingAccount = privateKeyToAccount(generatePrivateKey());
   const deploy = async (entry, args = []) => {
     const hash = await wallet.deployContract({ ...entry, args, account: owner, gas: 12_000_000n });
@@ -72,12 +72,20 @@ async function scenario(decimals) {
     assert.equal(await read(token, 'name'), 'CaBi');
     assert.equal(await read(token, 'totalSupply'), unit(1_000_000_000));
     assert.equal(await balance(token, owner), unit(1_000_000_000));
+    assert.equal(await read(token, 'walletLimitEnabled'), false);
+    assert.equal(await read(token, 'maxWalletAmount'), unit(1_000_000_000));
+    await unavailable(token, 'setMaxWalletAmount', [unit(200000)]);
     assert.equal(await read(token, 'isMaxWalletExempt', [pool.address]), true);
     pass(label + '10亿供应量、税款地址和专用加池合约配置正确');
 
     const start = await timestamp(), claimAt = start + 3600n, tradingAt = start + 7200n;
     await send(token, 'scheduleLaunch', [claimAt, tradingAt]);
+    assert.equal(await read(pool, 'seedProvider'), ZERO);
+    await unavailable(token, 'openLiquidity');
+    await send(pool, 'setSeedProvider', [seedProvider]);
+    assert.equal((await read(pool, 'seedProvider')).toLowerCase(), seedProvider.toLowerCase());
     await send(token, 'openLiquidity');
+    await unavailable(pool, 'setSeedProvider', [owner]);
     assert.equal(await read(token, 'phase'), 1);
     await unavailable(token, 'scheduleLaunch', [claimAt + 600n, tradingAt + 600n]);
     assert.equal((await read(token, 'previewPoolBurn'))[2], false);
@@ -85,18 +93,30 @@ async function scenario(decimals) {
     await unavailable(token, 'burnPool');
     pass(label + '组LP开始后时间锁定，池内销毁等到开盘后计时');
 
-    await send(quote, 'mint', [owner, unit(100, decimals)]);
-    await send(token, 'approve', [pool.address, unit(70000)]);
-    await send(quote, 'approve', [pool.address, unit(100, decimals)]);
+    await send(token, 'transfer', [seedProvider, unit(70000)]);
+    await send(quote, 'mint', [seedProvider, unit(100, decimals)]);
+    await send(token, 'approve', [pool.address, unit(70000)], seedProvider);
+    await send(quote, 'approve', [pool.address, unit(100, decimals)], seedProvider);
     const seedQuote = await read(pool, 'previewSeed', [unit(70000)]);
     assert.equal(seedQuote[0], unit(100, decimals));
-    await send(pool, 'seedLiquidity', [unit(70000), seedQuote[0], seedQuote[1] * 99n / 100n, tradingAt]);
+    await send(pool, 'seedLiquidity', [unit(70000), seedQuote[0], seedQuote[1] * 99n / 100n, tradingAt], seedProvider);
     assert.equal(await balance(token, pair.address), unit(70000));
     assert.equal(await balance(quote, pair.address), unit(100, decimals));
     assert.equal(await balance(token, DEAD), 0n);
     assert.equal(await read(token, 'taxTokenBalance'), 0n);
     assert.equal(await read(token, 'liquidityOperation'), 0);
-    assert((await balance(pair, owner)) > 0n);
+    const seedLp = await balance(pair, seedProvider);
+    assert(seedLp > 0n); assert.equal(await balance(pair, owner), 0n);
+    assert.equal(await balance(token, seedProvider), 0n); assert.equal(await balance(quote, seedProvider), 0n);
+    assert.equal((await read(token, 'owner')).toLowerCase(), owner.toLowerCase());
+    const snapshot = await provider.request({ method: 'evm_snapshot', params: [] });
+    await send(pair, 'approve', [pool.address, seedLp], seedProvider);
+    const ownerBeforeRefund = await balance(token, owner);
+    await send(pool, 'removeSeedLiquidity', [seedLp, 0n, 0n, tradingAt], seedProvider);
+    assert((await balance(token, seedProvider)) > 0n); assert((await balance(quote, seedProvider)) > 0n);
+    assert.equal(await balance(token, owner), ownerBeforeRefund);
+    await provider.request({ method: 'evm_revert', params: [snapshot] });
+    pass(label + '指定钱包独立出资并持有初始LP，早期退出资金退回出资钱包，管理员权限保留');
     await send(token, 'transfer', [pool.address, unit(700000000)]);
     pass(label + '100 USDT＋70,000 CaBi真正建池，初始加池不扣税');
 
@@ -173,21 +193,33 @@ async function scenario(decimals) {
     pass(label + '到时领取70%且不再收款，LP归项目钱包，公开交易仍未开放');
     if (legacy) pass(label + '迁移承接历史已领额度，新凭证按扣除历史后的额度准备');
 
+    await send(quote, 'mint', [largeHolder, unit(150, decimals)]);
+    await prepare(largeHolder, unit(350000), 1n);
+    await send(pool, 'claim', [], largeHolder);
+    assert.equal(await read(token, 'isMaxWalletExempt', [largeHolder]), false);
+    assert.equal(await balance(token, largeHolder), unit(245000));
+    assert.equal(await read(pool, 'payoutAvailable', [largeHolder]), 0n);
+    pass(label + '普通用户一次领取245,000枚，无需持仓豁免或分批领取');
+
     await advance(tradingAt);
     assert.equal(await read(token, 'phase'), 3);
     await send(token, 'transfer', [bob, unit(1)], alice);
     assert.equal(await balance(token, bob), unit(24501));
+    await send(token, 'transfer', [buyer, unit(245000)], largeHolder);
+    assert.equal(await balance(token, buyer), unit(245000));
+    assert.equal(await read(token, 'isMaxWalletExempt', [buyer]), false);
     await send(quote, 'mint', [buyer, unit(10, decimals)]);
     await send(quote, 'approve', [router.address, unit(10, decimals)], buyer);
     const amounts = await read(router, 'getAmountsOut', [unit(10, decimals), [quote.address, token.address]]);
     await send(router, 'swapExactTokensForTokensSupportingFeeOnTransferTokens', [unit(10, decimals), 1n, [quote.address, token.address], buyer, tradingAt + 60n], buyer);
     const tax = amounts[1] * 300n / 10000n;
-    assert.equal(await balance(token, buyer), amounts[1] - tax);
+    assert.equal(await balance(token, buyer), unit(245000) + amounts[1] - tax);
     assert.equal(await read(token, 'taxTokenBalance'), tax);
     await send(token, 'approve', [router.address, unit(100)], buyer);
     await send(router, 'swapExactTokensForTokensSupportingFeeOnTransferTokens', [unit(100), 1n, [token.address, quote.address], buyer, tradingAt + 60n], buyer);
     assert.equal(await balance(token, DEAD), unit(3));
     pass(label + '正式开盘自动开放转账和双向交易，买3%与卖3%税正常');
+    pass(label + '持仓超过20万枚仍能接收普通转账和继续买入');
 
     const taxQuote = await read(token, 'previewTaxSwap', [tax]);
     await send(token, 'processTax', [tax, taxQuote[1], tradingAt + 60n]);

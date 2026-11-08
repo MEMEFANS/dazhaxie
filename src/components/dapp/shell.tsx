@@ -15,6 +15,7 @@ import { ReferralGate } from "@/components/dapp/referral-gate";
 import { chainConfig } from "@/lib/chain-config";
 import * as wallet from "@/lib/wallet";
 import styles from "./shell.module.css";
+import { afterSalesUrl } from "@/lib/support";
 
 const WalletDrawerContent = dynamic(() => import("./wallet-drawer-content"), {
   loading: () => <p role="status" className="py-6 text-sm text-mute">正在加载账户信息…</p>,
@@ -33,6 +34,7 @@ const mobileItems = primaryItems.map(item => item.href === "/dapp/promotion" ? c
 
 const serviceItems = [
   { ...communityItem, detail: "公告、交流与生态动态" },
+  { href: afterSalesUrl(), label: "售后服务", detail: "物流查询、收货信息与商品问题", icon: Headphones },
   { href: "/dapp/support", label: "联系支持", detail: "查看工单与常见问题", icon: Headphones },
 ];
 

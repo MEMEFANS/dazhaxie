@@ -7,6 +7,7 @@ interface ICaBiLaunchPoolIdentity {
     function token() external view returns (address);
     function usdt() external view returns (address);
     function tradingPair() external view returns (address);
+    function seedProvider() external view returns (address);
 }
 
 /**
@@ -30,7 +31,13 @@ contract CaBiLaunchToken is CaBiPancakeToken {
     event LiquidityOpened(uint64 claimStartsAt, uint64 tradingStartsAt);
 
     constructor(address distributionReceiver_, address buybackPool_, address ownerAddress)
-        CaBiPancakeToken(distributionReceiver_, buybackPool_, ownerAddress) {}
+        CaBiPancakeToken(distributionReceiver_, buybackPool_, ownerAddress) {
+        // Keep the legacy getter compatible with existing clients. No transfer
+        // path enforces this value and the owner cannot enable a wallet limit.
+        maxWalletAmount = TOTAL_SUPPLY;
+    }
+
+    function walletLimitEnabled() public pure override returns (bool) { return false; }
 
     function configureLaunchPool(address pool) external onlyOwner nonReentrant {
         require(launchPool == address(0) && tradingPair != address(0), "configure trading first");
@@ -48,6 +55,7 @@ contract CaBiLaunchToken is CaBiPancakeToken {
     }
     function openLiquidity() external onlyOwner nonReentrant {
         require(!liquidityEnabled && launchPool != address(0) && claimStartsAt > block.timestamp, "launch not ready");
+        require(ICaBiLaunchPoolIdentity(launchPool).seedProvider() != address(0), "set seed provider first");
         liquidityEnabled = true;
         emit LiquidityOpened(claimStartsAt, tradingStartsAt);
     }
@@ -93,9 +101,10 @@ contract CaBiLaunchToken is CaBiPancakeToken {
         if (isTradingOpen() || _liquidityTaxExempt(from, to)) return;
         // Direct owner funding/allocations do not permit pair output or selling.
         if (from == owner && to != tradingPair && msg.sender == owner) return;
-        if (from == owner && to == launchPool && msg.sender == launchPool) return;
+        address provider = launchPool == address(0) ? address(0) : ICaBiLaunchPoolIdentity(launchPool).seedProvider();
+        if (from == provider && to == launchPool && msg.sender == launchPool) return;
         // Owner can recover uncommitted funds; users receive only prepared claims.
-        if (from == launchPool && msg.sender == launchPool && to != tradingPair && (to == owner || isClaimOpen())) return;
+        if (from == launchPool && msg.sender == launchPool && to != tradingPair && (to == owner || to == provider || isClaimOpen())) return;
         revert("transfers locked until trading");
     }
 }

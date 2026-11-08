@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { readOperationalSettings } from "./admin-db";
 import { adminDataDirectory } from "./admin-db";
 import { AdminRequestError } from "./admin-session";
+import { SUPPORT_CATEGORIES } from "../support";
 
 type Row = Record<string, unknown>;
 interface Statement {
@@ -316,7 +317,7 @@ export interface TicketRecord {
 }
 const TICKET_STATUS_LABEL: Record<TicketStatus, string> = { pending: "待处理", processed: "已处理", closed: "已完结" };
 export const TICKET_STATUSES = TICKET_STATUS_LABEL;
-const CATEGORIES = ["认购问题", "奖励问题", "兑换问题", "交易问题", "其他"];
+const CATEGORIES = SUPPORT_CATEGORIES;
 function mapTicket(row: Row, replies: TicketReplyRecord[]): TicketRecord {
   return {
     id: String(row.id), address: String(row.address), category: String(row.category), title: String(row.title),
@@ -328,7 +329,7 @@ function repliesOf(ticketId: string): TicketReplyRecord[] {
   return communityDatabase().prepare("SELECT * FROM ticket_replies WHERE ticket_id=? ORDER BY at ASC, rowid ASC").all(ticketId)
     .map(row => ({ id: String(row.id), author: String(row.author), role: row.role === "user" ? "user" as const : "support" as const, content: String(row.content), at: Number(row.at) }));
 }
-export function createTicket(address: string, input: { category?: unknown; title?: unknown; content?: unknown }) {
+export function createTicket(address: string, input: { category?: unknown; title?: unknown; content?: unknown }, orderSummary?: string) {
   const key = address.toLowerCase();
   if (memberStatus(key) === "none") ensureMember(key);
   const category = typeof input.category === "string" && CATEGORIES.includes(input.category) ? input.category : null;
@@ -343,7 +344,7 @@ export function createTicket(address: string, input: { category?: unknown; title
   if (Number(recent?.count || 0) >= 5) throw new AdminRequestError("提交过于频繁，请稍后重试", 429);
   const id = `T${now.toString(36).toUpperCase()}${randomUUID().slice(0, 6).toUpperCase()}`;
   db.prepare("INSERT INTO tickets(id,address,category,title,content,status,created_at,updated_at) VALUES(?,?,?,?,?, 'pending',?,?)")
-    .run(id, key, category, title, content, now, now);
+    .run(id, key, category, title, orderSummary ? `${orderSummary}\n\n${content}` : content, now, now);
   return mapTicket(db.prepare("SELECT * FROM tickets WHERE id=?").get(id)!, []);
 }
 export function listTicketsFor(address: string) {
@@ -355,7 +356,7 @@ export function listTickets(options: { status?: string; q?: string; page?: numbe
   const clauses: string[] = [], params: Array<string | number> = [];
   if (options.status && ["pending", "processed", "closed", "all"].includes(options.status) && options.status !== "all") { clauses.push("status=?"); params.push(options.status); }
   const q = options.q?.trim().toLowerCase();
-  if (q) { clauses.push("(address LIKE ? OR title LIKE ? OR id LIKE ?)"); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+  if (q) { clauses.push("(address LIKE ? OR title LIKE ? OR id LIKE ? OR content LIKE ?)"); params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`); }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const total = Number(db.prepare(`SELECT COUNT(*) AS count FROM tickets ${where}`).get(...params)?.count || 0);
   const rows = db.prepare(`SELECT * FROM tickets ${where} ORDER BY updated_at DESC, created_at DESC LIMIT ? OFFSET ?`).all(...params, pageSize, (page - 1) * pageSize);

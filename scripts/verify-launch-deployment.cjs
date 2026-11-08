@@ -9,6 +9,7 @@ const { JSDOM } = require('jsdom');
 const { createPublicClient, createWalletClient, custom, toHex, zeroAddress } = require('viem');
 const { buildBundle, createSession, kinds, labels } = require('./launch-deployment-session.cjs');
 const { compileLaunch } = require('./compile-launch-contracts.cjs');
+const { writeHandoff } = require('./relaunch-handoff.cjs');
 const root = path.resolve(__dirname, '..');
 let passed = 0;
 function pass(message) { passed++; console.log('PASS ' + message); }
@@ -31,20 +32,21 @@ async function sessionWorkflow() {
     const usdt = await deploy({ abi: fixture.abi, bytecode: '0x' + fixture.evm.bytecode.object }, [18]);
     const factory = await deploy(dex('@uniswap/v2-core', 'UniswapV2Factory'), [owner]);
     const router = await deploy(dex('@uniswap/v2-periphery', 'UniswapV2Router02'), [factory, usdt]);
-    const config = { chainId: 31337, owner, distributionReceiver, buybackPool, lpReceiver, signer, usdt, factory, router, previousClaimPool: zeroAddress };
+    const config = { chainId: 31337, owner, distributionReceiver, buybackPool, lpReceiver, signer, usdt, factory, router, previousClaimPool: zeroAddress, fundReserve: true, newTokenClaimReserve: '700000000', initialTokenAmount: '70000', initialUsdtAmount: '100', release: 'isolated-unlimited-relaunch' };
     const bundle = buildBundle();
     const folder = fs.mkdtempSync(path.join(root, 'output', 'isolated-launch-deployment-'));
     const recordFile = path.join(folder, 'synthetic-result.json');
     const session = createSession({ client, config, bundle, recordFile });
     const preflight = await session.preflight();
     assert.equal(preflight.chainId, 31337); assert(BigInt(preflight.tokenEstimatedGas) > 0n);
+    assert.equal(preflight.previous, null);
     pass('本地预检正确估算部署GAS，全部交易由注入的钱包执行');
     const first = await session.plan('token');
     const initialNonce = toHex(await client.getTransactionCount({ address: owner, blockTag: 'pending' }));
     await session.begin('token', initialNonce, first.dataHash);
     session.cancelled('token'); assert.equal((await session.status()).record.pending, null);
     pass('钱包取消后清除等待记录，可以重新准备部署');
-    for (const kind of kinds) {
+    for (const kind of session.kinds) {
       const plan = await session.plan(kind);
       const nonce = toHex(await client.getTransactionCount({ address: owner, blockTag: 'pending' }));
       await session.begin(kind, nonce, plan.dataHash);
@@ -60,8 +62,24 @@ async function sessionWorkflow() {
     const status = await restored.status();
     assert.equal(status.state.complete, true); assert.equal(status.state.phase, 0);
     assert.equal(status.state.claimAt, '0'); assert.equal(status.state.tradingAt, '0');
-    assert.equal(status.state.liquidityEnabled, false); assert.equal(status.state.poolBalance, '0');
-    pass('重启可恢复五步部署记录，最终保持筹备阶段且没有注资或开盘');
+    assert.equal(status.state.liquidityEnabled, false); assert.equal(status.state.poolBalance, String(700000000n * 10n ** 18n));
+    assert.equal(status.state.walletLimitEnabled, false);
+    assert.equal(await client.readContract({ address: status.state.pool, abi: bundle.pool.abi, functionName: 'previousPool' }), zeroAddress);
+    pass('重启恢复六步部署记录，7亿新币储备就绪，领取和交易仍未开启');
+    const replacement = createSession({ client, config: { ...config, previousPoolKind: 'launch', previousToken: status.state.token, previousClaimPool: status.state.pool }, bundle, recordFile: path.join(folder, 'next-result.json') });
+    const previous = (await replacement.preflight()).previous;
+    assert.equal(previous.token.toLowerCase(), status.state.token.toLowerCase());
+    assert.equal(previous.reservedPayout, '0');
+    assert.equal(previous.poolBalance, status.state.poolBalance);
+    pass('重新部署可核验旧Launch池，通过代币读取owner并保留历史池信息');
+    writeHandoff({ destination: folder, config, state: status.state, fingerprint: session.fingerprint });
+    const env = fs.readFileSync(path.join(folder, 'website.env.pending'), 'utf8');
+    assert(env.includes('NEXT_PUBLIC_TOKEN_ADDRESS=' + status.state.token));
+    assert(env.includes('NEXT_PUBLIC_CLAIM_POOL_ADDRESS=' + status.state.pool));
+    assert.equal(JSON.parse(fs.readFileSync(path.join(folder, 'stage2.template.json'), 'utf8')).claimStartsAt, null);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(folder, 'stage2.template.json'), 'utf8')).previousPool, zeroAddress);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(folder, 'handoff.json'), 'utf8')).status, 'deployed-awaiting-schedule-and-seed');
+    pass('导出新地址和后续步骤，开放时间留空，网站配置仅生成待切换文件');
   } finally { await provider.disconnect(); }
 }
 
@@ -73,8 +91,10 @@ async function browserWorkflow(mode) {
   const owner = '0x1111111111111111111111111111111111111111';
   const hash = '0x' + 'a'.repeat(64), dataHash = '0x' + 'b'.repeat(64), address = '0x2222222222222222222222222222222222222222';
   let pending = null, sends = 0, cancelled = false, verified = false;
-  const record = { actions: {} }, state = {};
-  const manifest = { owner, chainId: 56, kinds, labels, initialUsdtAmount: '100', initialTokenAmount: '70000', fingerprint: mode, preflight: { tokenEstimatedFeeBnb: '0.001' } };
+  const record = { actions: {} }, state = mode === 'fund' ? { token: address, pair: address, pool: address, tradingReady: true, bindReady: true } : {};
+  const activeKind = mode === 'fund' ? 'fund' : 'token';
+  const manifest = { owner, chainId: 56, kinds: mode === 'fund' ? [...kinds, 'fund'] : kinds, labels, fundReserve: mode === 'fund', newTokenClaimReserve: '700000000', initialUsdtAmount: '100', initialTokenAmount: '70000', fingerprint: mode, preflight: { tokenEstimatedFeeBnb: '0.001' } };
+  if (mode === 'fund') manifest.legacyPolicy = 'skip-owner-test';
   w.ethereum = { isMetaMask: true, request: async ({ method, params }) => {
     if (method === 'eth_requestAccounts' || method === 'eth_accounts') return [owner];
     if (method === 'eth_chainId') return '0x38';
@@ -91,21 +111,22 @@ async function browserWorkflow(mode) {
     let value;
     if (url === '/manifest.json') value = manifest;
     else if (url === '/api/state') value = { record: { ...record, pending }, state };
-    else if (url === '/api/plan?kind=token') value = { kind: 'token', label: labels.token, dataHash, estimatedFeeBnb: '0.001', maxFeeBnb: '0.0012', tx: { from: owner, data: '0x6000', value: '0x0', chainId: '0x38', gas: '0x500000', gasPrice: '0x1234' } };
-    else if (url === '/api/begin') { assert.equal(body.nonce, '0x2'); pending = { kind: 'token', nonce: body.nonce, dataHash }; value = { pending }; }
+    else if (url === '/api/plan?kind=' + activeKind) value = { kind: activeKind, label: labels[activeKind], dataHash, estimatedFeeBnb: '0.001', maxFeeBnb: '0.0012', tx: { from: owner, data: '0x6000', value: '0x0', chainId: '0x38', gas: '0x500000', gasPrice: '0x1234' } };
+    else if (url === '/api/begin') { assert.equal(body.nonce, '0x2'); pending = { kind: activeKind, nonce: body.nonce, dataHash }; value = { pending }; }
     else if (url === '/api/cancel') { cancelled = true; pending = null; value = { cleared: true }; }
     else if (url === '/api/hash') { pending.hash = body.hash; value = { saved: true }; }
     else if (url === '/api/verify') {
       assert.equal(body.hash, hash);
       if (mode === 'lost-reply') throw new Error('Synthetic interrupted response');
-      verified = true; pending = null; state.token = address; record.actions.token = { hash, address };
+      verified = true; pending = null; state.token = address; record.actions[activeKind] = { hash, address };
+      if (activeKind === 'fund') { state.funded = true; state.complete = true; }
       value = { verified: { hash }, state, record };
     } else throw new Error('Unexpected local fixture route: ' + url);
     return { ok: true, json: async () => value };
   };
   w.eval(script); await w.cabiLaunchReady;
   await w.document.getElementById('connect').onclick();
-  await w.document.querySelector('[data-send="token"]').onclick();
+  await w.document.querySelector(`[data-send="${activeKind}"]`).onclick();
   assert.equal(sends, 1);
   if (mode === 'cancel') {
     assert.equal(cancelled, true); assert.equal(pending, null); assert.equal(w.document.querySelector('[data-send="token"]').disabled, false);
@@ -115,6 +136,14 @@ async function browserWorkflow(mode) {
     assert.equal(w.document.querySelector('[data-send="token"]').disabled, true);
     assert.equal(JSON.parse(w.localStorage.getItem('cabi-launch-deployment:' + mode)).hash, hash);
     pass('回执查询中断仍保留哈希并阻止重复部署');
+  } else if (mode === 'fund') {
+    assert.equal(verified, true); assert.equal(state.funded, true);
+    assert.equal(w.document.querySelector('[data-kind="fund"]').hidden, false);
+    assert.equal(w.document.getElementById('continue').disabled, true);
+    assert.equal(w.document.querySelector('[data-send="fund"]').disabled, true);
+    assert.equal(w.document.getElementById('legacyNotice').hidden, true);
+    assert(w.document.getElementById('legacyInfo').textContent.includes('旧测试币与旧 LP 不迁移'));
+    pass('重部署页面展示第六步储备注资，确认后整套部署完成');
   } else {
     assert.equal(verified, true); assert.equal(w.document.querySelector('[data-send="pair"]').disabled, false);
     pass('数值nonce转换为十六进制字符串，钱包确认后才解锁下一步');
@@ -123,7 +152,7 @@ async function browserWorkflow(mode) {
 }
 async function main() {
   await sessionWorkflow();
-  for (const mode of ['success', 'cancel', 'lost-reply']) await browserWorkflow(mode);
+  for (const mode of ['success', 'cancel', 'lost-reply', 'fund']) await browserWorkflow(mode);
   console.log(passed + ' deployment workflow checks passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

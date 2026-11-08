@@ -214,6 +214,7 @@ contract CaBiPancakeToken {
         emit PoolBurned(pool, amount, tokenBefore, block.timestamp);
     }
     function setMaxWalletAmount(uint256 amount) external onlyOwner nonReentrant {
+        require(walletLimitEnabled(), "wallet limit permanently disabled");
         require(amount > 0 && amount <= TOTAL_SUPPLY, "invalid wallet limit");
         emit MaxWalletAmountUpdated(maxWalletAmount, amount); maxWalletAmount = amount;
     }
@@ -334,7 +335,7 @@ contract CaBiPancakeToken {
         bool sell = !taxExempt && tradingPair != address(0) && to == tradingPair;
         uint256 fee = (buy || sell) ? amount * (buy ? BUY_FEE_BPS : SELL_FEE_BPS) / FEE_DENOMINATOR : 0;
         uint256 net = amount - fee;
-        if (from != to && net > 0 && !isMaxWalletExempt[to]) require(balanceOf[to] + net <= maxWalletAmount, "max wallet exceeded");
+        if (walletLimitEnabled() && from != to && net > 0 && !isMaxWalletExempt[to]) require(balanceOf[to] + net <= maxWalletAmount, "max wallet exceeded");
         if (fee > 0) _move(from, buy ? address(this) : BURN_ADDRESS, fee);
         _move(from, to, net);
         if (buy) emit BuyTaxCollected(to, amount, fee);
@@ -347,6 +348,7 @@ contract CaBiPancakeToken {
     // Default hooks preserve this contract's existing behavior. The launch
     // variant uses them for its published schedule and dedicated LP operations.
     function _beforeTransfer(address, address) internal view virtual {}
+    function walletLimitEnabled() public pure virtual returns (bool) { return true; }
     function _liquidityTaxExempt(address, address) internal view virtual returns (bool) { return false; }
     function _poolBurnEnabled() internal view virtual returns (bool) { return true; }
     function _setExempt(address account, bool exempt) internal { isMaxWalletExempt[account] = exempt; emit MaxWalletExemptionSet(account, exempt); }

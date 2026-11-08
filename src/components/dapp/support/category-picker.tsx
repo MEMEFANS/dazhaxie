@@ -3,7 +3,8 @@
 // 工单分类选择（表单内）+ 状态筛选（列表头部）按钮组
 // 尺寸规范：控件高 28px（sm 档），选中态金色描边、不用大面积金色填充
 
-export const CATEGORIES = ["认购问题", "奖励问题", "兑换问题", "交易问题", "其他"];
+import { SUPPORT_CATEGORIES } from "@/lib/support";
+export const CATEGORIES = SUPPORT_CATEGORIES;
 export const FILTERS = [
   { key: "all", label: "全部" },
   { key: "pending", label: "待处理" },
@@ -15,17 +16,22 @@ export type FilterKey = (typeof FILTERS)[number]["key"];
 export function CategoryPicker({
   value,
   onChange,
+  disabled = false,
 }: {
   value: string;
   onChange: (category: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {CATEGORIES.map((c) => (
         <button
           key={c}
+          type="button"
+          disabled={disabled}
+          aria-pressed={value === c}
           onClick={() => onChange(c)}
-          className={`h-8 rounded-full border px-3 text-[11px] transition-colors duration-200 ${
+          className={`min-h-11 rounded-full border px-3 text-xs transition-colors duration-200 ${
             value === c
               ? "border-purple/30 bg-purple/[0.08] font-medium text-purple-deep"
               : "border-line bg-card text-mute hover:border-purple/25 hover:text-strong"
@@ -46,12 +52,14 @@ export function StatusFilter({
   onChange: (key: FilterKey) => void;
 }) {
   return (
-    <div className="inline-flex shrink-0 rounded-full border border-line bg-well p-0.5">
+    <div className="grid w-full grid-cols-4 gap-1 rounded-xl border border-line bg-well p-1 sm:inline-flex sm:w-auto">
       {FILTERS.map((f) => (
         <button
           key={f.key}
           onClick={() => onChange(f.key)}
-          className={`h-7 rounded-full px-2.5 text-[10px] transition-colors duration-200 ${
+          type="button"
+          aria-pressed={value === f.key}
+          className={`min-h-11 rounded-lg px-2 text-xs transition-colors duration-200 ${
             value === f.key
               ? "seg-active font-medium"
               : "text-mute hover:text-strong"

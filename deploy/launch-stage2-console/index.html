@@ -8,11 +8,12 @@
 <body><main>
   <p class="eyebrow">BSC MAINNET · INITIAL LIQUIDITY</p>
   <h1>设置时间并加入初始 LP</h1>
-  <p class="intro">使用专用 CaBi 合约按固定比例设置开放时间并添加初始流动性。每笔交易都由管理员钱包单独确认。</p>
+  <p class="intro" id="intro">使用专用 CaBi 合约设置开放时间并准备初始流动性。</p>
   <section class="card">
     <h2>本次操作参数</h2>
     <dl>
       <div><dt>管理员</dt><dd id="owner">加载中…</dd></div>
+      <div><dt>首次加池钱包</dt><dd id="seedProvider"></dd></div>
       <div><dt>新 CaBi</dt><dd id="token"></dd></div>
       <div><dt>新池</dt><dd id="pool"></dd></div>
       <div><dt>CaBi／USDT 交易对</dt><dd id="pair"></dd></div>
@@ -23,18 +24,20 @@
     <p id="message" role="status" aria-live="polite">正在核对合约和资金…</p>
     <p id="balances" class="muted"></p>
     <p id="fee" class="muted"></p>
-    <p class="muted">“开启组 LP”会永久锁定上方时间。首次加池时，LP 代币发给管理员钱包。</p>
+    <p class="muted" id="lpOwnership">“开启组 LP”会永久锁定上方时间。初始 LP 归出资钱包。</p>
   </section>
   <section class="card">
     <h2>按顺序操作</h2>
     <div class="toolbar"><select id="wallet" aria-label="选择插件钱包"><option>正在寻找插件钱包…</option></select><button id="connect" disabled>连接管理员钱包</button><button id="switch" class="secondary" hidden>切换 BSC 主网</button><button id="refresh" class="secondary">刷新链上状态</button></div>
     <div id="steps">
-      <article data-kind="schedule"><div><h3>1. 设置领取与交易时间</h3><p>领取 2026年11月8日10:12:55；交易 2026年11月8日20:00（北京时间）</p></div><span class="status">待设置</span><button data-send="schedule" disabled>设置时间</button></article>
+      <article data-kind="provider" hidden><div><h3>指定首次加池钱包</h3><p>该钱包负责支付资产和加池 GAS，并接收初始 LP 凭证。</p></div><span class="status">待设置</span><button data-send="provider" disabled>指定出资钱包</button></article>
+      <article data-kind="schedule"><div><h3>设置领取与交易时间</h3><p id="scheduleDescription">加载本次开放时间…</p></div><span class="status">待设置</span><button data-send="schedule" disabled>设置时间</button></article>
       <article data-kind="approveToken"><div><h3>2. 授权新池使用 CaBi</h3><p id="tokenApprovalHint">精确授权 70,000 枚新 CaBi，留在钱包中的余额不受影响。</p></div><span class="status">待授权</span><button data-send="approveToken" disabled>授权 CaBi</button></article>
       <article data-kind="approveUsdt"><div><h3>3. 授权新池使用 USDT</h3><p>精确授权 100 USDT。</p></div><span class="status">待授权</span><button data-send="approveUsdt" disabled>授权 USDT</button></article>
       <article data-kind="open"><div><h3>4. 开启组 LP</h3><p>永久锁定开放时间；交易仍按设定时间开始。</p></div><span class="status">待开启</span><button data-send="open" disabled>开启组 LP</button></article>
-      <article data-kind="seed"><div><h3>5. 首次添加流动性</h3><p>添加 100 USDT＋70,000 枚 CaBi，初始 LP 发给管理员。</p></div><span class="status">待加池</span><button data-send="seed" disabled>加入初始 LP</button></article>
+      <article data-kind="seed"><div><h3>首次添加流动性</h3><p>添加 100 USDT＋70,000 枚 CaBi，初始 LP 发给出资钱包。</p></div><span class="status">待加池</span><button data-send="seed" disabled>加入初始 LP</button></article>
     </div>
+    <p class="muted" id="providerGuide" hidden>完成上方设置后，让指定钱包打开网站的 /liquidity/seed 页面，独立确认两项授权并添加初始流动性。出资钱包需要备好 100 USDT、70,000 新 CaBi 和 BNB 手续费。</p>
   </section>
   <section class="card">
     <h2>恢复待核对交易</h2>

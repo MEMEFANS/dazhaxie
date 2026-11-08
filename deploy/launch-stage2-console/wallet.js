@@ -38,7 +38,7 @@ async function context() {
   if (!same(account, manifest.owner)) throw new Error('请切换到管理员钱包：' + manifest.owner);
 }
 function completed(kind) {
-  return ({ schedule: state.scheduleSet, approveToken: state.tokenApproved, approveUsdt: state.usdtApproved, open: state.liquidityEnabled, seed: state.seeded })[kind] === true;
+  return ({ provider: state.providerSet, schedule: state.scheduleSet, approveToken: state.tokenApproved, approveUsdt: state.usdtApproved, open: state.liquidityEnabled, seed: state.seeded })[kind] === true;
 }
 function cachePending(value) {
   pending = value;
@@ -60,7 +60,7 @@ function render() {
 }
 async function refresh() {
   const next = await api('state'); state = next.state; record = next.record;
-  $('balances').textContent = `管理员余额：${state.ownerTokenBalanceFormatted} CaBi、${state.ownerUsdtBalanceFormatted} USDT；新池储备：${state.poolBalanceFormatted} CaBi；预估初始 LP：${(Number(state.estimatedLp) / 1e18).toLocaleString('zh-CN', { maximumFractionDigits: 6 })} 枚。`;
+  $('balances').textContent = `出资钱包余额：${state.ownerTokenBalanceFormatted} CaBi、${state.ownerUsdtBalanceFormatted} USDT；新池储备：${state.poolBalanceFormatted} CaBi；预估初始 LP：${(Number(state.estimatedLp) / 1e18).toLocaleString('zh-CN', { maximumFractionDigits: 6 })} 枚。`;
   const tokenAllowance = BigInt(state.tokenAllowance), requiredTokenAllowance = BigInt(state.tokenAmount);
   $('tokenApprovalHint').textContent = tokenAllowance !== 0n && tokenAllowance !== requiredTokenAllowance
     ? `当前新池授权为 ${(Number(tokenAllowance) / 1e18).toLocaleString('zh-CN')} 枚，超过本次所需数量；先撤销，再精确授权 70,000 枚。`
@@ -149,6 +149,17 @@ async function initialize() {
   if (!response.ok) throw new Error('无法加载开放时间和初始 LP 参数');
   manifest = await response.json(); storageKey = 'cabi-launch-stage2:' + manifest.fingerprint;
   for (const field of ['owner', 'token', 'pool', 'pair']) $(field).textContent = manifest[field];
+  $('seedProvider').textContent = manifest.seedProvider || manifest.owner;
+  for (const article of document.querySelectorAll('[data-kind]')) article.hidden = !manifest.kinds.includes(article.dataset.kind);
+  for (const [index, kind] of manifest.kinds.entries()) document.querySelector(`[data-kind="${kind}"] h3`).textContent = `${index + 1}. ${manifest.labels[kind]}`;
+  $('kind').replaceChildren();
+  for (const kind of manifest.kinds) { const option = document.createElement('option'); option.value = kind; option.textContent = manifest.labels[kind]; $('kind').appendChild(option); }
+  $('providerGuide').hidden = !manifest.seedProvider;
+  if (manifest.seedProvider) {
+    $('intro').textContent = '管理员确认指定出资钱包、领取和交易时间，再开启组 LP。资产授权和首次加池由指定钱包独立完成。';
+    $('lpOwnership').textContent = '“开启组 LP”会锁定出资钱包与开放时间。初始 LP 直接进入指定出资钱包，管理员权限保留。';
+  }
+  $('scheduleDescription').textContent = `领取 ${manifest.claimStartsAtBeijing}；交易 ${manifest.tradingStartsAtBeijing}（北京时间）`;
   $('claimTime').textContent = manifest.claimStartsAtBeijing + '（北京时间）';
   $('tradingTime').textContent = manifest.tradingStartsAtBeijing + '（北京时间）';
   discover(); await refresh();

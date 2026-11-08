@@ -26,8 +26,8 @@ function writeHandoff({ destination, config, state, fingerprint }) {
     signer: config.signer, lpReceiver: config.lpReceiver,
     initialLiquidity: 'Owner designates seedProvider before opening liquidity. That wallet supplies both assets and keeps the initial LP. Initial LP is separate from user preparation LP sent to lpReceiver.',
     seedPage: '/liquidity/seed',
-    oldClaims: hasPreviousPool ? 'Preserve claimedOf history. Settle reserved payouts and LP ownership before retiring the old pool. Old tokens do not convert automatically.' : 'New pool is independent (previousPool = zero). No old token or LP migration; no old-pool retirement requirement. Existing transaction and business records remain intact.',
-    website: 'Back up /var/lib/cabi, preserve subscriptions/referrals/shipping/rewards/audits, merge website.env.pending into /etc/cabi.env, retain the existing signer key, rebuild Next.js and verify the active pool after restart.',
+    oldClaims: hasPreviousPool ? 'Preserve claimedOf history. Settle reserved payouts and LP ownership before retiring the old pool. Old tokens do not convert automatically.' : 'New pool is independent (previousPool = zero). No old token or LP migration; no old-pool retirement requirement. Website business records have a separately authorized archived reset; on-chain assets remain unchanged.',
+    website: 'Back up /var/lib/cabi and env. Preserve the clean reset databases and payment_epochs cutoff; never restore old test orders. Retain administrator/payee settings and signer key. Merge website.env.pending into build/runtime env, pause the new chain/token/pool website gate, rebuild and verify. Sales, exchange and pool burn remain off until explicitly enabled.',
     keeper: 'Use the new token address only after website cutover; the new pool burn starts 8 hours after the new trading time.',
   };
   fs.writeFileSync(path.join(destination, 'handoff.json'), JSON.stringify(plan, null, 2) + '\n');

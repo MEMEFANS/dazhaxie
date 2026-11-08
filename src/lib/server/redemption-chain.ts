@@ -3,7 +3,7 @@ import { createPublicClient, decodeEventLog, decodeFunctionData, erc20Abi, fallb
 import { appChain, chainConfig, chainConfigurationValid, contracts } from "../chain-config";
 import { EXCHANGE_COST, MAX_EXCHANGE_PER_TIME } from "../constants";
 import type { RedemptionConfig } from "../redemption";
-import { normalizePayee, readOperationalSettings } from "./admin-db";
+import { normalizePayee, readOperationalSettings, paymentStartBlock } from "./admin-db";
 import { AdminRequestError } from "./admin-session";
 import { redemptionSecret } from "./redemption-db";
 
@@ -122,6 +122,7 @@ export async function verifyRedemptionTransfer(input: { address: string; hash: u
   const currentBlock = await client.getBlockNumber({ cacheTime: 0 });
   if (currentBlock < receipt.blockNumber + 1n) throw new AdminRequestError("等待至少两次区块确认，请稍后重试", 202);
   if (receipt.status !== "success") throw new AdminRequestError("转账交易未成功，请勿重复提交", 409);
+  if (receipt.blockNumber < paymentStartBlock(chainConfig.id)) throw new AdminRequestError("该付款属于重置前的旧记录，不能用于本次兑换", 409);
   const transaction = await client.getTransaction({ hash });
   if (transaction.from.toLowerCase() !== address.toLowerCase()) throw new AdminRequestError("转账钱包与当前账户不一致", 400);
   if (transaction.to?.toLowerCase() !== token.toLowerCase() || transaction.value !== 0n) throw new AdminRequestError("该交易不是代币转账", 400);

@@ -36,6 +36,7 @@ function database(): SqlDatabase {
     CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, account TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS audit (id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL, at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS liquidity_access (scope TEXT PRIMARY KEY, enabled INTEGER NOT NULL, revision INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS payment_epochs (chain_id INTEGER PRIMARY KEY, min_block TEXT NOT NULL, reset_at INTEGER NOT NULL);
   `);
   // 旧库缺少收款地址列时补齐；空值统一回落到黑洞地址，避免历史库没有默认收款人。
   try { db.exec("ALTER TABLE settings ADD COLUMN exchange_payee TEXT NOT NULL DEFAULT ''"); } catch { /* 列已存在 */ }
@@ -54,6 +55,13 @@ export function readOperationalSettings(): OperationalSettings {
     sensitiveWords: JSON.parse(String(row.sensitive_words)) as string[], exchangePayee: String(row.exchange_payee),
     subscribePayee: String(row.subscribe_payee || ""),
     updatedAt: Number(row.updated_at) };
+}
+export function paymentStartBlock(chainId: number): bigint {
+  const row = database().prepare("SELECT min_block FROM payment_epochs WHERE chain_id=?").get(chainId);
+  if (!row) return 0n;
+  const value = String(row.min_block);
+  if (!/^\d+$/.test(value)) throw new Error("Payment epoch configuration is invalid");
+  return BigInt(value);
 }
 // Bind each switch to its chain/token/pool. Missing rows preserve the existing
 // website policy; chain launch rules still decide whether preparation is possible.

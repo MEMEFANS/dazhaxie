@@ -2,7 +2,7 @@ import "server-only";
 import { createPublicClient, decodeEventLog, decodeFunctionData, erc20Abi, fallback, getAddress, http, parseUnits, type Address, type Hash } from "viem";
 import { appChain, chainConfig, chainConfigurationValid, contracts } from "../chain-config";
 import { HARD_CAP, MAX_SHARES, MIN_SHARES, SOFT_CAP, SUBSCRIPTION_PRICE_TIERS, TOKENS_PER_SHARE, subscriptionUnitPrice } from "../constants";
-import { normalizePayee, readOperationalSettings } from "./admin-db";
+import { normalizePayee, readOperationalSettings, paymentStartBlock } from "./admin-db";
 import { AdminRequestError } from "./admin-session";
 import { globalSold, purchasedOf } from "./subscription-db";
 
@@ -87,6 +87,7 @@ export async function verifySubscriptionTransfer(input: { address: string; hash:
   const currentBlock = await client.getBlockNumber({ cacheTime: 0 });
   if (currentBlock < receipt.blockNumber + 1n) throw new AdminRequestError("等待至少两次区块确认，请稍后重试", 202);
   if (receipt.status !== "success") throw new AdminRequestError("转账交易未成功，请勿重复提交", 409);
+  if (receipt.blockNumber < paymentStartBlock(chainConfig.id)) throw new AdminRequestError("该付款属于重置前的旧记录，不能计入本次认购", 409);
   const transaction = await client.getTransaction({ hash });
   if (transaction.from.toLowerCase() !== input.address.toLowerCase()) throw new AdminRequestError("转账钱包与当前账户不一致", 400);
   if (transaction.to?.toLowerCase() !== usdt.toLowerCase() || transaction.value !== 0n) throw new AdminRequestError("该交易不是 USDT 转账", 400);

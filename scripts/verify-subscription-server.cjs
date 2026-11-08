@@ -69,6 +69,7 @@ const chainClient = {
   multicall: async request => chainState.multicall.slice(0, request.contracts.length),
 };
 const settings = { subscribePayee: PAYEE, subscribeLocked: false };
+let paymentEpoch = 0n;
 const chainModule = load('src/lib/server/subscription-chain.ts', {
   'server-only': {},
   '../chain-config': {
@@ -76,7 +77,7 @@ const chainModule = load('src/lib/server/subscription-chain.ts', {
     contracts: { usdt: USDT, token: TOKEN, claimPool: POOL },
   },
   '../constants': constants,
-  './admin-db': { readOperationalSettings: () => ({ ...settings }), normalizePayee: value => value },
+  './admin-db': { readOperationalSettings: () => ({ ...settings }), normalizePayee: value => value, paymentStartBlock: () => paymentEpoch },
   './admin-session': { AdminRequestError },
   './subscription-db': dbModule,
   viem: { ...viem, createPublicClient: () => chainClient },
@@ -245,6 +246,20 @@ function order(address, shares, index) {
     settings.subscribeLocked = false; settings.subscribePayee = '';
     await assertStatus(() => chainModule.verifySubscriptionTransfer({ address: A, hash: hash(11), shares: 2 }), 503, 'no payee');
     settings.subscribePayee = PAYEE;
+    paymentEpoch = 101n; liveTransfer();
+    await assertStatus(() => chainModule.verifySubscriptionTransfer({ address: A, hash: hash(11), shares: 2 }), 409, 'pre-reset payment replay');
+    const redemptionModule = load('src/lib/server/redemption-chain.ts', {
+      'server-only': {}, '../chain-config': { appChain: { id: 56 }, chainConfig: { id: 56, rpcUrls: ['http://isolated.fixture'] }, chainConfigurationValid: true, contracts: { token: USDT } },
+      '../constants': constants, './admin-session': { AdminRequestError }, './redemption-db': { redemptionSecret: () => 'synthetic' },
+      './admin-db': { readOperationalSettings: () => ({}), normalizePayee: value => value, paymentStartBlock: () => paymentEpoch },
+      viem: { ...viem, createPublicClient: () => chainClient },
+    });
+    await assertStatus(() => redemptionModule.verifyRedemptionTransfer({ address: A, hash: hash(11), payee: PAYEE, amount: 100n * 10n ** 6n }), 409, 'pre-reset redemption replay');
+    paymentEpoch = 100n;
+    assert.equal(await chainModule.verifySubscriptionTransfer({ address: A, hash: hash(11), shares: 2 }), 100n * 10n ** 6n);
+    assert.equal(await redemptionModule.verifyRedemptionTransfer({ address: A, hash: hash(11), payee: PAYEE, amount: 100n * 10n ** 6n }), hash(11));
+    paymentEpoch = 0n;
+    pass('old transfers cannot recreate cleared subscriptions; the first new-epoch block remains valid');
     pass('USDT transfer verification requires success, 2 confirmations, from/to/amount and a matching Transfer event');
 
     const persistedItem = dbModule.claimRootItem(pendingD.batch.id, D);

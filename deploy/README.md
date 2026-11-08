@@ -144,4 +144,4 @@ cron 示例：
 
 `NEXT_PUBLIC_CHAIN_ID`、代币/合约地址、RPC、`NEXT_PUBLIC_TRADING_MODE` 在 `next build` 时写入产物。修改后必须重新构建并重启；只改运行环境变量不会生效。
 
-正式 CaBi 主网配置记录在 `deploy/bsc-mainnet.env`，仅包含公开配置。构建前将其中四项合并到构建环境的 `.env.production`，保留其他现有配置。代币地址为 `0xeccbfbb6708ff051e91a2113e4ac4e19b86e26dd`，网络为 BSC 主网（56）。交易池和领取池需独立配置；填写代币地址不会自动开放交易或领取。
+正式 CaBi 主网配置记录在 `deploy/bsc-mainnet.env`，仅包含公开配置。构建前将其中所有配置合并到构建环境的 `.env.production`，并同步运行环境，保留其他现有配置。2026-11-08 重发的代币地址为 `0x153211c82ee4e60d96e712e9b3e50368cd91c7b0`，组 LP / 领取池为 `0x8c063f28d757246f113ab99d7aa7dc8801b009d2`，网络为 BSC 主网（56）。核验记录见 `deploy/relaunch-20261108.result.json`。新池已注入 7 亿枚储备；首次加池、领取及交易时间另行设置。切换地址时保留清理后的数据库和付款起始区块，新合约对应的网站组 LP 开关保存为暂停，业务开关由管理员决定何时开放。

@@ -1,6 +1,6 @@
 # CaBi 无持仓上限版本：重新部署准备
 
-这是一次新币发行，旧地址不会升级。本次重部署项目代币、CaBi/USDT 交易对和专用组 LP / 领取池；继续使用 BSC USDT 与 PancakeSwap V2 官方 Router / Factory。网站业务数据已归档清空，旧代币及领取池配置已移除，业务入口暂停；完成钱包签名并核验后再配置新主网地址。
+这是一次新币发行，旧地址不会升级。本次重部署项目代币、CaBi/USDT 交易对和专用组 LP / 领取池；继续使用 BSC USDT 与 PancakeSwap V2 官方 Router / Factory。2026-11-08 六步钱包交易已完成并核验：新代币 `0x153211c82ee4e60d96e712e9b3e50368cd91c7b0`，新组 LP / 领取池 `0x8c063f28d757246f113ab99d7aa7dc8801b009d2`，交易对 `0xE22fcE4Ca36cf50E03B9123cB0E57A6566922E82`。完整交易记录见 `deploy/relaunch-20261108.result.json`，网站公开配置见 `deploy/bsc-mainnet.env`。业务数据已归档清空，业务入口暂停；首次加池及开放时间尚未设置。
 
 ## 固定参数
 

@@ -1,0 +1,78 @@
+{
+  "chainId": 56,
+  "release": "cabi-unlimited-20261108",
+  "owner": "0xFF1d3fCbeCF2F8c282a63e6C1baA9DfF29a68725",
+  "signer": "0xAA43F3D7C8a008180bBD478b2591CBA4356FA82b",
+  "lpReceiver": "0xfD420403066249b1f963ba616C7B6661008FB9dF",
+  "verifiedAt": "2026-11-08T15:35:00.296Z",
+  "token": "0x153211c82ee4e60d96e712e9b3e50368cd91c7b0",
+  "pair": {
+    "address": "0xE22fcE4Ca36cf50E03B9123cB0E57A6566922E82",
+    "hash": "0x7d5cdac9d45f540c1d9475b07a7805dcfb1a277e58f8fc95a09891c725a11afe"
+  },
+  "pool": "0x8c063f28d757246f113ab99d7aa7dc8801b009d2",
+  "tradingReady": true,
+  "bindReady": true,
+  "funded": true,
+  "phase": 0,
+  "complete": true,
+  "walletLimitEnabled": false,
+  "claimAt": "0",
+  "tradingAt": "0",
+  "liquidityEnabled": false,
+  "poolBalance": "700000000000000000000000000",
+  "seedProvider": "0x0000000000000000000000000000000000000000",
+  "fingerprint": "0x4af5f3848c489c7472faba25bfbe6a6d8507521f7dcf0b2d55f1793f997cd660",
+  "actions": {
+    "token": {
+      "kind": "token",
+      "hash": "0xdb283b14c21095314eb2f809bd3b819e59dd222fedb10525057082aa6b2033f3",
+      "address": "0x153211c82ee4e60d96e712e9b3e50368cd91c7b0",
+      "blockNumber": "132416331",
+      "gasUsed": "4631888",
+      "verifiedAt": "2026-11-08T15:26:34.183Z"
+    },
+    "pair": {
+      "kind": "pair",
+      "hash": "0x7d5cdac9d45f540c1d9475b07a7805dcfb1a277e58f8fc95a09891c725a11afe",
+      "address": "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",
+      "blockNumber": "132416434",
+      "gasUsed": "3248159",
+      "verifiedAt": "2026-11-08T15:27:22.463Z"
+    },
+    "trading": {
+      "kind": "trading",
+      "hash": "0xc29df96f6102d8f52b46b6cee10988dcf4eb7dcfd939d1d34bb858b93b789af7",
+      "address": "0x153211c82ee4e60d96e712e9b3e50368cd91c7b0",
+      "blockNumber": "132416554",
+      "gasUsed": "198556",
+      "verifiedAt": "2026-11-08T15:28:14.735Z"
+    },
+    "pool": {
+      "kind": "pool",
+      "hash": "0x5c83c419aab8bb342a5d42329ada793e82f6ccaee1a1ad1fbfb13a12625297c4",
+      "address": "0x8c063f28d757246f113ab99d7aa7dc8801b009d2",
+      "blockNumber": "132416654",
+      "gasUsed": "3653110",
+      "verifiedAt": "2026-11-08T15:28:58.183Z"
+    },
+    "bind": {
+      "kind": "bind",
+      "hash": "0xaa84559466010a1ee5b3edb1fc519f29a18d75393340e219101e18fb150e7c95",
+      "address": "0x153211c82ee4e60d96e712e9b3e50368cd91c7b0",
+      "blockNumber": "132416784",
+      "gasUsed": "87501",
+      "verifiedAt": "2026-11-08T15:30:01.014Z"
+    },
+    "fund": {
+      "kind": "fund",
+      "hash": "0xc8d9c4e008513c3ccc40e27e1dcd0817672a53a0ab7507af5fc92c60ab0c624b",
+      "address": "0x153211c82ee4e60d96e712e9b3e50368cd91c7b0",
+      "blockNumber": "132416870",
+      "gasUsed": "63039",
+      "verifiedAt": "2026-11-08T15:30:36.548Z"
+    }
+  },
+  "pending": null,
+  "failures": []
+}

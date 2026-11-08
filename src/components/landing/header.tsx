@@ -36,7 +36,7 @@ export function Header() {
           ))}
         </nav>
 
-        <Link href="/dapp" className={styles.headerAction}>
+        <Link href="/" className={styles.headerAction}>
           进入应用 <ArrowUpRight size={14} />
         </Link>
       </div>

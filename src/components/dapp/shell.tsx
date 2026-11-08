@@ -23,32 +23,32 @@ const WalletDrawerContent = dynamic(() => import("./wallet-drawer-content"), {
 
 const primaryItems = [
   { href: "/", label: "首页", icon: House },
-  { href: "/dapp/subscribe", label: "认购", icon: ShoppingBag },
-  { href: "/dapp/token", label: "代币", icon: Coins },
-  { href: "/dapp/promotion", label: "邀请", icon: Users },
-  { href: "/dapp/team", label: "团队", icon: Network },
+  { href: "/subscribe", label: "认购", icon: ShoppingBag },
+  { href: "/token", label: "代币", icon: Coins },
+  { href: "/promotion", label: "邀请", icon: Users },
+  { href: "/team", label: "团队", icon: Network },
 ];
 
-const communityItem = { href: "/dapp/community", label: "社群", icon: MessageCircle };
-const mobileItems = primaryItems.map(item => item.href === "/dapp/promotion" ? communityItem : item);
+const communityItem = { href: "/community", label: "社群", icon: MessageCircle };
+const mobileItems = primaryItems.map(item => item.href === "/promotion" ? communityItem : item);
 
 const serviceItems = [
-  { href: "/dapp/exchange", label: "蟹礼兑换", detail: "用 CaBi 兑换蟹礼，查看兑换订单", icon: Gift },
-  { href: "/dapp/promotion", label: "邀请蟹友", detail: "分享专属链接与邀请二维码", icon: Users },
+  { href: "/exchange", label: "蟹礼兑换", detail: "用 CaBi 兑换蟹礼，查看兑换订单", icon: Gift },
+  { href: "/promotion", label: "邀请蟹友", detail: "分享专属链接与邀请二维码", icon: Users },
   { ...communityItem, detail: "公告、交流与生态动态" },
   { href: afterSalesUrl(), label: "售后服务", detail: "物流查询、收货信息与商品问题", icon: Headphones },
-  { href: "/dapp/support", label: "联系支持", detail: "查看工单与常见问题", icon: Headphones },
+  { href: "/support", label: "联系支持", detail: "查看工单与常见问题", icon: Headphones },
 ];
 
 function isActive(pathname: string, href: string) {
-  return href === "/" ? pathname === "/" || pathname === "/dapp" : pathname.startsWith(href);
+  return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
 export function DAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const overviewPage = pathname === "/" || pathname === "/dapp";
-  const invitePage = pathname === "/dapp/promotion";
-  const communityPage = pathname === "/dapp/community";
+  const overviewPage = pathname === "/";
+  const invitePage = pathname === "/promotion";
+  const communityPage = pathname === "/community";
   const { state, hydrated, connecting, connect, showToast } = useStore();
   const [open, setOpen] = useState(false);
   const [addingToken, setAddingToken] = useState(false);

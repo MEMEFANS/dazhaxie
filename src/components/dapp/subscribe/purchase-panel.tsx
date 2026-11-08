@@ -353,7 +353,7 @@ function PurchasePanelForm() {
       <details className={styles.payee}><summary><span>收款地址与网络</span><span>{shortPayee}<ChevronDown size={14} /></span></summary><div className={styles.payeeAddress}><code>{data?.payee || "暂未开放"}</code><button type="button" onClick={() => void copyPayee()} disabled={!data?.payee} className={styles.copyButton}>{copied ? <><Check size={12} />已复制</> : <><Copy size={12} />复制</>}</button></div><p>请使用 BSC 网络 USDT 支付，转账前核对收款地址与金额。</p></details>
 
       {statusKind ? <div ref={statusResult} tabIndex={-1} aria-label="本次认购状态"><PurchaseStatus kind={statusKind} message={statusMessage} hash={pending?.hash || unregisteredHash || tx.transaction?.hash} onQuery={pending ? () => void recheck() : confirming ? () => void resumeTransfer() : undefined} querying={checking || resuming} /></div> : null}
-      {unregisteredHash ? <a href="/dapp/support" className={`btn btn-outline ${styles.continueButton}`}>联系支持核对登记<ArrowRight size={14} /></a> : null}
+      {unregisteredHash ? <a href="/support" className={`btn btn-outline ${styles.continueButton}`}>联系支持核对登记<ArrowRight size={14} /></a> : null}
       <div ref={inlineActions} className={styles.actions}>
         {!state.connected ? <button type="button" onClick={connect} className={`btn btn-gold ${styles.primaryButton}`}><Wallet size={16} />连接钱包，开始认购<ArrowRight size={16} /></button> : <button type="button" onClick={() => void submit()} disabled={Boolean(reason) || busy} className={`btn btn-gold ${styles.primaryButton}`}>{actionLabel}{!reason && !busy ? <ArrowRight size={16} /> : null}</button>}
       </div>

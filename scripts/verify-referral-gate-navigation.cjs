@@ -13,11 +13,13 @@ const root=createRoot(document.getElementById('root')),pause=()=>new Promise(res
 async function render(){await React.act(async()=>{root.render(React.createElement(RouteShell,null,React.createElement('main',{'data-business':'yes'},'业务页面')));await pause();});}
 async function main(){
  await render();assert(document.querySelector('[data-business]'));assert.equal(queryMounts,1);
- pathname='/dapp/subscribe';await render();assert(document.querySelector('[data-business]'));assert.equal(document.querySelector('[data-referral-gate]'),null);assert.equal(queryMounts,1);
- pathname='/dapp/token';await render();assert(document.querySelector('[data-business]'));assert.equal(queryMounts,1);
+ pathname='/subscribe';await render();assert(document.querySelector('[data-business]'));assert.equal(document.querySelector('[data-referral-gate]'),null);assert.equal(queryMounts,1);
+ pathname='/token';await render();assert(document.querySelector('[data-business]'));assert.equal(queryMounts,1);
  pathname='/';await render();assert(document.querySelector('[data-business]'));assert.equal(queryMounts,1);
- pathname='/dapp/team';await render();assert(document.querySelector('[data-business]'));assert.equal(queryMounts,1);
- const rootLayout=fs.readFileSync(path.join(ROOT,'src/app/layout.tsx'),'utf8'),home=fs.readFileSync(path.join(ROOT,'src/app/page.tsx'),'utf8'),dappLayout=fs.readFileSync(path.join(ROOT,'src/app/dapp/layout.tsx'),'utf8');assert(rootLayout.includes('<RouteShell>{children}</RouteShell>'));assert(home.includes('<Hero />'));assert(!home.includes('DAppShell'));assert(!dappLayout.includes('DAppShell'));
- console.log('PASS the overview and every /dapp route share one authorized gate without remounts.');
+ pathname='/team';await render();assert(document.querySelector('[data-business]'));assert.equal(queryMounts,1);
+ const rootLayout=fs.readFileSync(path.join(ROOT,'src/app/layout.tsx'),'utf8'),home=fs.readFileSync(path.join(ROOT,'src/app/page.tsx'),'utf8'),dappLayout=fs.readFileSync(path.join(ROOT,'src/app/(site)/layout.tsx'),'utf8');assert(rootLayout.includes('<RouteShell>{children}</RouteShell>'));assert(home.includes('<Hero />'));assert(!home.includes('DAppShell'));assert(!dappLayout.includes('DAppShell'));
+ for(const route of ['/community','/promotion','/exchange','/support']){pathname=route;await render();assert(document.querySelector('[data-business]'));assert.equal(queryMounts,1);}
+ pathname='/admin/login';await render();assert.equal(document.querySelector('[data-referral-gate]'),null);assert.equal(queryMounts,1);
+ console.log('PASS every short public route shares one authorized gate without remounts; admin stays separate.');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{await React.act(async()=>root.unmount());dom.window.close();});

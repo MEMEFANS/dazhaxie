@@ -20,9 +20,9 @@ export default function TokenPageClient() {
       <ClaimCard />
 
       <nav aria-label="订单与服务" className="flex flex-wrap justify-center gap-x-6 gap-y-1 text-xs text-mute">
-        <Link className="inline-flex min-h-11 items-center hover:text-purple-deep" href="/dapp/subscribe#subscription-records">认购订单与收货</Link>
-        <Link className="inline-flex min-h-11 items-center hover:text-purple-deep" href="/dapp/exchange">蟹礼兑换</Link>
-        <Link className="inline-flex min-h-11 items-center hover:text-purple-deep" href="/dapp/support">客服与售后</Link>
+        <Link className="inline-flex min-h-11 items-center hover:text-purple-deep" href="/subscribe#subscription-records">认购订单与收货</Link>
+        <Link className="inline-flex min-h-11 items-center hover:text-purple-deep" href="/exchange">蟹礼兑换</Link>
+        <Link className="inline-flex min-h-11 items-center hover:text-purple-deep" href="/support">客服与售后</Link>
       </nav>
     </PageStack>
   );

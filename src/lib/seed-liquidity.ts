@@ -17,7 +17,7 @@ const tokenAbi = parseAbi([
   "function tradingPair() view returns(address)",
 ]);
 const pairAbi = parseAbi(["function token0() view returns(address)", "function token1() view returns(address)"]);
-const client = createPublicClient({ chain: appChain, transport: fallback(chainConfig.rpcUrls.map(url => http(url, { timeout: 10_000, retryCount: 0 })), { retryCount: 0 }) });
+const client = createPublicClient({ chain: appChain, transport: fallback(chainConfig.rpcUrls.map(url => http(url, {timeout: 10_000, retryCount: 0, batch: { wait: 12, batchSize: 30 } })), { retryCount: 0 }) });
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 export async function fetchSeedLiquidityData() {

@@ -121,6 +121,6 @@ function SeedForm() {
     </Card> : null}
     {error ? <p className="text-sm leading-6 text-down" role="alert">{error}</p> : null}
     <TransactionFeedback controller={tx} />
-    <Link href="/dapp/token" className="block py-2 text-center text-sm text-mute">返回代币中心</Link>
+    <Link href="/token" className="block py-2 text-center text-sm text-mute">返回代币中心</Link>
   </PageStack>;
 }

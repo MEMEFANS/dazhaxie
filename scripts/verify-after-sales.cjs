@@ -61,7 +61,7 @@ async function main() {
   assert(support.afterSalesUrl({ type: 'exchange', id: exchangeId }).includes('order=' + exchangeId));
   console.log('PASS 兑换订单售后保留来源和完整订单号');
 
-  const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://synthetic.test/dapp/support?category=after-sales' });
+  const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://synthetic.test/support?category=after-sales' });
   global.window = dom.window; global.document = dom.window.document; global.IS_REACT_ACT_ENVIRONMENT = true;
   Object.defineProperty(global, 'navigator', { configurable: true, value: dom.window.navigator });
   const React = require('react'), { createRoot } = require('react-dom/client');

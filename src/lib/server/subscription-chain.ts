@@ -36,7 +36,10 @@ export async function readSubscribeConfig(address?: string): Promise<SubscribeCo
   const hardCap = HARD_CAP, remainingGlobal = Math.max(0, hardCap - sold);
   const remainingPersonal = Math.max(0, MAX_SHARES - purchased);
   let decimals = 18;
-  try { if (contracts.usdt) decimals = await usdtDecimals(); } catch { /* 配置查询失败时保留默认精度，提交时还会重新校验 */ }
+  // BSC's official USDT has fixed 18 decimals. Public sale information should
+  // not wait for a node; payment verification still checks the live contract.
+  const standardUsdt = chainConfig.id === 56 && contracts.usdt?.toLowerCase() === "0x55d398326f99059ff775485246999027b3197955";
+  try { if (contracts.usdt && !standardUsdt) decimals = await usdtDecimals(); } catch { /* 提交时重新校验 */ }
   let message: string | undefined;
   if (!chainConfigurationValid) message = "当前网络配置无效";
   else if (!contracts.usdt) message = "等待配置 USDT 地址";

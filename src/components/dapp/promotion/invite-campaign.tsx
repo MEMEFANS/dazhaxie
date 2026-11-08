@@ -17,7 +17,7 @@ export function InviteCampaign() {
   const code = canShare ? referral.data!.code : "";
   const inviteLink =
     canShare && typeof window !== "undefined"
-      ? `${window.location.origin}/dapp/subscribe?ref=${encodeURIComponent(code)}`
+      ? `${window.location.origin}/subscribe?ref=${encodeURIComponent(code)}`
       : "";
 
   useEffect(() => {
@@ -116,7 +116,7 @@ export function InviteCampaign() {
             </div>
           </details>
         )}
-        <Link href="/dapp/team" className={styles.teamLink}>查看我的蟹友团 <ArrowUpRight size={15} /></Link>
+        <Link href="/team" className={styles.teamLink}>查看我的蟹友团 <ArrowUpRight size={15} /></Link>
         <p className={styles.note}>好友打开链接即可带入邀请码，确认后免费绑定。推荐关系绑定后不可更换。</p>
       </div>
     </section>

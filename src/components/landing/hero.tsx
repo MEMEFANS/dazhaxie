@@ -24,25 +24,25 @@ import { OverviewStatus } from "./overview-status";
 
 const shortcuts = [
   {
-    href: "/dapp/subscribe",
+    href: "/subscribe",
     label: "生态认购",
     detail: "认购份额 · 收货订单",
     icon: ShoppingBag,
   },
   {
-    href: "/dapp/token",
+    href: "/token",
     label: "CaBi 代币",
     detail: "组 LP · 领取代币",
     icon: Coins,
   },
   {
-    href: "/dapp/exchange",
+    href: "/exchange",
     label: "蟹礼兑换",
     detail: "用 CaBi 兑换蟹礼",
     icon: Gift,
   },
   {
-    href: "/dapp/promotion",
+    href: "/promotion",
     label: "邀请蟹友",
     detail: "分享你的专属邀请",
     icon: UsersRound,
@@ -99,7 +99,7 @@ export function Hero() {
             一点 MEME，一群蟹友。一起探索 CaBi 与真实蟹礼。
           </p>
           <div className={styles.heroActions}>
-            <Link href="/dapp/subscribe" className={styles.primaryButton}>
+            <Link href="/subscribe" className={styles.primaryButton}>
               认购蟹礼 <ArrowRight size={15} />
             </Link>
             <a href="#ecosystem" className={styles.bannerTextLink}>
@@ -171,7 +171,7 @@ export function Hero() {
             <div className={styles.participationAmount}>
               <span className={styles.amountIcon}><Coins size={21} aria-hidden="true" /></span>
               <strong>50–70 <small>USDT / 份</small></strong>
-              <Link href="/dapp/subscribe">查看认购规则 <ArrowUpRight size={13} /></Link>
+              <Link href="/subscribe">查看认购规则 <ArrowUpRight size={13} /></Link>
             </div>
             <div className={styles.metrics}>
               {metrics.map((metric) => (
@@ -181,7 +181,7 @@ export function Hero() {
                 </div>
               ))}
             </div>
-            <Link href="/dapp/subscribe" className={`${styles.primaryButton} ${styles.participationButton}`}>
+            <Link href="/subscribe" className={`${styles.primaryButton} ${styles.participationButton}`}>
               查看认购详情 <ArrowRight size={15} />
             </Link>
           </div>
@@ -219,7 +219,7 @@ export function Hero() {
             <p className={styles.sectionKicker}>CRAB GIFT MARKET</p>
             <h2>挑一份心仪蟹礼</h2>
             <p>查看礼盒规格、兑换条件与商品信息。</p>
-            <Link href="/dapp/exchange" className={styles.textLink}>
+            <Link href="/exchange" className={styles.textLink}>
               查看蟹礼兑换 <ArrowRight size={14} />
             </Link>
           </div>
@@ -238,7 +238,7 @@ export function Hero() {
             <p className={styles.sectionKicker}>CRAB FRIENDS</p>
             <h2>和蟹友一起探索</h2>
             <p>进入社群查看公告、交流生态进展并联系支持。</p>
-            <Link href="/dapp/community" className={styles.textLink}>
+            <Link href="/community" className={styles.textLink}>
               进入社群 <MessageCircle size={14} />
             </Link>
           </div>

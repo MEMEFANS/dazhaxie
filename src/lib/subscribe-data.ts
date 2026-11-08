@@ -42,7 +42,7 @@ export function useSubscribeConfig(address?: string) {
   }, [address]);
   useEffect(() => {
     const cancel = refresh();
-    const timer = window.setInterval(() => { void fetchSubscribeConfig(address).then(data => setSnapshot({ status: "ready", data }), error => setSnapshot(previous => previous.data ? previous : { status: "error", error: error instanceof Error ? error.message : "认购配置暂时无法读取" })); }, 15_000);
+    const timer = window.setInterval(() => { if (!document.hidden) refresh(); }, 30_000);
     const sync = () => { if (document.visibilityState === "visible") refresh(); };
     window.addEventListener("focus", sync);
     document.addEventListener("visibilitychange", sync);

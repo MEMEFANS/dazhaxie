@@ -15,7 +15,7 @@ export function Footer() {
           <p>© 2026 XIE BIT · 螃蟹与数字生活</p>
           <p>
             BTC 为视觉灵感，生态代币为 CaBi。需要帮助？{" "}
-            <Link href="/dapp/support">
+            <Link href="/support">
               联系支持 <ArrowUpRight size={11} />
             </Link>
           </p>

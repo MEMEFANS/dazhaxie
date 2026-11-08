@@ -72,7 +72,7 @@ export type ChainDataResult<T> = Snapshot<T> & { refresh: () => void };
 
 const client = createPublicClient({
   chain: appChain,
-  transport: fallback(chainConfig.rpcUrls.map(url => http(url, { timeout: 8_000, retryCount: 0 })), {
+  transport: fallback(chainConfig.rpcUrls.map(url => http(url, {timeout: 8_000, retryCount: 0, batch: { wait: 12, batchSize: 30 } })), {
     rank: false,
     retryCount: 0,
   }),

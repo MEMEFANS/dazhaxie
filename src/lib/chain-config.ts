@@ -42,7 +42,11 @@ if (customRpc) {
 
 export const chainConfig = {
   ...preset,
-  rpcUrls: Array.from(new Set([...(rpcOverride ? [rpcOverride] : []), ...preset.rpcUrls])),
+  // Browsers read through our origin so overseas RPC availability cannot block
+  // mainland users. Wallet network registration still uses CHAIN_PRESETS.
+  rpcUrls: typeof window === "undefined"
+    ? Array.from(new Set([...(rpcOverride ? [rpcOverride] : []), ...preset.rpcUrls]))
+    : ["/api/rpc"],
 };
 export const appChain = chainId === 97 ? bscTestnet : bsc;
 

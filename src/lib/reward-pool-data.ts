@@ -17,7 +17,7 @@ export const rewardPoolAbi = parseAbi([
   "function setLpUsdtRatio(uint256)", "function setLpReceiver(address)",
 ]);
 const assetAbi = parseAbi(["function decimals() view returns (uint8)", "function balanceOf(address) view returns (uint256)", "function allowance(address,address) view returns (uint256)"]);
-export const serviceClient = createPublicClient({ chain: appChain, transport: fallback(chainConfig.rpcUrls.map(url => http(url, { timeout: 10_000, retryCount: 0 })), { retryCount: 0 }) });
+export const serviceClient = createPublicClient({ chain: appChain, transport: fallback(chainConfig.rpcUrls.map(url => http(url, {timeout: 10_000, retryCount: 0, batch: { wait: 12, batchSize: 30 } })), { retryCount: 0 }) });
 export interface ServiceWallet { tokenBalance: bigint; usdtBalance: bigint; allowance: bigint; }
 export interface RewardPoolData {
   owner: Address; token: Address; usdt: Address; lpReceiver: Address; directRatio: bigint; lpRatio: bigint; lpUsdtRatio: bigint; burnRemainder: boolean;

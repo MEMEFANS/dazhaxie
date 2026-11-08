@@ -17,7 +17,7 @@ export const claimPoolAbi = parseAbi([
 ]);
 const assetAbi = parseAbi(["function decimals() view returns (uint8)", "function balanceOf(address) view returns (uint256)", "function allowance(address,address) view returns (uint256)", "function maxWalletAmount() view returns (uint256)", "function isMaxWalletExempt(address) view returns (bool)"]);
 const tokenAbi = parseAbi(["function isClaimOpen() view returns (bool)", "function liquidityEnabled() view returns (bool)", "function isTradingOpen() view returns (bool)", "function launchPool() view returns (address)"]);
-export const claimPoolClient = createPublicClient({ chain: appChain, transport: fallback(chainConfig.rpcUrls.map(url => http(url, { timeout: 10_000, retryCount: 0 })), { retryCount: 0 }) });
+export const claimPoolClient = createPublicClient({ chain: appChain, transport: fallback(chainConfig.rpcUrls.map(url => http(url, {timeout: 10_000, retryCount: 0, batch: { wait: 12, batchSize: 30 } })), { retryCount: 0 }) });
 export const serviceClient = claimPoolClient;
 export interface ClaimPreview { amount: bigint; payout: bigint; lpTokens: bigint; usdtRequired: bigint; estimatedLiquidity: bigint; }
 export interface ClaimPoolWallet { tokenBalance: bigint; usdtBalance?: bigint; allowance?: bigint; maxWalletAmount: bigint; exempt: boolean; }

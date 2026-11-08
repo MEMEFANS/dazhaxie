@@ -29,9 +29,9 @@ export function OverviewStatus() {
   const progress = hardCap > 0 ? Math.min(100, sold * 100 / hardCap) : 0;
   const subscriptionClosed = Boolean(config && (!config.enabled || config.remainingGlobal <= 0));
   const accountMetrics = [
-    { label: "我的份额", display: stats ? (stats.purchased + stats.directRewardShares + stats.differentialShares).toLocaleString("en-US") : "—", unit: "份", href: "/dapp/subscribe" },
-    { label: "可用 CaBi", display: correctNetwork && token.data?.balance !== undefined ? formatAssetAmount(token.data.balance, token.data.decimals) : "—", exact: token.data?.balance !== undefined ? formatUnits(token.data.balance, token.data.decimals) : undefined, unit: "枚", href: "/dapp/token" },
-    { label: "待领 CaBi", display: correctNetwork && reward?.server.claimable !== undefined ? formatAssetAmount(reward.server.claimable, reward.tokenDecimals) : "—", unit: "枚", href: "/dapp/token" },
+    { label: "我的份额", display: stats ? (stats.purchased + stats.directRewardShares + stats.differentialShares).toLocaleString("en-US") : "—", unit: "份", href: "/subscribe" },
+    { label: "可用 CaBi", display: correctNetwork && token.data?.balance !== undefined ? formatAssetAmount(token.data.balance, token.data.decimals) : "—", exact: token.data?.balance !== undefined ? formatUnits(token.data.balance, token.data.decimals) : undefined, unit: "枚", href: "/token" },
+    { label: "待领 CaBi", display: correctNetwork && reward?.server.claimable !== undefined ? formatAssetAmount(reward.server.claimable, reward.tokenDecimals) : "—", unit: "枚", href: "/token" },
   ];
   const accountNote = !connected ? "连接钱包，查看当前网络下的个人资产。"
     : !correctNetwork ? `请先在顶部切换至 ${chainConfig.shortName}。`
@@ -51,7 +51,7 @@ export function OverviewStatus() {
       <div className={styles.statusHeading}><h2><Sparkles size={16} /> 认购进度</h2><span className={styles.demoBadge}>{stateLabel(subscribeQuery.status)}</span></div>
       <div className={styles.progressSummary}><strong>{config ? sold.toLocaleString("en-US") : "—"}<small> / {hardCap ? hardCap.toLocaleString("en-US") : "—"} 份</small></strong><span>{config ? progress.toFixed(1) + "%" : "—"}</span></div>
       <TierProgress sold={config?.globalSold} tiers={config?.priceTiers} />
-      <div className={styles.progressFooter}><span>{config ? subscriptionClosed ? "认购已关闭" : `剩余 ${config.remainingGlobal.toLocaleString("en-US")} 份` : "等待服务器记账数据"}</span><Link href="/dapp/subscribe">查看详情 <ArrowUpRight size={12} /></Link></div>
+      <div className={styles.progressFooter}><span>{config ? subscriptionClosed ? "认购已关闭" : `剩余 ${config.remainingGlobal.toLocaleString("en-US")} 份` : "等待服务器记账数据"}</span><Link href="/subscribe">查看详情 <ArrowUpRight size={12} /></Link></div>
       <p className={styles.statusNote}>转账认购：{stateLabel(subscribeQuery.status)} · 领取池：{stateLabel(rewardQuery.status)} · 蟹礼：{redemption.data?.configured ? redemption.data.enabled ? "开放中" : "暂停" : stateLabel(redemption.status)}</p>
     </div>
   </section>;

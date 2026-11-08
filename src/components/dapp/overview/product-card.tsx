@@ -86,7 +86,7 @@ export function ProductCard({
           </span>
         ) : (
           <Link
-            href="/dapp/exchange"
+            href="/exchange"
             className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-line bg-plum/5 text-xs font-medium text-strong transition-colors duration-200 hover:border-gold/35 hover:text-gold"
           >
             兑换 <ArrowRight size={13} />

@@ -21,11 +21,23 @@ example.com {
 	# }
 	# respond @admin_blocked 403
 
-	reverse_proxy 127.0.0.1:3000 {
-		# Next.js 自己输出 Cache-Control：/_next/static 为 1 年 immutable，
-		# 公共静态页为 s-maxage=31536000，/admin 与 /api 为 no-store，不要在这里覆盖。
-		header_up X-Forwarded-Proto {scheme}
+	# Run node deploy/precompress-static.mjs before publishing. Hashed assets
+	# bypass Node; precompressed br/gzip files retain the original MIME type.
+	handle /_next/static/* {
+		uri strip_prefix /_next
+		root * /opt/cabi/.next
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server {
+			precompressed br gzip
+		}
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:3000 {
+			# HTML、API 与后台遵循 Next.js 的 no-store，避免旧合约配置被缓存。
+			header_up X-Forwarded-Proto {scheme}
+		}
 	}
 }
 
-# 发布后让 CDN 刷新：HTML 与 _rsc 变体最长缓存 1 年，不清会继续引用旧构建。
+# 初次应用 no-store 时清理 CDN 中残留的 HTML 和 _rsc 变体。

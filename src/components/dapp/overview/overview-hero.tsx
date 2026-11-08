@@ -140,11 +140,11 @@ export function OverviewHero() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-line px-5 py-4 sm:px-6">
-        <Link href="/dapp/subscribe" className="btn btn-gold h-10 px-5 text-xs">
+        <Link href="/subscribe" className="btn btn-gold h-10 px-5 text-xs">
           {closed ? "查看认购状态" : "立即认购"} <ArrowRight size={14} />
         </Link>
         <Link
-          href="/dapp/exchange"
+          href="/exchange"
           className="btn btn-outline h-10 px-5 text-xs"
         >
           兑换商城

@@ -8,7 +8,8 @@
 
 ```sh
 npm ci
-npm run build
+CABI_DEPLOYMENT_ID=当前提交哈希 npm run build
+node deploy/precompress-static.mjs
 
 # 必须手动补两个目录，否则页面与图片 404
 cp -a .next/static .next/standalone/.next/
@@ -89,7 +90,7 @@ sudo systemctl enable --now cabi
 Next.js 自身输出（实测以 `curl -I` 为准）：
 
 - `/_next/static/*`：`public, max-age=31536000, immutable`（内容哈希，不能也不需要覆盖）。
-- 公共静态页：`s-maxage=31536000`；RSC 变体由 `_rsc` 查询参数区分。
+- 首页和公开业务页（`/subscribe`、`/token`、`/promotion`、`/team`、`/community`、`/exchange`、`/support`、`/liquidity/*`）：`private, no-store`，避免更新合约后继续读取旧配置。
 - `/images/*`：`public, max-age=2678400, stale-while-revalidate=86400`（本仓库 `next.config.ts` 设置）。
 - `/_next/image*`：按 `images.minimumCacheTTL`（31 天）缓存优化结果。
 - `/admin`、`/admin/*`、`/api/*`：`no-store`（本仓库 `next.config.ts` 强制）。
@@ -98,8 +99,14 @@ CDN 要求：
 
 1. 缓存键必须保留 `_rsc` 查询参数，并转发 `rsc`、`next-router-prefetch` 请求头。
 2. 不回源缓存 `/admin`、`/api` 与带登录 Cookie 的请求。
-3. **每次发布后刷新** `/` 与 `/dapp/*` 的 HTML 和 `_rsc` 变体；公共页的 `s-maxage` 是一年，不刷新会继续引用旧构建。
+3. HTML 和 `_rsc` 变体不缓存；初次迁移时刷新 CDN 中残留的 `/`、`/dapp/*` 和各短路径缓存。
 4. 更换同名图片时，清理 `.next/cache/images` 并刷新 CDN，否则 31 天内仍是旧图。
+
+公开链接已移除 `/dapp` 前缀，旧链接通过 308 跳转到短路径，保留邀请码等查询参数；后台和 API 地址保持原有路径。构建时设置 `CABI_DEPLOYMENT_ID` 为提交哈希，可让打开旧页面的用户在版本变化时自动重载。
+
+浏览器的链上只读请求统一发送到同站 `/api/rpc`，服务器核对链 ID 后转发固定上游，支持短缓存、并发去重和节点故障切换。中转不支持签名、发送交易或任意上游地址；付款核验仍走服务端实时查询。钱包添加 BSC 网络使用公开 HTTPS RPC，钱包签名和广播仍由钱包完成。
+
+构建后运行 `node deploy/precompress-static.mjs` 生成 Brotli / gzip 副本；示例 Caddy 配置直接提供 `/_next/static/*`，优先选择 Brotli，并给带哈希资源一年缓存。Caddy 服务用户需要能读取该目录。大陆实际延迟仍取决于源站线路，进一步提速需选择大陆可达性好的 CDN 或邻近机房，并保持动态接口不缓存。
 
 ## 6. 备份与恢复演练
 

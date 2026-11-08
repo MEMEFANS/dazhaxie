@@ -17,7 +17,7 @@ export const pancakeTaxAbi = parseAbi([
 ]);
 const assetAbi = parseAbi(["function decimals() view returns (uint8)","function balanceOf(address) view returns (uint256)"]);
 const pairAbi = parseAbi(["function token0() view returns (address)","function token1() view returns (address)","function getReserves() view returns (uint112,uint112,uint32)"]);
-export const pancakeClient = createPublicClient({chain:appChain,transport:fallback(chainConfig.rpcUrls.map(url=>http(url,{timeout:10_000,retryCount:0})),{retryCount:0})});
+export const pancakeClient = createPublicClient({chain:appChain,transport:fallback(chainConfig.rpcUrls.map(url=>http(url, {timeout:10_000,retryCount:0, batch: { wait: 12, batchSize: 30 } })),{retryCount:0})});
 export interface PancakeTaxData {owner:Address;pendingOwner:Address;usdt:Address;router:Address;pair:Address;distributionReceiver:Address;buybackPool:Address;threshold:bigint;maxAmount:bigint;slippageBps:bigint;automatic:boolean;accruedTokens:bigint;pendingTotal:bigint;pendingAmount?:bigint;usdtDecimals:number;bound:boolean;liquid:boolean;}
 type Snapshot={status:"unconfigured"|"loading"|"error"|"ready";data?:PancakeTaxData;error?:string};
 type Entry={initial:Snapshot;snapshot:Snapshot;listeners:Set<()=>void>;subscribe:(listener:()=>void)=>()=>void;refresh:()=>void};

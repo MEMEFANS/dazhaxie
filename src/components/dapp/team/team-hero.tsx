@@ -14,7 +14,7 @@ export function TeamHero({ stats }: { stats?: PromotionStats }) {
   const [copied, setCopied] = useState(false);
   const canShare = hydrated && state.connected && referral.status === "ready" && Boolean(referral.data?.bound);
   const code = canShare ? referral.data!.code : "";
-  const link = canShare && typeof window !== "undefined" ? window.location.origin + "/dapp/subscribe?ref=" + encodeURIComponent(code) : "";
+  const link = canShare && typeof window !== "undefined" ? window.location.origin + "/subscribe?ref=" + encodeURIComponent(code) : "";
   const teamShares = stats?.teamShares ?? 0;
   const tierIdx = teamTierIndex(teamShares);
   const nextTier = tierIdx < TEAM_TIERS.length - 1 ? TEAM_TIERS[tierIdx + 1] : null;

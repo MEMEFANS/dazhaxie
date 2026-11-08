@@ -6,5 +6,5 @@ export const SUPPORT_ORDER_LABELS: Record<SupportOrderType, string> = { subscrib
 export function afterSalesUrl(order?: SupportOrder) {
   const query = new URLSearchParams({ category: "after-sales" });
   if (order) { query.set("type", order.type); query.set("order", order.id); }
-  return `/dapp/support?${query}`;
+  return `/support?${query}`;
 }

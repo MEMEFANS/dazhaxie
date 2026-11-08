@@ -6,8 +6,8 @@ import Link from "next/link";
 import { ArrowUpRight, Headphones, MessageCircle } from "lucide-react";
 
 const LINKS = [
-  { href: "/dapp/community", label: "官方社群", desc: "群内公告与交流", icon: MessageCircle },
-  { href: "/dapp/support", label: "支持工单", desc: "问题提交与进度查询", icon: Headphones },
+  { href: "/community", label: "官方社群", desc: "群内公告与交流", icon: MessageCircle },
+  { href: "/support", label: "支持工单", desc: "问题提交与进度查询", icon: Headphones },
 ];
 
 export function OverviewLinks() {

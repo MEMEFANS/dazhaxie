@@ -9,7 +9,7 @@ import { useStore } from "./store";
 import { recordChainAudit } from "./chain-audit";
 import { isUserCancelledError } from "./transaction-cancellation";
 
-const client = createPublicClient({ chain: appChain, transport: fallback(chainConfig.rpcUrls.map(url => http(url, { timeout: 12_000, retryCount: 0 })), { retryCount: 0 }) });
+const client = createPublicClient({ chain: appChain, transport: fallback(chainConfig.rpcUrls.map(url => http(url, {timeout: 12_000, retryCount: 0, batch: { wait: 12, batchSize: 30 } })), { retryCount: 0 }) });
 type Phase = "approval" | "action";
 export type ContractTransaction = { status: "wallet" | "pending" | "success" | "failed"; description: string; phase: Phase; hash?: Hash; message: string; cancelled?: boolean };
 type Pending = { version: 1; scope: string; chainId: number; account: Address; address: Address; data: Hex; hash: Hash; description: string; phase: Phase; retainReceipt?: boolean };

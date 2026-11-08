@@ -4,7 +4,7 @@
   "chainId": 56,
   "tokenContract": "CaBiLaunchToken",
   "claimPoolContract": "CaBiLaunchPool",
-  "owner": "0xf8ada5c5052a47dc6e28a07c8a321fb1ad257d70",
+  "owner": "0xff1d3fcbecf2f8c282a63e6c1baa9dff29a68725",
   "distributionReceiver": "0xff1d3fcbecf2f8c282a63e6c1baa9dff29a68725",
   "buybackPool": "0xfe59a342d133ccaaa5a11331da32f81bc9ccaefd",
   "lpReceiver": "0xfd420403066249b1f963ba616c7b6661008fb9df",

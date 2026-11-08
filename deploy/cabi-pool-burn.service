@@ -1,0 +1,21 @@
+[Unit]
+Description=CaBi pool burn automation check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=cabi
+Group=cabi
+WorkingDirectory=/opt/cabi-worker
+EnvironmentFile=/etc/cabi.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --env-file=/opt/cabi/.env.production /opt/cabi-worker/scripts/run-pool-burn-automation.cjs
+TimeoutStartSec=120
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cabi
+

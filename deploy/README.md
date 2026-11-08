@@ -75,7 +75,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now cabi
 ```
 
-Keeper 仅在启用链上周期销毁代币时使用（可选）：它依赖 `viem`，**不能从 standalone 运行包启动**。请在独立目录保留完整源码并执行 `npm ci --omit=dev`，再通过 systemd timer 调用 `node scripts/pool-burn-keeper.cjs --execute`，工作目录指向该目录，`CABI_DATA_DIR` 与主服务一致。
+底池自动燃烧使用后台 `/admin/pool-burn` 配置专用钱包和启停，初次部署默认关闭。执行服务依赖 `viem`，**不能从 standalone 运行包启动**；使用完整源码目录及 `cabi-pool-burn.timer`。安装、升级和操作见 [POOL-BURN.md](POOL-BURN.md)。不要同时运行旧 CLI keeper。
 
 ## 4. 数据目录（CABI_DATA_DIR）
 

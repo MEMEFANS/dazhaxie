@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   Coins,
+  Flame,
   Gift,
   Headphones,
   LayoutDashboard,
@@ -29,6 +30,7 @@ const ADMIN_NAV = [
   { href: "/admin", label: "仪表盘", icon: LayoutDashboard },
   { href: "/admin/settings", label: "运营设置", icon: Settings2 },
   { href: "/admin/contracts", label: "链上合约", icon: Coins },
+  { href: "/admin/pool-burn", label: "底池燃烧", icon: Flame },
   { href: "/admin/subscribe", label: "认购管理", icon: ShoppingBag },
   { href: "/admin/exchange", label: "兑换管理", icon: Gift },
   { href: "/admin/reward-pool", label: "领取管理", icon: Coins },

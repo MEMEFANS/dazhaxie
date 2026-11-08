@@ -8,6 +8,7 @@ export const poolBurnAbi = parseAbi([
   "function POOL_BURN_BPS() view returns (uint256)",
   "function tradingPair() view returns (address)",
   "function lastPoolBurnTime() view returns (uint256)",
+  "function nextPoolBurnTime() view returns (uint256)",
   "function totalPoolBurned() view returns (uint256)",
   "function previewPoolBurn() view returns (uint256 amount,uint256 nextBurnAt,bool due)",
   "function burnPool() returns (uint256)",
@@ -19,13 +20,14 @@ export async function fetchPoolBurnData():Promise<PoolBurnData>{
   if(!address||tradingMode!=="pancake")throw new Error("当前尚未配置新版代币。");
   if(!chainConfigurationValid||await pancakeClient.getChainId()!==chainConfig.id)throw new Error("RPC 网络与项目配置不一致。");
   const blockNumber=await pancakeClient.getBlockNumber({cacheTime:0});
-  const names=["tradingPair","POOL_BURN_INTERVAL","POOL_BURN_BPS","lastPoolBurnTime","totalPoolBurned","previewPoolBurn"] as const;
-  const [pair,interval,rateBps,lastBurn,totalBurned,preview]=await Promise.all(names.map(functionName=>pancakeClient.readContract({address,abi:poolBurnAbi,functionName,blockNumber}))) as [Address,bigint,bigint,bigint,bigint,readonly[bigint,bigint,boolean]];
+  const names=["tradingPair","POOL_BURN_INTERVAL","POOL_BURN_BPS","lastPoolBurnTime","totalPoolBurned","previewPoolBurn","nextPoolBurnTime"] as const;
+  const [pair,interval,rateBps,lastBurn,totalBurned,preview,contractNextBurn]=await Promise.all(names.map(functionName=>pancakeClient.readContract({address,abi:poolBurnAbi,functionName,blockNumber}))) as [Address,bigint,bigint,bigint,bigint,readonly[bigint,bigint,boolean],bigint];
   const block=await pancakeClient.getBlock({blockNumber});
   const [amount,nextBurn,due]=preview;
   if(interval!==28800n||rateBps!==100n||amount<0n||totalBurned<0n||lastBurn<0n||lastBurn>block.timestamp
-    ||(pair===zeroAddress?(nextBurn!==0n||lastBurn!==0n||due||amount!==0n):(nextBurn!==lastBurn+interval))
-    ||(due&&(amount===0n||block.timestamp<nextBurn)))throw new Error("底池销毁参数或时间校验失败。");
+    ||nextBurn!==contractNextBurn||nextBurn<0n
+    ||(pair===zeroAddress?(nextBurn!==0n||lastBurn!==0n||due||amount!==0n):(nextBurn>0n&&nextBurn<lastBurn+interval))
+    ||(due&&(nextBurn===0n||amount===0n||block.timestamp<nextBurn)))throw new Error("底池销毁参数或时间校验失败。");
   return{pair,interval,rateBps,lastBurn,totalBurned,amount,nextBurn,due,timestamp:block.timestamp};
 }
 type Entry={initial:Snapshot;snapshot:Snapshot;refresh:()=>void;subscribe:(listener:()=>void)=>()=>void};

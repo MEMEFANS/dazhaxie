@@ -32,7 +32,8 @@
     "test:team": "node scripts/verify-team-reward.ts && node scripts/verify-team-reward-contract.cjs",
     "admin:setup": "node scripts/setup-admin.cjs",
     "test:pool-burn": "node scripts/verify-pool-burn.cjs && node scripts/verify-pool-burn-data.cjs && node scripts/verify-pool-burn-admin.cjs && node scripts/verify-pool-burn-keeper.cjs",
-    "keeper:pool-burn": "node scripts/pool-burn-keeper.cjs"
+    "keeper:pool-burn": "node scripts/pool-burn-keeper.cjs",
+    "test:pool-burn-automation": "node scripts/verify-pool-burn-automation.cjs"
   },
   "engines": {
     "node": ">=24"

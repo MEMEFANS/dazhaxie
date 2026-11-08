@@ -1,0 +1,91 @@
+{
+  "chainId": 56,
+  "address": "0x153211c82ee4e60d96e712e9b3e50368cd91c7b0",
+  "contractIdentifier": "CaBiLaunchToken.sol:CaBiLaunchToken",
+  "compilerVersion": "0.8.24+commit.e11b9ed9",
+  "optimizer": {
+    "enabled": true,
+    "runs": 200
+  },
+  "evmVersion": "shanghai",
+  "license": "MIT",
+  "creationTransactionHash": "0xdb283b14c21095314eb2f809bd3b819e59dd222fedb10525057082aa6b2033f3",
+  "creationBlockNumber": "132416331",
+  "constructor": {
+    "distributionReceiver": "0xFF1d3fCbeCF2F8c282a63e6C1baA9DfF29a68725",
+    "buybackPool": "0xfE59a342d133CCaaA5A11331dA32f81bc9cCAeFd",
+    "owner": "0xFF1d3fCbeCF2F8c282a63e6C1baA9DfF29a68725"
+  },
+  "constructorArguments": "000000000000000000000000ff1d3fcbecf2f8c282a63e6c1baa9dff29a68725000000000000000000000000fe59a342d133ccaaa5a11331da32f81bc9ccaefd000000000000000000000000ff1d3fcbecf2f8c282a63e6c1baa9dff29a68725",
+  "creationInputKeccak256": "0x7fd39ffb6d6f8e245908f4089d4f071f8b68accc5923a2aafcc4cf41e65eea81",
+  "runtimeKeccak256": "0x9715fddb1367db65a2d774a7a5e9c911e8e1aeea5b4c11481826f4b57ee658c6",
+  "immutableValues": [
+    {
+      "reference": "3225",
+      "start": 2201,
+      "length": 32,
+      "value": "0x0000000000000000000000005e5d423b22f5da9e14a97c2f55ce42845b42ef2a"
+    },
+    {
+      "reference": "3225",
+      "start": 11526,
+      "length": 32,
+      "value": "0x0000000000000000000000005e5d423b22f5da9e14a97c2f55ce42845b42ef2a"
+    },
+    {
+      "reference": "3225",
+      "start": 11830,
+      "length": 32,
+      "value": "0x0000000000000000000000005e5d423b22f5da9e14a97c2f55ce42845b42ef2a"
+    },
+    {
+      "reference": "3225",
+      "start": 12042,
+      "length": 32,
+      "value": "0x0000000000000000000000005e5d423b22f5da9e14a97c2f55ce42845b42ef2a"
+    },
+    {
+      "reference": "3225",
+      "start": 12213,
+      "length": 32,
+      "value": "0x0000000000000000000000005e5d423b22f5da9e14a97c2f55ce42845b42ef2a"
+    },
+    {
+      "reference": "3225",
+      "start": 14153,
+      "length": 32,
+      "value": "0x0000000000000000000000005e5d423b22f5da9e14a97c2f55ce42845b42ef2a"
+    },
+    {
+      "reference": "3225",
+      "start": 14215,
+      "length": 32,
+      "value": "0x0000000000000000000000005e5d423b22f5da9e14a97c2f55ce42845b42ef2a"
+    }
+  ],
+  "creationBytecodeMatches": true,
+  "runtimeMatchesOutsideImmutables": true,
+  "sourceKeccak256": {
+    "CaBiPancakeToken.sol": "0xaa972900a3e48b956851a2ead3e1e92e2c19ab5f5a62d8bdd878e62bfdbefe4e",
+    "CaBiLaunchToken.sol": "0x77f2a055b3cc8893515b2fa9d081e3b6297154f8546ef27cf9ad3b3241138614",
+    "CaBiLaunchPool.sol": "0x66964f6218adc92c552fe9b994cc26e3b4d9a0e47cce18e2115412fd04a9f282"
+  },
+  "checkedAt": "2026-11-08T21:19:23.869Z",
+  "sourcify": {
+    "verificationId": "1779e623-ef78-4e4f-9a84-f4132dfcb8e8",
+    "match": "exact_match",
+    "creationMatch": "exact_match",
+    "runtimeMatch": "exact_match",
+    "chainId": "56",
+    "address": "0x153211c82Ee4E60d96E712E9B3E50368CD91C7B0",
+    "verifiedAt": "2026-11-08T21:19:56Z",
+    "matchId": "58830878",
+    "url": "https://repo.sourcify.dev/56/0x153211c82ee4e60d96e712e9b3e50368cd91c7b0"
+  },
+  "explorerSubmission": {
+    "service": "BscScan",
+    "verificationId": "cks4pmpnrzugpfdmkz5edwq6bncgfltiee7ebm1rzvidrfntx1",
+    "status": "submitted",
+    "url": "https://bscscan.com/address/0x153211c82ee4e60d96e712e9b3e50368cd91c7b0#code"
+  }
+}

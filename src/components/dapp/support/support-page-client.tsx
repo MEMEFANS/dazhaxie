@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { Headphones } from "lucide-react";
 import { useStore } from "@/lib/store";
 import type { SupportOrder } from "@/lib/support";
-import { LoadingBlock, PageStack, SectionHead } from "@/components/dapp/ui";
+import { LoadingBlock, PageStack, PageHeader } from "@/components/dapp/ui";
 import { TicketForm } from "./ticket-form";
 import { TicketList } from "./ticket-list";
 import type { FilterKey } from "./category-picker";
@@ -17,8 +18,10 @@ export default function SupportPageClient({ afterSales, order }: { afterSales: b
 function SupportContent({ afterSales, order }: { afterSales: boolean; order?: SupportOrder }) {
   const [filter, setFilter] = useState<FilterKey>("all");
   return <PageStack>
-    <SectionHead eyebrow="CUSTOMER CARE" title={afterSales ? "售后服务" : "客服与售后"} desc="物流查询、收货信息修改、商品问题，都可以在这里提交。客服回复和处理进度在下方查看。" />
-    <TicketForm initialCategory={afterSales ? "售后服务" : "认购问题"} order={order} onSubmitted={() => setFilter("all")} />
-    <TicketList filter={filter} onFilterChange={setFilter} />
+    <PageHeader eyebrow="HERE TO HELP" icon={Headphones} title={afterSales ? "售后服务" : "客服与售后"} desc="物流、收货、商品问题，随时在这里联系我们。" />
+    <div className="grid items-start gap-4 sm:gap-6 lg:grid-cols-[1.1fr_1fr]">
+      <TicketForm initialCategory={afterSales ? "售后服务" : "认购问题"} order={order} onSubmitted={() => setFilter("all")} />
+      <TicketList filter={filter} onFilterChange={setFilter} />
+    </div>
   </PageStack>;
 }

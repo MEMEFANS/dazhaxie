@@ -1,8 +1,6 @@
 ﻿"use client";
 
-// DApp 共享 UI 基元（币安主题色 · 统一设计 token）
-// 排版阶梯：页面标题 26 sans / 卡片标题 14 semibold / 数值 24 mono tabular /
-//          正文 12 / 说明 11 / 辅助 10；间距刻度 4/8/12/16/24/32/48
+// Shared DApp typography, cards and actions.
 
 import type { LucideIcon } from "lucide-react";
 import {
@@ -20,6 +18,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useStore } from "@/lib/store";
+import styles from "./ui.module.css";
 
 /* ---------- 页面骨架：统一内容栅格（最大 960px，区块间距 24px） ---------- */
 
@@ -112,25 +111,21 @@ export function PageHeader({
   eyebrow,
   title,
   desc,
+  icon: Icon,
 }: {
   eyebrow: string;
   title: string;
   desc?: string;
+  icon?: LucideIcon;
 }) {
   return (
-    <header>
-      <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.28em] text-gold">
-        <span className="h-px w-5 bg-gold/60" aria-hidden />
-        {eyebrow}
-      </p>
-      <div className="mt-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
-        <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-strong">
-          {title}
-        </h1>
-        {desc ? (
-          <p className="pb-1 text-[11px] leading-5 text-faint">{desc}</p>
-        ) : null}
+    <header className={styles.pageHeader}>
+      <div className={styles.headerCopy}>
+        <p className={styles.eyebrow}>{eyebrow}</p>
+        <h1>{title}</h1>
+        {desc ? <p className={styles.description}>{desc}</p> : null}
       </div>
+      {Icon ? <span className={styles.headerIcon} aria-hidden="true"><Icon size={34} strokeWidth={1.4} /></span> : null}
     </header>
   );
 }
@@ -389,11 +384,11 @@ export function Modal({
 
 export function EmptyRow({ text }: { text: string }) {
   return (
-    <div className="flex min-h-[168px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-line px-4 text-center">
-      <span className="grid h-10 w-10 place-items-center rounded-full bg-plum/5 text-faint">
-        <Inbox size={16} strokeWidth={1.5} />
+    <div className="flex min-h-[168px] flex-col items-center justify-center gap-3 rounded-2xl bg-well/50 px-5 text-center">
+      <span className="grid h-12 w-12 place-items-center rounded-2xl border border-line bg-card text-purple-deep shadow-card">
+        <Inbox size={21} strokeWidth={1.4} />
       </span>
-      <p className="text-[11px] leading-5 text-faint">{text}</p>
+      <p className="max-w-sm text-xs leading-6 text-mute">{text}</p>
     </div>
   );
 }

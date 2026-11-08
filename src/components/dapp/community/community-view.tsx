@@ -171,7 +171,7 @@ export function CommunityView() {
       )}
       <p className="mt-auto flex shrink-0 items-start gap-1.5 border-t border-line pt-3 text-[11px] leading-5 text-faint">
         <ShieldCheck size={11} className="mt-0.5 shrink-0 text-up/70" />
-        管理员不能移出自己、其他管理员与官方账号；被移出成员的历史消息保留。
+        和蟹友分享日常与生态动态。遇到订单问题，可在客服与售后提交工单。
       </p>
     </div>
   );
@@ -180,12 +180,12 @@ export function CommunityView() {
     <>
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-6">
         <section aria-label="社群聊天" className="card flex min-h-0 flex-col overflow-hidden p-0">
-          <div className="shrink-0 border-b border-line bg-deep px-4 py-3 sm:px-5">
+          <div className="shrink-0 border-b border-line bg-gradient-to-r from-[#f4eef9] to-card px-4 py-4 sm:px-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-line bg-plum/5 text-mute"><Users size={17} strokeWidth={1.6} /></span>
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-line bg-card text-purple-deep"><Users size={19} strokeWidth={1.6} /></span>
                 <div className="min-w-0">
-                  <h1 className="truncate text-[15px] font-semibold leading-5 text-strong">蟹比特社群</h1>
+                  <h1 className="truncate text-[17px] font-semibold leading-5 text-strong">蟹比特社群</h1>
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] leading-4 text-mute">
                     <Users size={11} className="shrink-0" />
                     <span><span className="num">{loading ? "—" : members.length}</span> 名成员</span>
@@ -202,8 +202,8 @@ export function CommunityView() {
           <div ref={messagesRef} role="log" aria-label="聊天消息" aria-live="polite" aria-relevant="additions" onScroll={event => {
             const element = event.currentTarget;
             followLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 64;
-          }} className="chat-scroll min-h-0 flex-1 space-y-3.5 overflow-y-auto overscroll-contain bg-well px-4 py-4 sm:px-5">
-            <div className="mx-auto max-w-[520px] rounded-lg border border-line bg-plum/5 px-3 py-2 text-center text-[11px] leading-5 text-faint">友善交流，违规内容将被自动屏蔽</div>
+          }} className="chat-scroll min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain bg-[#faf8fc] px-4 py-4 sm:px-5">
+            <div className="mx-auto max-w-[520px] rounded-xl bg-[#f0ebf6] px-3 py-2 text-center text-[11px] leading-5 text-faint">欢迎来到蟹友会，分享日常，友善交流。</div>
             {error ? <p role="alert" className="text-center text-[11px] leading-5 text-down">{error}</p> : null}
             {(data?.messages || []).map(message => {
               const self = Boolean(state.address) && message.address.toLowerCase() === state.address.toLowerCase();
@@ -211,13 +211,13 @@ export function CommunityView() {
               return (
                 <div key={message.id} className={self ? "flex flex-col items-end" : "flex items-start gap-2.5"}>
                   {!self ? <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-semibold ${admin ? "bg-plum/[0.07] text-strong ring-1 ring-gold/25" : "bg-plum/[0.07] text-mute"}`}>{message.name.slice(0, 1)}</span> : null}
-                  <div className={`min-w-0 ${self ? "items-end" : "flex-1"}`}>
+                  <div className={`min-w-0 ${self ? "max-w-[88%] items-end" : "flex-1"}`}>
                     <p className={`flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-mute ${self ? "justify-end" : ""}`}>
                       <span className="max-w-[160px] truncate font-medium sm:max-w-[220px]">{self ? "我" : message.name}</span>
                       {admin ? <AdminBadge /> : null}
                       <span className="num shrink-0 text-faint">{timeAgo(message.at)}</span>
                     </p>
-                    <div className={`mt-1 max-w-full break-words rounded-xl border px-3.5 py-2.5 text-[13px] leading-6 sm:max-w-[78%] ${message.blocked ? "border-dashed border-down/30 bg-down/[0.06] text-down" : "border-line bg-raise text-strong"} ${self ? "rounded-br-md" : "rounded-tl-md"}`}>
+                    <div className={`mt-1 max-w-full break-words rounded-2xl border px-4 py-3 text-[14px] leading-6 sm:max-w-[78%] ${message.blocked ? "border-dashed border-down/30 bg-down/[0.06] text-down" : self ? "border-[#8056b0] bg-[#8056b0] text-white" : "border-line bg-card text-strong"} ${self ? "rounded-br-md" : "rounded-tl-md"}`}>
                       {message.blocked ? <span className="flex items-center gap-1.5"><ShieldAlert size={12} className="shrink-0" /> 该内容包含违规词汇，已被系统自动屏蔽</span> : message.text}
                     </div>
                   </div>
@@ -257,10 +257,10 @@ export function CommunityView() {
       </div>
 
       <div onClick={() => setMembersOpen(false)} aria-hidden={!membersOpen} className={`fixed inset-0 z-50 bg-plum/45 backdrop-blur-[2px] transition-opacity duration-200 lg:hidden ${membersOpen ? "opacity-100" : "pointer-events-none opacity-0"}`} />
-      <aside role="dialog" aria-modal="true" aria-label="社群成员" aria-hidden={!membersOpen} className={`fixed right-0 top-0 z-50 flex h-[100dvh] w-[85vw] max-w-[320px] flex-col border-l border-line bg-card shadow-pop transition-transform duration-[220ms] ease-[cubic-bezier(0.22,0.68,0.36,1)] lg:hidden ${membersOpen ? "translate-x-0" : "pointer-events-none translate-x-full"}`}>
+      <aside role="dialog" aria-modal="true" aria-label="社群成员" aria-hidden={!membersOpen} className={`fixed right-0 top-0 z-50 flex h-[100dvh] w-[85vw] max-w-[320px] flex-col border-l border-line bg-card shadow-pop transition-transform duration-[220ms] ease-[cubic-bezier(0.22,0.68,0.36,1)] lg:hidden ${membersOpen ? "visible translate-x-0" : "invisible pointer-events-none translate-x-full"}`}>
         <div className="flex items-center justify-between border-b border-line px-5 pb-3.5 pt-[calc(env(safe-area-inset-top)+16px)]">
           <div className="min-w-0"><p className="kicker">MEMBERS</p><p className="mt-1 flex items-center gap-2 text-[13px] font-semibold leading-4 text-strong"><Users size={13} className="shrink-0 text-mute" /> 社群成员</p></div>
-          <button onClick={() => setMembersOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg text-mute transition duration-200 hover:bg-plum/[0.07] hover:text-strong" aria-label="关闭成员列表"><X size={15} /></button>
+          <button onClick={() => setMembersOpen(false)} className="grid h-11 w-11 place-items-center rounded-xl text-mute transition duration-200 hover:bg-plum/[0.07] hover:text-strong" aria-label="关闭成员列表"><X size={15} /></button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{memberList}</div>
       </aside>
@@ -285,7 +285,7 @@ export function CommunityView() {
       ) : null}
       {settingsOpen ? <div className="fixed inset-0 z-50 grid place-items-center bg-plum/45 p-4 backdrop-blur-sm" onClick={() => setSettingsOpen(false)}>
         <div role="dialog" aria-modal="true" aria-labelledby="community-settings-title" className="card w-full max-w-[400px] p-6 shadow-pop" onClick={event => event.stopPropagation()}>
-          <div className="flex items-center justify-between gap-3"><div><p className="kicker">COMMUNITY SETTINGS</p><h2 id="community-settings-title" className="mt-1 text-lg font-semibold">设置社群名称</h2></div><button onClick={() => setSettingsOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg text-mute hover:bg-plum/5" aria-label="关闭设置"><X size={16} /></button></div>
+          <div className="flex items-center justify-between gap-3"><div><p className="kicker">COMMUNITY SETTINGS</p><h2 id="community-settings-title" className="mt-1 text-lg font-semibold">设置社群名称</h2></div><button onClick={() => setSettingsOpen(false)} className="grid h-11 w-11 place-items-center rounded-xl text-mute hover:bg-plum/5" aria-label="关闭设置"><X size={16} /></button></div>
           <p className="mt-3 text-xs leading-6 text-mute">这个名称会显示在社群成员列表和你之后发送的消息中。</p>
           <input aria-label="社群名称" value={nameInput} onChange={event => setNameInput(event.target.value)} maxLength={32} autoFocus className="field mt-4 min-h-11 w-full px-3 text-sm" />
           <div className="mt-5 flex gap-2"><button onClick={() => setSettingsOpen(false)} className="btn btn-outline h-11 flex-1 text-sm">取消</button><button onClick={() => void saveName()} disabled={nameSaving || !nameInput.trim() || nameInput.trim().length > 32} className="btn btn-gold h-11 flex-1 text-sm">{nameSaving ? "保存中…" : "保存名称"}</button></div>

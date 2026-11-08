@@ -59,7 +59,7 @@ export function TicketForm({ onSubmitted, initialCategory = "认购问题", orde
 
   return (
     <section className="card p-5 sm:p-6">
-      <SectionTitle icon={Plus} title={afterSales ? "申请售后" : "提交工单"} extra={<span className="kicker">CUSTOMER CARE</span>} />
+      <SectionTitle icon={Plus} title={afterSales ? "申请售后" : "提交工单"} />
       {order ? <div className="mb-4 rounded-xl border border-line bg-well p-3 text-xs leading-6 text-mute"><p className="font-semibold text-strong">{SUPPORT_ORDER_LABELS[order.type]}售后</p><p className="break-all">订单号：{order.id}</p><p>提交时会带上此订单，方便客服核对。</p></div> : null}
       {!state.connected ? (
         <div className="flex flex-col gap-4 rounded-lg border border-line bg-well p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -73,7 +73,7 @@ export function TicketForm({ onSubmitted, initialCategory = "认购问题", orde
         <div className="space-y-3">
           {needSignIn ? (
             <div className="flex flex-col gap-3 rounded-lg border border-gold/25 bg-gold/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-[12px] leading-5 text-mute">提交工单需先一键登录（免签名，与社群共用身份）。</p>
+              <p className="text-[12px] leading-5 text-mute">登录后即可提交问题并查看回复。</p>
               <button onClick={() => void signIn()} disabled={signing} className="btn btn-gold h-9 shrink-0 px-4 text-[12px]">{signing ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />} {signing ? "登录中…" : "登录并提交"}</button>
             </div>
           ) : null}
@@ -90,8 +90,8 @@ export function TicketForm({ onSubmitted, initialCategory = "认购问题", orde
           {error ? <p role="alert" className="text-[11px] leading-5 text-down">{error}</p> : null}
           {txState ? (
             <div>
-              {txState === "success" ? <p role="status" className="mb-2 break-all text-xs leading-6 text-up">{afterSales ? "售后申请已提交" : "工单已提交"}，单号：{ticketId}。请在下方查看客服回复。</p> : null}
-              <TxStatus state={txState} note="提交后请等待客服处理，回复会显示在下方工单列表" />
+              {txState === "success" ? <p role="status" className="mb-2 break-all text-xs leading-6 text-up">{afterSales ? "售后申请已提交" : "工单已提交"}，单号：{ticketId}。请在「我的工单」查看回复。</p> : null}
+              <TxStatus state={txState} note="客服回复会显示在「我的工单」中" />
               {txState === "failed" ? <button onClick={() => { setTxState(null); setError(""); }} className="mt-2 h-9 w-full rounded-lg border border-line text-[11px] text-mute transition-colors hover:text-strong">关闭并重新填写</button> : null}
             </div>
           ) : null}

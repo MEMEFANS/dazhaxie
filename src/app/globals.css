@@ -2,8 +2,8 @@
 @source not "../../output";
 
 :root {
-  --background: #f9f9f9;
-  --foreground: #240f46;
+  --background: #f7f6fa;
+  --foreground: #30243f;
   /* Keep existing number/hash styles on a system monospace stack without font downloads. */
   --font-geist-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color-scheme: light;
@@ -18,7 +18,7 @@
 }
 
 /* ============================================================
-   蟹比特设计系统 · 薰衣草亮紫主题（对标参考站 h5 视觉语言）
+   蟹比特设计系统 · 暖白与柔紫
    层级：abyss(页面) → well(内嵌) → card(卡片) → raise(抬升)
    色彩分工：紫 = 界面氛围 / 选中态；金 = 仅关键 CTA 与数值
    间距刻度：4 / 8 / 12 / 16 / 24 / 32 / 48（Tailwind 1/2/3/4/6/8/12）
@@ -26,33 +26,33 @@
 @theme {
   /* 亮色层次（页面底 #F9F9F9，顶部薰衣草渐变挂在 body） */
   --color-deep: #ffffff; /* 顶栏 / 页脚 / 内嵌底 */
-  --color-abyss: #f9f9f9; /* 页面底 */
-  --color-well: #f3edf6; /* 卡片内嵌层 / 输入底 / 分段轨道 */
+  --color-abyss: #f7f6fa; /* 页面底 */
+  --color-well: #f5f2f9; /* 卡片内嵌层 / 输入底 / 分段轨道 */
   --color-card: #ffffff; /* 卡片 */
-  --color-raise: #faf7fe; /* 悬浮 / 抬升 */
-  --color-line: #e9e3f2; /* 描边 / 分隔（rgb(36 15 70 / 10%) 近似） */
-  --color-plum: #240f46; /* 紫调基底：配合透明度修饰替代暗色的 white/N */
+  --color-raise: #fdfbff; /* 悬浮 / 抬升 */
+  --color-line: #e9e5ef; /* 描边 / 分隔 */
+  --color-plum: #38254c; /* 紫调基底 */
 
   /* 文本阶梯（紫调，非纯黑非灰色） */
-  --color-strong: #240f46; /* 主要 */
-  --color-mute: #7a708e; /* 次要（rgb(36 15 70 / 55%) 近似） */
-  --color-faint: #83738f; /* 辅助信息保持白底可读 */
+  --color-strong: #30243f; /* 主要 */
+  --color-mute: #746a80; /* 次要 */
+  --color-faint: #80748e; /* 辅助 */
 
   /* 品牌金：仅关键 CTA（按钮渐变）与数值强调 */
   --color-gold: #b45309; /* 文字 / 图标 / 描边语义金（白底可读） */
   --color-gold-2: #f0b90b; /* 亮金：按钮渐变 / 进度填充 / 图标底 */
 
   /* 主题紫：页面氛围、选中态、链接、聚焦 */
-  --color-purple: #d11bff; /* 品牌紫 */
-  --color-purple-deep: #9900ff; /* 高亮紫 */
-  --color-purple-a: #753dea; /* 紫渐变起 */
-  --color-purple-b: #b34cf7; /* 紫渐变止 */
-  --color-lavender: #f8eafe; /* 页面顶部渐变起 */
+  --color-purple: #9066c2; /* 品牌紫 */
+  --color-purple-deep: #7046a4; /* 选中与链接 */
+  --color-purple-a: #7651af; /* 紫渐变起 */
+  --color-purple-b: #9765c3; /* 紫渐变止 */
+  --color-lavender: #f0eaf7; /* 页面顶部渐变起 */
 
   /* 语义色 */
-  --color-up: #1ec800;
-  --color-down: #f1463d;
-  --color-warn: #ff8400;
+  --color-up: #28795f;
+  --color-down: #c14f56;
+  --color-warn: #a76c21;
 
   /* 阴影：亮色下以浅紫灰落影为主 */
   --shadow-card:
@@ -60,7 +60,7 @@
     0 8px 24px -12px rgb(36 15 70 / 8%);
   --shadow-pop: 0 24px 64px -16px rgb(36 15 70 / 22%);
   --shadow-gold: 0 8px 24px -10px rgba(240, 185, 11, 0.45);
-  --shadow-purple: 0 8px 20px -8px rgb(209 27 255 / 28%);
+  --shadow-purple: 0 6px 16px -6px rgb(112 70 164 / 24%);
 
   /* 动效 */
   --animate-fade-up: fade-up 0.4s cubic-bezier(0.22, 0.68, 0.36, 1) both;
@@ -97,7 +97,7 @@
 
 body {
   background-color: var(--color-abyss);
-  /* 参考站招牌：页面顶部薰衣草渐变（高度约一屏头部，向下融入页面底） */
+  /* A quiet backdrop keeps the content and primary actions prominent. */
   background-image: linear-gradient(
     180deg,
     var(--color-lavender) 0%,
@@ -118,7 +118,7 @@ html {
 }
 
 ::selection {
-  background: rgb(209 27 255 / 16%);
+  background: rgb(112 70 164 / 16%);
   color: #240f46;
 }
 
@@ -136,7 +136,7 @@ html {
 
 /* 键盘可达焦点环（仅键盘聚焦时显示） */
 :focus-visible {
-  outline: 2px solid rgb(209 27 255 / 45%);
+  outline: 2px solid rgb(112 70 164 / 45%);
   outline-offset: 2px;
 }
 
@@ -172,8 +172,8 @@ html {
 @layer components {
   /* ---- 容器：白卡 + 浅紫描边 + 极浅落影（嵌套不超过三层） ---- */
   .card {
-    border-radius: 16px;
-    border: 1px solid rgb(36 15 70 / 7%);
+    border-radius: 22px;
+    border: 1px solid var(--color-line);
     background-color: var(--color-card);
     box-shadow: var(--shadow-card);
   }
@@ -190,8 +190,8 @@ html {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    border-radius: 9999px;
-    font-weight: 500;
+    border-radius: 13px;
+    font-weight: 600;
     line-height: 1;
     white-space: nowrap;
     user-select: none;
@@ -203,17 +203,17 @@ html {
   }
   .btn:active:not(:disabled) { transform: scale(0.985); }
   .btn:focus-visible {
-    outline: 2px solid rgb(209 27 255 / 45%);
+    outline: 2px solid rgb(112 70 164 / 45%);
     outline-offset: 2px;
   }
   .btn:disabled { cursor: not-allowed; }
 
-  /* 关键 CTA：参考站亮紫渐变胶囊与白色内发光。 */
+  /* Primary actions share one restrained brand treatment. */
   .btn-gold {
     background-color: var(--color-purple-a);
     background-image: linear-gradient(90deg, var(--color-purple-a), var(--color-purple-b));
     color: #ffffff;
-    box-shadow: inset 0 0 10px rgb(255 255 255 / 60%);
+    box-shadow: var(--shadow-purple), inset 0 1px rgb(255 255 255 / 15%);
   }
   .btn-gold:hover:not(:disabled) { filter: brightness(1.04); }
   .btn-gold:disabled {
@@ -234,7 +234,7 @@ html {
     color: #ffffff;
     box-shadow:
       var(--shadow-purple),
-      inset 0 0 10px rgb(255 255 255 / 45%);
+      inset 0 1px rgb(255 255 255 / 15%);
   }
   .btn-purple:hover:not(:disabled) { filter: brightness(1.05); }
   .btn-purple:disabled {
@@ -251,26 +251,26 @@ html {
     color: var(--color-strong);
   }
   .btn-outline:hover:not(:disabled) {
-    border-color: rgb(209 27 255 / 40%);
-    background-color: rgb(209 27 255 / 5%);
+    border-color: rgb(112 70 164 / 40%);
+    background-color: rgb(112 70 164 / 5%);
     color: var(--color-purple-deep);
   }
 
   /* 演示按钮：虚线 */
   .btn-dashed {
-    border: 1px dashed rgb(209 27 255 / 40%);
+    border: 1px dashed rgb(112 70 164 / 40%);
     background-color: transparent;
     color: var(--color-purple-deep);
   }
   .btn-dashed:hover:not(:disabled) {
-    border-color: rgb(209 27 255 / 60%);
-    background-color: rgb(209 27 255 / 6%);
+    border-color: rgb(112 70 164 / 60%);
+    background-color: rgb(112 70 164 / 6%);
   }
 
   /* ---- 表单控件：白底 + 紫聚焦 ---- */
   .field {
-    background-color: var(--color-card);
-    border: 1px solid #e3dcef;
+    background-color: #fdfcfe;
+    border: 1px solid #e4deec;
     border-radius: 12px;
     color: var(--color-strong);
     outline: none;
@@ -279,8 +279,8 @@ html {
   .field::placeholder { color: var(--color-faint); }
   .field:focus,
   .field:focus-within {
-    border-color: rgb(209 27 255 / 45%);
-    box-shadow: 0 0 0 3px rgb(209 27 255 / 10%);
+    border-color: #a789ca;
+    box-shadow: 0 0 0 3px rgb(112 70 164 / 8%);
   }
 
   /* ---- 分段控件选中指示器：紫渐变胶囊 ---- */
@@ -291,7 +291,7 @@ html {
       var(--color-purple-b)
     );
     color: #ffffff;
-    box-shadow: inset 0 0 8px rgb(255 255 255 / 40%);
+    box-shadow: 0 2px 6px rgb(112 70 164 / 12%);
   }
 
   /* ---- 骨架屏 ---- */
@@ -318,8 +318,8 @@ html {
   /* ---- 表头 / 字段标签：11-12px 全大写 + 字距 ---- */
   .kicker {
     font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.16em;
+    font-weight: 600;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
     color: var(--color-faint);
   }

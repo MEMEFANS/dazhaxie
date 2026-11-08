@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { Check, Copy, QrCode } from "lucide-react";
+import { ArrowUpRight, Check, Copy, QrCode } from "lucide-react";
+import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import { useStore } from "@/lib/store";
 import { useReferralData } from "@/lib/referral-data";
@@ -53,6 +54,7 @@ export function InviteCampaign() {
       </div>
       <div className={styles.content}>
         <div className={styles.heading}>
+          <span className={styles.eyebrow}>BETTER TOGETHER</span>
           <h1 id="invite-campaign-title">邀好友 · 启新程</h1>
           <p>分享专属邀请，连接更多蟹友</p>
         </div>
@@ -114,11 +116,8 @@ export function InviteCampaign() {
             </div>
           </details>
         )}
-        <p className={styles.note}>
-          链接自动填入 8 位邀请码，受邀人确认后免费绑定；没有链接时手动输入。推荐关系绑定后长期保存，不可更换。
-          <br />
-          BTC 为创意元素 · 生态代币为 CaBi
-        </p>
+        <Link href="/dapp/team" className={styles.teamLink}>查看我的蟹友团 <ArrowUpRight size={15} /></Link>
+        <p className={styles.note}>好友打开链接即可带入邀请码，确认后免费绑定。推荐关系绑定后不可更换。</p>
       </div>
     </section>
   );

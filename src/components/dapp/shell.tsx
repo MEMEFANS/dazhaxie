@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ChevronRight, Coins, Headphones, House,
+  ChevronRight, Coins, Gift, Headphones, House,
   LoaderCircle, MessageCircle, MoreHorizontal, Network, ShoppingBag, Users, Wallet, X,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
@@ -33,6 +33,8 @@ const communityItem = { href: "/dapp/community", label: "社群", icon: MessageC
 const mobileItems = primaryItems.map(item => item.href === "/dapp/promotion" ? communityItem : item);
 
 const serviceItems = [
+  { href: "/dapp/exchange", label: "蟹礼兑换", detail: "用 CaBi 兑换蟹礼，查看兑换订单", icon: Gift },
+  { href: "/dapp/promotion", label: "邀请蟹友", detail: "分享专属链接与邀请二维码", icon: Users },
   { ...communityItem, detail: "公告、交流与生态动态" },
   { href: afterSalesUrl(), label: "售后服务", detail: "物流查询、收货信息与商品问题", icon: Headphones },
   { href: "/dapp/support", label: "联系支持", detail: "查看工单与常见问题", icon: Headphones },

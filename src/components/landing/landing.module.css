@@ -1,9 +1,9 @@
 .page {
-  --ink: #240f46;
-  --muted: #7a708e;
-  --purple: #d11bff;
-  --purple-deep: #753dea;
-  --purple-end: #b34cf7;
+  --ink: var(--color-strong);
+  --muted: var(--color-mute);
+  --purple: var(--color-purple);
+  --purple-deep: var(--color-purple-a);
+  --purple-end: var(--color-purple-b);
   --line: #e9e3f2;
   min-height: 0;
   overflow-x: clip;
@@ -66,7 +66,7 @@
 .brand small {
   margin-top: 5px;
   color: #9a8ba8;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.2em;
 }
@@ -98,7 +98,7 @@
   gap: 7px;
   padding: 0 17px;
   border: 1px solid var(--purple-deep);
-  border-radius: 999px;
+  border-radius: 14px;
   color: #fff;
   background: linear-gradient(90deg, var(--purple-deep), var(--purple-end));
   box-shadow:
@@ -152,7 +152,7 @@
 .eyebrow,
 .sectionKicker {
   color: #9263af;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.19em;
   text-transform: uppercase;
@@ -195,12 +195,12 @@
   justify-content: center;
   gap: 8px;
   padding: 0 19px;
-  border-radius: 999px;
+  border-radius: 14px;
   color: #fff;
-  background: linear-gradient(90deg, #753dea, #b34cf7);
+  background: linear-gradient(110deg, var(--color-purple-a), var(--color-purple-b));
   box-shadow:
     0 8px 20px rgb(19 7 35 / 22%),
-    inset 0 0 9px rgb(255 255 255 / 40%);
+    inset 0 1px rgb(255 255 255 / 15%);
   font-size: 12px;
   font-weight: 750;
   transition: transform 160ms ease, box-shadow 160ms ease;
@@ -230,7 +230,7 @@
   gap: 7px;
   margin-top: 19px;
   color: #9779a8;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .noticeBar {
@@ -262,14 +262,14 @@
   flex: 1;
   overflow: hidden;
   color: #81748f;
-  font-size: 11px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .noticeBar p strong {
   color: #4f2b70;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .noticeBar > a {
@@ -339,8 +339,8 @@
 
 .quickCopy small {
   margin-top: 5px;
-  color: #93869e;
-  font-size: 10px;
+  color: #82738d;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -359,20 +359,20 @@
 .statusHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .statusHeading h2 { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 750; }
 .statusHeading h2 svg { color: #a076cb; }
-.statusHeading button, .progressFooter a { display: inline-flex; align-items: center; gap: 3px; border: 0; color: #8752b2; background: transparent; font-size: 11px; cursor: pointer; }
-.accountAddress { color: #a28bad; font-size: 10px; }
+.statusHeading button, .progressFooter a { display: inline-flex; align-items: center; gap: 3px; border: 0; color: #8752b2; background: transparent; font-size: 12px; cursor: pointer; }
+.accountAddress { color: #82738d; font-size: 12px; }
 .accountMetrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 21px; }
 .accountMetrics a { min-width: 0; }
-.accountMetrics small { display: block; color: #a18aaa; font-size: 10px; }
+.accountMetrics small { display: block; color: #82738d; font-size: 12px; }
 .accountMetrics strong { display: block; margin-top: 5px; color: #593472; font-size: 22px; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1.4; }
-.accountMetrics strong span { margin-left: 4px; color: #ad9ab6; font-size: 9px; font-weight: 400; }
-.statusNote { margin-top: 13px; color: #b19bbc; font-size: 10px; }
-.demoBadge { padding: 3px 7px; border-radius: 6px; color: #9c79af; background: #f7f0fc; font-size: 9px; }
+.accountMetrics strong span { margin-left: 4px; color: #ad9ab6; font-size: 12px; font-weight: 400; }
+.statusNote { margin-top: 13px; color: #82738d; font-size: 12px; }
+.demoBadge { padding: 3px 7px; border-radius: 6px; color: #9c79af; background: #f7f0fc; font-size: 12px; }
 .progressSummary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 17px; }
 .progressSummary strong { color: #653c80; font-size: 25px; font-weight: 750; }
-.progressSummary small { color: #ac97b7; font-size: 11px; font-weight: 400; }
+.progressSummary small { color: #ac97b7; font-size: 12px; font-weight: 400; }
 .progressSummary > span { color: #9964bd; font-size: 12px; font-weight: 700; }
-.progressFooter { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; color: #b19bbc; font-size: 10px; }
+.progressFooter { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; color: #82738d; font-size: 12px; }
 
 .section + .section {
   padding-top: 0;
@@ -395,7 +395,7 @@
 .sectionLabel > span {
   margin-left: auto;
   color: #9a8ba8;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.12em;
 }
@@ -485,7 +485,7 @@
   border-radius: 999px;
   color: #7445a2;
   background: #f5eefc;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .participationAmount {
@@ -522,7 +522,7 @@
   gap: 3px;
   margin-left: auto;
   color: #86659f;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .participationButton {
@@ -563,7 +563,7 @@
 .metric small {
   margin-top: 5px;
   color: #8b7e98;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -631,7 +631,7 @@
   border-radius: 13px;
   color: #673698;
   background: #f5ecfc;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -645,7 +645,7 @@
 .step p {
   margin-top: 7px;
   color: #7d7088;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.75;
 }
 
@@ -756,7 +756,7 @@
 .faqItem p {
   padding: 0 18px 15px;
   color: #7a6f84;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.85;
 }
 
@@ -794,7 +794,7 @@
 .footerNote {
   max-width: 620px;
   text-align: right;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.8;
 }
 
@@ -825,7 +825,7 @@
   }
 
   .desktopNav a {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .homeBanner {
@@ -898,7 +898,7 @@
     gap: 5px;
     margin-left: auto;
     padding-inline: 13px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .homeBanner {
@@ -924,7 +924,7 @@
 
   .eyebrow,
   .sectionKicker {
-    font-size: 9px;
+    font-size: 12px;
     letter-spacing: 0.16em;
   }
 
@@ -937,7 +937,7 @@
   .bannerLead {
     max-width: 200px;
     margin-top: 9px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.65;
   }
 
@@ -950,11 +950,11 @@
     min-height: 39px;
     gap: 6px;
     padding-inline: 15px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .bannerTextLink {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .bannerFootnote {
@@ -976,7 +976,7 @@
 
   .noticeBar p,
   .noticeBar p strong {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .noticeBar > a {
@@ -1016,7 +1016,7 @@
   }
 
   .quickCopy strong {
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: -0.03em;
   }
 
@@ -1082,7 +1082,7 @@
 
   .explorationCopy > p:last-child {
     margin-top: 6px;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .explorationBody {
@@ -1090,7 +1090,7 @@
   }
 
   .participationHeader {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .participationAmount {
@@ -1112,7 +1112,7 @@
   }
 
   .participationAmount > a {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .metrics {
@@ -1131,12 +1131,12 @@
 
   .metric small {
     margin-top: 3px;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .textLink {
     margin-top: 13px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .sectionHead {
@@ -1149,7 +1149,7 @@
 
   .sectionHead > p:last-child {
     margin-top: 7px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .steps {
@@ -1191,7 +1191,7 @@
 
   .step p {
     margin-top: 3px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .featureGrid {
@@ -1217,7 +1217,7 @@
   }
 
   .featureCopy > p:not(.sectionKicker) {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .faq {
@@ -1226,12 +1226,12 @@
 
   .faqItem summary {
     padding: 14px 40px 14px 14px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .faqItem p {
     padding: 0 14px 14px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .footer {
@@ -1247,7 +1247,7 @@
 
   .footerNote {
     text-align: left;
-    font-size: 9px;
+    font-size: 12px;
   }
 
   .mobileTabs {
@@ -1278,7 +1278,7 @@
     gap: 3px;
     border-radius: 13px;
     color: #8a7b98;
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 650;
   }
 

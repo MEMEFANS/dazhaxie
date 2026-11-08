@@ -68,7 +68,7 @@ export function TicketList({ filter, onFilterChange }: { filter: FilterKey; onFi
             const open = expanded === t.id;
             return (
               <div key={t.id}>
-                <button onClick={() => setExpanded(open ? null : t.id)} className="flex w-full items-start justify-between gap-3 py-3 text-left transition-colors duration-200 hover:bg-plum/[0.03]">
+                <button aria-expanded={open} onClick={() => setExpanded(open ? null : t.id)} className="flex w-full items-start justify-between gap-3 py-4 text-left transition-colors duration-200 hover:bg-plum/[0.03]">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusPill tone={t.status === "pending" ? "soon" : "live"}>{TICKET_STATUS_LABEL[t.status]}</StatusPill>

@@ -11,6 +11,7 @@ import { formatAssetAmount } from "@/lib/amounts";
 import { holdingAllows } from "@/lib/allocation-utils";
 import { Card, DataRow, SectionHead, Badge } from "@/components/dapp/ui";
 import { ServiceQueryNotice } from "@/components/dapp/service-query-notice";
+import styles from "./claim.module.css";
 
 export default function SimpleClaimCard() {
   const { state } = useStore();
@@ -85,24 +86,47 @@ function ClaimForm() {
   return <Card className="p-5 sm:p-6">
     <SectionHead eyebrow="CABI CLAIM" title="组 LP 与领取" desc="先组 LP，开放后领取 CaBi" right={<Badge tone={statusTone}>{statusLabel}</Badge>} />
     <ServiceQueryNotice {...query} label="CaBi 领取" />
-    <div id="allocation" className="mt-4 scroll-mt-36 rounded-lg border border-line bg-well px-4 py-2">
+    <ol className={styles.journey} aria-label="参与流程">
+      <li><span>01</span>认购份额</li>
+      <li><span>02</span>完成组 LP</li>
+      <li><span>03</span>领取 CaBi</li>
+    </ol>
+    <div className={styles.layout}>
+    <div>
+    <div id="allocation" className={styles.balances}>
       <DataRow label="可组 LP 额度" value={claimable !== undefined ? formatAssetAmount(claimable, data?.tokenDecimals ?? 18) + " CaBi" : "—"} />
       <DataRow label="已组 LP 额度" value={data ? formatAssetAmount(data.prepared, data.tokenDecimals) + " CaBi" : "—"} />
       <DataRow label="已领取 CaBi" value={data ? formatAssetAmount(data.claimed * 70n / 100n, data.tokenDecimals) + " CaBi" : "—"} />
-      <DataRow label="本次支付 USDT" value={quote && data ? formatAssetAmount(quote.usdtRequired, data.usdtDecimals) + " USDT" : "—"} />
     </div>
-    {quote && data ? <p className="mt-2 text-xs leading-6 text-mute">本次需授权 {formatAssetAmount(quote.usdtRequired, data.usdtDecimals)} USDT。钱包弹窗的自定义额度可编辑，请保持该金额；授权确认后将继续组 LP。已有足额授权时会跳过此步。</p> : null}
-    <div id="claim-center" className="mt-4 rounded-xl border border-line bg-well p-4">
-      <strong className="text-sm">每份另付 15 USDT 组 LP</strong>
-      <span className="mt-2 block text-xs leading-6 text-mute">按固定比例组 LP：每份 35,000 CaBi 配额中，10,500 CaBi 与 15 USDT 进入 LP，24,500 CaBi 在开放后到账。</span>
-      {quote && data ? <div className="mt-3 grid grid-cols-1 gap-2 text-xs leading-6 text-mute sm:grid-cols-3"><span>进入 LP：{formatAssetAmount(quote.lpTokens, data.tokenDecimals)} CaBi</span><span>支付：{formatAssetAmount(quote.usdtRequired, data.usdtDecimals)} USDT</span><span>到账：{formatAssetAmount(quote.payout, data.tokenDecimals)} CaBi</span></div> : null}
+    <details className={styles.rules}>
+      <summary>每份如何分配？</summary>
+      <p>每份 35,000 CaBi 配额中，10,500 CaBi 与另付的 15 USDT 组 LP；24,500 CaBi 在领取开放后到账。</p>
+    </details>
     </div>
+    <div>
+    <div id="claim-center" className={styles.checkout}>
+      <p className={styles.checkoutLabel}>{preparedOutstanding > 0n ? "待领取 CaBi" : "本次组 LP 需支付"}</p>
+      <p className={styles.total}>
+        {preparedOutstanding > 0n && data ? formatAssetAmount(preparedOutstanding * 70n / 100n, data.tokenDecimals) : quote && data ? formatAssetAmount(quote.usdtRequired, data.usdtDecimals) : "—"}
+        <small>{preparedOutstanding > 0n ? "CaBi" : "USDT"}</small>
+      </p>
+      {preparedOutstanding > 0n ? <p className={styles.hint}>{canClaimNow ? "领取已开放，确认后 CaBi 将转入当前钱包。" : "组 LP 已完成，领取开放后即可操作。"}</p> : <>
+        <dl className={styles.split}>
+          <div><dt>30% 进入 LP</dt><dd>{quote && data ? formatAssetAmount(quote.lpTokens, data.tokenDecimals) : "—"}<small>CaBi</small></dd></div>
+          <div><dt>70% 待领取</dt><dd>{quote && data ? formatAssetAmount(quote.payout, data.tokenDecimals) : "—"}<small>CaBi</small></dd></div>
+        </dl>
+        <p className={styles.hint}>每份另付 15 USDT，按固定比例组 LP。</p>
+      </>}
+    </div>
+    {quote && data && preparedOutstanding === 0n ? <p className={styles.hint}>授权金额：{formatAssetAmount(quote.usdtRequired, data.usdtDecimals)} USDT。请在钱包中核对，已有足额授权会自动跳过。</p> : null}
     {data && !data.lpReady ? <p className="mt-2 text-xs leading-6 text-mute">{data.lpError || "组 LP 暂未开放，请稍后再试。"}</p> : null}
     {server?.configured && data && data.signer.toLowerCase() !== (server.signer || "").toLowerCase() ? <p className="mt-2 text-xs leading-6 text-down">领取签名服务与链上配置不一致，请联系管理员。</p> : null}
-    {!state.connected ? <button onClick={connect} className="btn btn-outline mt-3 min-h-11 px-4 text-sm">连接钱包</button> : null}
+    {!state.connected ? <button onClick={connect} className="btn btn-purple mt-4 min-h-12 w-full px-4 text-sm">连接钱包</button> : null}
     {state.connected && server?.needsSignIn && server.configured ? <button onClick={() => void signIn()} disabled={signingIn} className="btn btn-outline mt-3 min-h-11 w-full text-sm">{signingIn ? "正在登录…" : "登录后查看可领额度"}</button> : null}
-    <button onClick={() => void act()} disabled={Boolean(reason) || prepareTx.busy || claimTx.busy || checking} className="btn btn-gold mt-3 min-h-11 w-full text-sm">{checking ? "正在核对" : prepareTx.busy || claimTx.busy ? "等待钱包确认" : reason || buttonLabel}</button>
+    {state.connected ? <button onClick={() => void act()} disabled={Boolean(reason) || prepareTx.busy || claimTx.busy || checking} className="btn btn-gold mt-4 min-h-12 w-full px-3 py-3 text-sm leading-6">{checking ? "正在核对" : prepareTx.busy || claimTx.busy ? "等待钱包确认" : reason || buttonLabel}</button> : null}
     {error ? <p role="alert" className="mt-3 text-xs leading-6 text-down">{error}</p> : null}
     <TransactionFeedback controller={prepareTx} /><TransactionFeedback controller={claimTx} />
+    </div>
+    </div>
   </Card>;
 }

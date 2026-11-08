@@ -3,6 +3,7 @@
 // 兑换大闸蟹：3500 CaBi / 份 · 转入后台指定收款地址 · 填写收货信息 · 后台发货
 
 import { useStore } from "@/lib/store";
+import { Gift } from "lucide-react";
 import { EXCHANGE_COST, fmt } from "@/lib/constants";
 import { LoadingBlock, PageHeader, PageStack } from "@/components/dapp/ui";
 import MarketInfo from "@/components/dapp/exchange/market-info";
@@ -19,15 +20,15 @@ export default function ExchangePage() {
       <PageHeader
         eyebrow="CRAB EXCHANGE"
         title="蟹礼兑换"
+        icon={Gift}
         desc={`${fmt(EXCHANGE_COST)} CaBi / 份 · 付款后填写收货信息`}
       />
 
-      {/* 主操作区：移动端表单置顶，桌面端左信息右表单 */}
-      <div className="grid gap-6 lg:grid-cols-[.92fr_1.08fr]">
-        <div className="order-2 lg:order-1">
+      <div className="grid items-start gap-4 sm:gap-6 lg:grid-cols-[.92fr_1.08fr]">
+        <div>
           <MarketInfo />
         </div>
-        <div className="order-1 lg:order-2">
+        <div>
           <ExchangeForm />
         </div>
       </div>

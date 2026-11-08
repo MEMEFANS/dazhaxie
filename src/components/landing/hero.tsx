@@ -26,25 +26,25 @@ const shortcuts = [
   {
     href: "/dapp/subscribe",
     label: "生态认购",
-    detail: "认购规则与配额",
+    detail: "认购份额 · 收货订单",
     icon: ShoppingBag,
   },
   {
     href: "/dapp/token",
     label: "CaBi 代币",
-    detail: "合约与资产查询",
+    detail: "组 LP · 领取代币",
     icon: Coins,
   },
   {
     href: "/dapp/exchange",
     label: "蟹礼兑换",
-    detail: "规格与兑换规则",
+    detail: "用 CaBi 兑换蟹礼",
     icon: Gift,
   },
   {
     href: "/dapp/promotion",
     label: "邀请蟹友",
-    detail: "邀请规则与进度",
+    detail: "分享你的专属邀请",
     icon: UsersRound,
   },
 ];
@@ -54,7 +54,7 @@ const metrics = [
     value: `${fmt(TOTAL_SUPPLY / 100000000)} 亿`,
     label: "CaBi 代币总量",
   },
-  { value: fmt(HARD_CAP), label: "认购份额硬顶" },
+  { value: fmt(HARD_CAP), label: "总认购份额" },
   { value: fmt(TOKENS_PER_SHARE), label: "每份 CaBi 配额" },
   { value: fmt(EXCHANGE_COST), label: "每份蟹礼消耗" },
 ];
@@ -62,18 +62,18 @@ const metrics = [
 const steps = [
   {
     number: "01",
-    title: "了解生态份额",
-    description: "查看认购规则与状态，价格按每 5,000 份分档上涨。",
+    title: "选择认购份额",
+    description: "每 5,000 份一档，价格为 50、55、60、70 USDT。认购后可补填收货信息。",
   },
   {
     number: "02",
-    title: "查看 CaBi 配额",
-    description: `每份对应 ${fmt(TOKENS_PER_SHARE)} CaBi 配额，可在代币中心查看记录。`,
+    title: "组 LP，领取 CaBi",
+    description: "每份另付 15 USDT 组 LP，领取开放后，70% CaBi 到账钱包。",
   },
   {
     number: "03",
     title: "兑换实物蟹礼",
-    description: `前往兑换商城挑选礼盒，每份蟹礼需转入 ${fmt(EXCHANGE_COST)} CaBi 到后台指定收款地址。`,
+    description: `还可用 ${fmt(EXCHANGE_COST)} CaBi 兑换一份蟹礼，在订单中查看发货进度。`,
   },
 ];
 
@@ -99,8 +99,8 @@ export function Hero() {
             一点 MEME，一群蟹友。一起探索 CaBi 与真实蟹礼。
           </p>
           <div className={styles.heroActions}>
-            <Link href="/dapp/token" className={styles.primaryButton}>
-              查看 CaBi 资产 <ArrowRight size={15} />
+            <Link href="/dapp/subscribe" className={styles.primaryButton}>
+              认购蟹礼 <ArrowRight size={15} />
             </Link>
             <a href="#ecosystem" className={styles.bannerTextLink}>
               了解生态 <ArrowUpRight size={14} />
@@ -117,8 +117,8 @@ export function Hero() {
           <Megaphone size={16} />
         </span>
         <p>
-          <strong>项目提示</strong>
-          <span> 查看 CaBi 规则与链上接入状态。认购、领取与兑换开放进度以页面公告为准。</span>
+          <strong>参与指南</strong>
+          <span> 认购后可补填收货信息，组 LP 与领取请前往代币中心。</span>
         </p>
         <a href="#faq" aria-label="查看项目说明">
           <ArrowUpRight size={15} />
@@ -191,8 +191,8 @@ export function Hero() {
       <section id="how-it-works" className={styles.section} aria-labelledby="steps-title">
         <div className={styles.sectionHead}>
           <p className={styles.sectionKicker}>HOW IT WORKS</p>
-          <h2 id="steps-title">三步了解蟹比特</h2>
-          <p>先看规则，再了解配额，最后选择适合自己的蟹礼。</p>
+          <h2 id="steps-title">从认购到收获</h2>
+          <p>份额、代币、蟹礼，每一步都清楚。</p>
         </div>
         <div className={styles.steps}>
           {steps.map((step) => (
@@ -265,7 +265,7 @@ export function Hero() {
           </details>
           <details className={styles.faqItem}>
             <summary>认购后什么时候可以领取 CaBi？</summary>
-            <p>认购完成后，CaBi 按认购记录自动计入可领额度。开放领取后在代币中心自行领取：需先支付 30% USDT 等值组建流动性，30% 代币同步进入项目 LP，70% 代币到账钱包后可交易。领取需支付少量网络手续费。</p>
+            <p>认购确认后，前往代币中心查看额度。每份另付 15 USDT，与 10,500 CaBi 组 LP；领取开放后可领取 24,500 CaBi。领取和交易有各自的开放时间，操作需支付 BNB 网络手续费。</p>
           </details>
         </div>
       </section>

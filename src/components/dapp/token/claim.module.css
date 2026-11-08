@@ -1,0 +1,32 @@
+.journey { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 24px 0; padding: 0; list-style: none; }
+.journey li { display: flex; align-items: center; gap: 8px; color: var(--color-mute); font-size: 12px; }
+.journey li > span { display: grid; width: 26px; height: 26px; flex: 0 0 auto; place-items: center; border: 1px solid var(--color-line); border-radius: 9px; background: #f8f5fb; color: #977cad; font-size: 11px; font-weight: 700; }
+.journey li + li { border-left: 1px solid var(--color-line); padding-left: 12px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 24px; }
+.balances { padding: 8px 20px; border: 1px solid var(--color-line); border-radius: 16px; background: #faf8fc; scroll-margin-top: 140px; }
+.checkout { padding: 22px; border: 1px solid #e5daef; border-radius: 18px; background: linear-gradient(135deg, #f4eef9, #fdfbff); }
+.checkoutLabel { color: #77628b; font-size: 12px; }
+.total { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-top: 7px; color: #573976; font-size: 36px; font-weight: 750; line-height: 1.3; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.total small { font-size: 12px; font-weight: 500; letter-spacing: 0; }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; padding-top: 18px; border-top: 1px solid #e4d8ef; }
+.split dt { color: #84708f; font-size: 12px; }
+.split dd { margin-top: 5px; overflow-wrap: anywhere; color: #5f4774; font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.split dd small { margin-left: 4px; font-size: 10px; font-weight: 500; }
+.hint { margin-top: 14px; color: #7a6b85; font-size: 12px; line-height: 1.8; }
+.rules { margin-top: 16px; padding-inline: 2px; }
+.rules summary { display: flex; min-height: 44px; align-items: center; gap: 8px; color: #76588d; font-size: 12px; cursor: pointer; }
+.rules p { margin-bottom: 12px; color: var(--color-mute); font-size: 12px; line-height: 1.9; }
+@media (max-width: 720px) {
+  .layout { grid-template-columns: 1fr; gap: 16px; }
+  .journey { margin-block: 20px; gap: 6px; }
+  .journey li { gap: 6px; font-size: 11px; }
+  .journey li + li { padding-left: 8px; }
+  .balances { padding-inline: 16px; }
+  .checkout { padding: 20px; }
+}
+@media (max-width: 360px) {
+  .journey li { flex-direction: column; align-items: flex-start; gap: 7px; }
+  .journey li + li { padding-left: 12px; }
+  .split { gap: 10px; }
+  .split dd { font-size: 15px; }
+}

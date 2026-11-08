@@ -7,6 +7,7 @@ import path from "node:path";
 import { getAddress, isAddress, zeroAddress } from "viem";
 import { BURN_ADDRESS } from "../constants";
 import type { AdminAuditEntry, OperationalSettings } from "../admin-settings";
+import type { LiquidityAccessSettings } from "../liquidity-access";
 
 type SqlValue = string | number | null;
 interface SqlStatement {
@@ -34,6 +35,7 @@ function database(): SqlDatabase {
     CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id = 1), subscribe_locked INTEGER NOT NULL, exchange_enabled INTEGER NOT NULL, sensitive_words TEXT NOT NULL, exchange_payee TEXT NOT NULL, subscribe_payee TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, account TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS audit (id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL, at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS liquidity_access (scope TEXT PRIMARY KEY, enabled INTEGER NOT NULL, revision INTEGER NOT NULL, updated_at INTEGER NOT NULL);
   `);
   // 旧库缺少收款地址列时补齐；空值统一回落到黑洞地址，避免历史库没有默认收款人。
   try { db.exec("ALTER TABLE settings ADD COLUMN exchange_payee TEXT NOT NULL DEFAULT ''"); } catch { /* 列已存在 */ }
@@ -52,6 +54,27 @@ export function readOperationalSettings(): OperationalSettings {
     sensitiveWords: JSON.parse(String(row.sensitive_words)) as string[], exchangePayee: String(row.exchange_payee),
     subscribePayee: String(row.subscribe_payee || ""),
     updatedAt: Number(row.updated_at) };
+}
+// Bind each switch to its chain/token/pool. Missing rows preserve the existing
+// website policy; chain launch rules still decide whether preparation is possible.
+export function readLiquidityAccess(scope: string): LiquidityAccessSettings {
+  const row = database().prepare("SELECT * FROM liquidity_access WHERE scope=?").get(scope);
+  return row ? { scope, enabled: row.enabled === 1, revision: Number(row.revision), updatedAt: Number(row.updated_at) }
+    : { scope, enabled: true, revision: 0, updatedAt: 0 };
+}
+export function saveLiquidityAccess(scope: string, enabled: boolean, revision: number, actor: string): LiquidityAccessSettings | null {
+  const db = database();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const current = readLiquidityAccess(scope);
+    if (current.revision !== revision) { db.exec("ROLLBACK"); return null; }
+    const updatedAt = Date.now();
+    db.prepare("INSERT INTO liquidity_access(scope,enabled,revision,updated_at) VALUES(?,?,?,?) ON CONFLICT(scope) DO UPDATE SET enabled=excluded.enabled,revision=excluded.revision,updated_at=excluded.updated_at")
+      .run(scope, Number(enabled), revision + 1, updatedAt);
+    addAuditEntry(actor, enabled ? "开放网站组 LP" : "暂停网站组 LP", JSON.stringify({ scope, before: current.enabled, after: enabled }));
+    db.exec("COMMIT");
+    return { scope, enabled, revision: revision + 1, updatedAt };
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
 export function addAuditEntry(actor: string, action: string, detail: string) {
   database().prepare("INSERT INTO audit (id, actor, action, detail, at) VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actor, action, detail, Date.now());

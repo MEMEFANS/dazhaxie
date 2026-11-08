@@ -3,6 +3,7 @@ import { createPublicClient, decodeEventLog, encodeFunctionData, fallback, forma
 import { privateKeyToAccount } from "viem/accounts";
 import { appChain, chainConfig, chainConfigurationValid, contracts } from "../chain-config";
 import { AdminRequestError } from "./admin-session";
+import { assertLiquidityPreparationOpen, assertLiquidityWebsiteOpen, authorizationTtlSeconds, liquiditySettings } from "./liquidity-access";
 import {
   countAuthorizationsSince, entitlementTokens, getClaimAuthorization, latestOpenAuthorization, listClaimEntitlements,
   localClaimedTokens, markAuthorizationClaimed, nextAuthorizationNonce, saveClaimAuthorization,
@@ -25,7 +26,7 @@ const CLAIM_TYPES = {
   ],
 } as const;
 const DOMAIN_NAME = "CaBiLaunchPool", DOMAIN_VERSION = "1";
-const DEFAULT_TTL_SECONDS = 600, DEFAULT_RATE_LIMIT = 5;
+const DEFAULT_RATE_LIMIT = 5;
 const UNIT_PRICE = 50n, TOKENS_PER_SHARE = 35_000n * 10n ** 18n, LP_USDT_RATIO = 30n, RATIO_DENOMINATOR = 100n;
 
 export const claimPoolAbi = parseAbi([
@@ -67,8 +68,7 @@ export function claimSigner() {
   return cache.cabiClaimSigner.account;
 }
 function ttlSeconds() {
-  const value = Number(process.env.CLAIM_AUTH_TTL_SECONDS || DEFAULT_TTL_SECONDS);
-  return Number.isFinite(value) && value >= 60 && value <= 3600 ? Math.floor(value) : DEFAULT_TTL_SECONDS;
+  return authorizationTtlSeconds();
 }
 function rateLimitPerMinute() {
   const value = Number(process.env.CLAIM_AUTH_RATE_LIMIT || DEFAULT_RATE_LIMIT);
@@ -84,6 +84,7 @@ export function claimSigningStatus() {
     chainId: chainConfig.id,
     ttlSeconds: ttlSeconds(),
     rateLimitPerMinute: rateLimitPerMinute(),
+    liquidityEnabled: liquiditySettings().enabled,
   };
 }
 
@@ -176,6 +177,7 @@ async function assertClaimPrerequisites(pool: Address, address: string, amount: 
 
 /** 签发（或复用）一张领取授权；同一额度的重复请求返回同一张未使用签名。 */
 export async function issueClaimAuthorization(address: string, amountInput?: unknown): Promise<ClaimAuthorizationResponse> {
+  const access = await assertLiquidityPreparationOpen();
   const pool = await ensurePool();
   const account = claimSigner();
   if (!account) throw new AdminRequestError("未配置签名服务，暂不能领取", 503);
@@ -215,6 +217,7 @@ export async function issueClaimAuthorization(address: string, amountInput?: unk
       signature: reuse.signature as Hex,
     }).catch(() => null);
     if (recovered && recovered.toLowerCase() === account.address.toLowerCase()) {
+      assertLiquidityWebsiteOpen(access.revision);
       return {
         amount: reuse.amount, cumulativeLimit: state.entitlement.toString(), nonce: reuse.nonce, deadline: reuse.deadline, signature: reuse.signature,
         usdtRequired: prerequisites.required.toString(),
@@ -226,6 +229,7 @@ export async function issueClaimAuthorization(address: string, amountInput?: unk
   const nonce = nextAuthorizationNonce(address);
   const message = { user: address as Address, amount, cumulativeLimit: state.entitlement, nonce: BigInt(nonce), deadline: BigInt(deadline) };
   const signature = await account.signTypedData({ domain: domainOf(pool), types: CLAIM_TYPES, primaryType: "Prepare", message });
+  assertLiquidityWebsiteOpen(access.revision);
   saveClaimAuthorization({ address, nonce, amount, mode: 0, deadline, signature });
   return {
     amount: amount.toString(), cumulativeLimit: state.entitlement.toString(), nonce, deadline, signature,

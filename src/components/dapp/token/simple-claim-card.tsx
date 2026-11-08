@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { getAddress } from "viem";
 import { useStore } from "@/lib/store";
 import { chainConfig, contracts } from "@/lib/chain-config";
-import { claimPoolAbi, fetchClaimPoolData, refreshClaimPoolData, requestClaimAuthorization, submitClaimReceipt, useClaimPoolData } from "@/lib/claim-pool-data";
+import { claimPoolAbi, fetchClaimPoolData, refreshClaimPoolData, requestClaimAuthorization, submitClaimReceipt, useClaimPoolData, verifyLiquidityAccess } from "@/lib/claim-pool-data";
 import { useContractTransaction, TransactionFeedback } from "@/lib/contract-transactions";
 import { signInCommunity } from "@/lib/community-client";
 import { formatAssetAmount } from "@/lib/amounts";
@@ -37,13 +37,14 @@ function ClaimForm() {
   else if (query.status === "unconfigured") reason = "领取通道暂未开放";
   else if (query.error) reason = "信息更新失败，请刷新后重试";
   else if (!data?.wallet) reason = query.status === "error" || query.error ? "领取信息暂时无法更新" : "正在更新领取信息";
-  else if (!server?.configured) reason = server?.error || "领取通道暂未开放，请稍后再试";
-  else if (server.needsSignIn) reason = "请先签名登录查看额度";
-  else if (server.error && claimable !== 0n) reason = server.error;
   else if (canClaimNow) {
     const payout = preparedOutstanding * 70n / 100n;
     if (!holdingAllows(data.wallet.tokenBalance, payout, data.wallet.maxWalletAmount, data.wallet.exempt)) reason = "领取后将超过持仓上限，请先转出部分 CaBi";
   } else if (preparedOutstanding > 0n) reason = "组 LP 已完成，领取开放后可领取";
+  else if (!data.lpReady) reason = data.lpError || "组 LP 暂未开放";
+  else if (!server?.configured) reason = server?.error || "领取通道暂未开放，请稍后再试";
+  else if (server.needsSignIn) reason = "请先签名登录查看额度";
+  else if (server.error && claimable !== 0n) reason = server.error;
   else if (claimable === undefined) reason = "正在读取可领额度";
   else if (claimable === 0n) reason = "当前没有可组 LP 的额度";
   else if (!data.lpReady || !quote) reason = data.lpError || "LP 接收地址尚未配置，请等待管理员完成配置";
@@ -68,20 +69,21 @@ function ClaimForm() {
         const hash = await claimTx.run({ address: contracts.claimPool, abi: claimPoolAbi, functionName: "claim", args: [], description: "领取已组 LP 对应的 70% CaBi" });
         if (hash) refreshClaimPoolData();
       } else {
+        if (!fresh.lpReady) throw new Error(fresh.lpError || "组 LP 暂未开放");
         if (!fresh.server.claimable || !fresh.preview || !fresh.server.entitlement) throw new Error("可组 LP 额度尚未就绪，请刷新后重试。");
         const authorization = await requestClaimAuthorization(fresh.server.claimable);
         if (authorization.amount !== fresh.server.claimable || authorization.cumulativeLimit !== fresh.server.entitlement) throw new Error("授权额度已变化，请刷新后重试。");
         const minLiquidity = fresh.preview.estimatedLiquidity * 99n / 100n;
         if (minLiquidity <= 0n) throw new Error("LP 预估数量无效，请刷新后重试。");
-        const hash = await prepareTx.run({ address: contracts.claimPool, abi: claimPoolAbi, functionName: "prepareLiquidity", args: [{ amount: authorization.amount, cumulativeLimit: authorization.cumulativeLimit, nonce: authorization.nonce, deadline: authorization.deadline }, authorization.signature, fresh.preview.usdtRequired, minLiquidity], description: "支付 " + formatAssetAmount(fresh.preview.usdtRequired, fresh.usdtDecimals) + " USDT 并自动组 LP；70% CaBi 在领取开放后到账", approval: { token: fresh.usdt, amount: fresh.preview.usdtRequired } });
+        const hash = await prepareTx.run({ address: contracts.claimPool, abi: claimPoolAbi, functionName: "prepareLiquidity", args: [{ amount: authorization.amount, cumulativeLimit: authorization.cumulativeLimit, nonce: authorization.nonce, deadline: authorization.deadline }, authorization.signature, fresh.preview.usdtRequired, minLiquidity], description: "支付 " + formatAssetAmount(fresh.preview.usdtRequired, fresh.usdtDecimals) + " USDT 并自动组 LP；70% CaBi 在领取开放后到账", approval: { token: fresh.usdt, amount: fresh.preview.usdtRequired }, beforeSend: verifyLiquidityAccess });
         if (hash) { void submitClaimReceipt(authorization.nonce, hash); refreshClaimPoolData(); }
       }
     } catch (cause) { if (active.current) { setError(cause instanceof Error ? cause.message : "领取操作失败，请重试。"); refreshClaimPoolData(); } }
     finally { if (active.current) { operation.current = false; setChecking(false); } }
   }
 
-  const statusTone = !server?.configured ? "gray" : (claimable || preparedOutstanding) ? "green" : "gray";
-  const statusLabel = !server?.configured ? "暂未开放" : canClaimNow ? "可领取" : preparedOutstanding ? "已组 LP" : claimable ? "可组 LP" : "等待额度";
+  const statusTone = preparedOutstanding || (data?.lpReady && server?.configured && claimable) ? "green" : "gray";
+  const statusLabel = canClaimNow ? "可领取" : preparedOutstanding ? "已组 LP" : !data?.lpReady ? "组 LP 未开放" : !server?.configured ? "暂未开放" : claimable ? "可组 LP" : "等待额度";
   const buttonLabel = canClaimNow ? "领取 70% CaBi" : preparedOutstanding ? "等待领取开放" : "确认组 LP";
   return <Card className="p-5 sm:p-6">
     <SectionHead eyebrow="CABI CLAIM" title="组 LP 与领取" desc="先组 LP，开放后领取 CaBi" right={<Badge tone={statusTone}>{statusLabel}</Badge>} />
@@ -119,7 +121,7 @@ function ClaimForm() {
       </>}
     </div>
     {quote && data && preparedOutstanding === 0n ? <p className={styles.hint}>授权金额：{formatAssetAmount(quote.usdtRequired, data.usdtDecimals)} USDT。请在钱包中核对，已有足额授权会自动跳过。</p> : null}
-    {data && !data.lpReady ? <p className="mt-2 text-xs leading-6 text-mute">{data.lpError || "组 LP 暂未开放，请稍后再试。"}</p> : null}
+    {data && !data.lpReady && preparedOutstanding === 0n ? <p className="mt-2 text-xs leading-6 text-mute">{data.lpError || "组 LP 暂未开放，请稍后再试。"}</p> : null}
     {server?.configured && data && data.signer.toLowerCase() !== (server.signer || "").toLowerCase() ? <p className="mt-2 text-xs leading-6 text-down">领取签名服务与链上配置不一致，请联系管理员。</p> : null}
     {!state.connected ? <button onClick={connect} className="btn btn-purple mt-4 min-h-12 w-full px-4 text-sm">连接钱包</button> : null}
     {state.connected && server?.needsSignIn && server.configured ? <button onClick={() => void signIn()} disabled={signingIn} className="btn btn-outline mt-3 min-h-11 w-full text-sm">{signingIn ? "正在登录…" : "登录后查看可领额度"}</button> : null}

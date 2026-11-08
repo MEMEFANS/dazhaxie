@@ -16,12 +16,12 @@ export const claimPoolAbi = parseAbi([
   "function claim()", "function claimPartial(uint256)", "function releaseProjectLp()",
 ]);
 const assetAbi = parseAbi(["function decimals() view returns (uint8)", "function balanceOf(address) view returns (uint256)", "function allowance(address,address) view returns (uint256)", "function maxWalletAmount() view returns (uint256)", "function isMaxWalletExempt(address) view returns (bool)"]);
-const tokenAbi = parseAbi(["function isClaimOpen() view returns (bool)"]);
+const tokenAbi = parseAbi(["function isClaimOpen() view returns (bool)", "function liquidityEnabled() view returns (bool)", "function isTradingOpen() view returns (bool)", "function launchPool() view returns (address)"]);
 export const claimPoolClient = createPublicClient({ chain: appChain, transport: fallback(chainConfig.rpcUrls.map(url => http(url, { timeout: 10_000, retryCount: 0 })), { retryCount: 0 }) });
 export const serviceClient = claimPoolClient;
 export interface ClaimPreview { amount: bigint; payout: bigint; lpTokens: bigint; usdtRequired: bigint; estimatedLiquidity: bigint; }
 export interface ClaimPoolWallet { tokenBalance: bigint; usdtBalance?: bigint; allowance?: bigint; maxWalletAmount: bigint; exempt: boolean; }
-export interface ClaimServerState { configured: boolean; authenticated: boolean; needsSignIn: boolean; claimable?: bigint; entitlement?: bigint; error?: string; signer?: Address; }
+export interface ClaimServerState { configured: boolean; authenticated: boolean; needsSignIn: boolean; liquidityEnabled: boolean; claimable?: bigint; entitlement?: bigint; error?: string; signer?: Address; }
 export interface ClaimPoolData {
   token: Address; usdt: Address; lpReceiver: Address; signer: Address; usdtDecimals: number; tokenDecimals: number;
   poolBalance: bigint; totalPrepared: bigint; totalClaimed: bigint; totalLpTokens: bigint; totalUsdtCharged: bigint;
@@ -39,7 +39,7 @@ async function fetchServerState(): Promise<ClaimServerState> {
   if (!response.ok) throw new ClaimPoolReadError(typeof body.error === "string" ? body.error : "签名服务暂时不可用，请稍后重试。");
   if (typeof body.claimPool === "string" && contracts.claimPool && body.claimPool.toLowerCase() !== contracts.claimPool.toLowerCase()) throw new ClaimPoolReadError("服务器配置的领取池与当前前端不一致，已暂停操作。");
   const configured = Boolean(body.configured && body.claimPool && body.signer);
-  return { configured, authenticated: Boolean(body.authenticated), needsSignIn: !body.authenticated,
+  return { configured, authenticated: Boolean(body.authenticated), needsSignIn: !body.authenticated, liquidityEnabled: body.liquidityEnabled === true,
     claimable: body.claimable == null ? undefined : BigInt(String(body.claimable)), entitlement: body.entitlement == null ? undefined : BigInt(String(body.entitlement)),
     error: typeof body.error === "string" ? body.error : (configured ? undefined : "服务器未配置签名服务，暂时无法领取。"),
     signer: typeof body.signer === "string" && isAddress(body.signer, { strict: false }) ? getAddress(body.signer.toLowerCase()) : undefined };
@@ -54,11 +54,13 @@ export async function fetchClaimPoolData(account?: Address): Promise<ClaimPoolDa
   const read = <T extends Parameters<typeof claimPoolClient.readContract>[0]>(request: T) => claimPoolClient.readContract({ ...request, blockNumber });
   const code = await Promise.all([pool, configuredToken].map(address => claimPoolClient.getCode({ address, blockNumber })));
   if (code.some(value => !value || value === "0x")) throw new ClaimPoolReadError("领取服务尚未就绪。");
-  const [token, usdt, lpReceiver, poolSigner, poolUsdtDecimals, claimOpen] = await Promise.all([
+  const [token, usdt, lpReceiver, poolSigner, poolUsdtDecimals, claimOpen, liquidityEnabled, tradingOpen, launchPool] = await Promise.all([
     read({ address: pool, abi: claimPoolAbi, functionName: "token" }), read({ address: pool, abi: claimPoolAbi, functionName: "usdt" }),
     read({ address: pool, abi: claimPoolAbi, functionName: "lpReceiver" }), read({ address: pool, abi: claimPoolAbi, functionName: "signer" }),
     read({ address: pool, abi: claimPoolAbi, functionName: "usdtDecimals" }), read({ address: configuredToken, abi: tokenAbi, functionName: "isClaimOpen" }),
-  ]) as [Address, Address, Address, Address, number, boolean];
+    read({ address: configuredToken, abi: tokenAbi, functionName: "liquidityEnabled" }), read({ address: configuredToken, abi: tokenAbi, functionName: "isTradingOpen" }),
+    read({ address: configuredToken, abi: tokenAbi, functionName: "launchPool" }),
+  ]) as [Address, Address, Address, Address, number, boolean, boolean, boolean, Address];
   if (token.toLowerCase() !== configuredToken.toLowerCase()) throw new ClaimPoolReadError("领取池代币与 CaBi 配置不一致，已暂停操作。");
   const [tokenDecimals, poolBalance, totalPrepared, totalClaimed, totalLpTokens, totalUsdtCharged, actualBalance] = await Promise.all([
     read({ address: token, abi: assetAbi, functionName: "decimals" }), read({ address: pool, abi: claimPoolAbi, functionName: "poolBalance" }),
@@ -67,11 +69,12 @@ export async function fetchClaimPoolData(account?: Address): Promise<ClaimPoolDa
     read({ address: token, abi: assetAbi, functionName: "balanceOf", args: [pool] }),
   ]) as [number, bigint, bigint, bigint, bigint, bigint, bigint];
   if (tokenDecimals !== 18 || poolBalance !== actualBalance) throw new ClaimPoolReadError("领取规则或储备信息不一致，请稍后重试。");
-  const lpReady = usdt.toLowerCase() !== zeroAddress && lpReceiver.toLowerCase() !== zeroAddress && Boolean(contracts.usdt && usdt.toLowerCase() === contracts.usdt.toLowerCase());
+  const assetsReady = usdt.toLowerCase() !== zeroAddress && lpReceiver.toLowerCase() !== zeroAddress && Boolean(contracts.usdt && usdt.toLowerCase() === contracts.usdt.toLowerCase());
   const server = await fetchServerState();
+  const lpReady = assetsReady && launchPool.toLowerCase() === pool.toLowerCase() && liquidityEnabled && !tradingOpen && server.liquidityEnabled;
   const result: ClaimPoolData = { token, usdt, lpReceiver, signer: poolSigner, usdtDecimals: poolUsdtDecimals, tokenDecimals,
     poolBalance, totalPrepared, totalClaimed, totalLpTokens, totalUsdtCharged, claimOpen, prepared: 0n, claimed: 0n, lpReady, server };
-  if (!lpReady) result.lpError = "USDT 或 LP 接收地址尚未配置，领取暂不可用，请等待管理员完成配置。";
+  if (!lpReady) result.lpError = tradingOpen ? "固定比例组 LP 已结束" : !server.liquidityEnabled ? "组 LP 已暂停，请等待重新开放" : !liquidityEnabled ? "组 LP 尚未开放" : "组 LP 配置尚未就绪，请联系管理员";
   if (!server.configured) result.lpError = result.lpError || "服务器未配置签名服务。";
   if (account) {
     const [balance, allowance, tokenBalance, maxWalletAmount, exempt, prepared, claimed] = await Promise.all([
@@ -83,8 +86,10 @@ export async function fetchClaimPoolData(account?: Address): Promise<ClaimPoolDa
     ]) as [bigint, bigint, bigint, bigint, boolean, bigint, bigint];
     result.wallet = { tokenBalance, usdtBalance: balance, allowance, maxWalletAmount, exempt }; result.prepared = prepared; result.claimed = claimed;
     if (server.claimable !== undefined && server.claimable > 0n && lpReady) {
-      const preview = await read({ address: pool, abi: claimPoolAbi, functionName: "previewPrepare", args: [server.claimable] }) as readonly [bigint, bigint, bigint, bigint];
-      result.preview = { amount: server.claimable, payout: preview[0], lpTokens: preview[1], usdtRequired: preview[2], estimatedLiquidity: preview[3] };
+      try {
+        const preview = await read({ address: pool, abi: claimPoolAbi, functionName: "previewPrepare", args: [server.claimable] }) as readonly [bigint, bigint, bigint, bigint];
+        result.preview = { amount: server.claimable, payout: preview[0], lpTokens: preview[1], usdtRequired: preview[2], estimatedLiquidity: preview[3] };
+      } catch { result.lpReady = false; result.lpError = "组 LP 储备暂不满足条件，请稍后重试"; }
     }
   }
   return result;
@@ -107,6 +112,14 @@ function entryFor(address?: string): Entry {
 }
 export function useClaimPoolData(address?: string): ClaimPoolQuery { const entry = useMemo(() => entryFor(address), [address]); return { ...useSyncExternalStore(entry.subscribe, () => entry.snapshot, () => entry.initial), refresh: entry.refresh }; }
 export function refreshClaimPoolData() { entries.forEach(entry => entry.refresh()); }
+
+export async function verifyLiquidityAccess() {
+  const response = await fetch("/api/liquidity/status", { cache: "no-store" });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.available !== true || body.chainId !== chainConfig.id || body.pool?.toLowerCase() !== contracts.claimPool?.toLowerCase() || body.token?.toLowerCase() !== contracts.token?.toLowerCase()) {
+    throw new Error(typeof body.reason === "string" ? body.reason : "组 LP 状态暂时无法确认，请刷新后重试");
+  }
+}
 
 export async function requestClaimAuthorization(amount: bigint): Promise<{ amount: bigint; cumulativeLimit: bigint; nonce: bigint; deadline: bigint; signature: `0x${string}` }> {
   const response = await fetch("/api/claim/authorization", { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount: amount.toString() }) });

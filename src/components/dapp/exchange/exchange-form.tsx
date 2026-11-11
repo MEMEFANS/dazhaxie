@@ -8,6 +8,8 @@ import { useTokenData } from "@/lib/chain-data";
 import { useContractTransaction, TransactionFeedback } from "@/lib/contract-transactions";
 import { useRedemptionConfig, useRedemptionAccount, redemptionRequest, notifyRedemptionChanged } from "@/lib/redemption-client";
 import type { RedemptionOrder, RedemptionShipping } from "@/lib/redemption";
+import { emptyShipping, readShippingProfile, saveShippingProfile } from "@/lib/shipping-profile";
+import { ShippingAddressPicker } from "@/components/dapp/shipping-address-picker";
 import { EXCHANGE_COST, MAX_EXCHANGE_PER_TIME, fmt, shortAddr } from "@/lib/constants";
 import { formatAssetAmount } from "@/lib/amounts";
 import { Card, DataRow, SectionHead, StatusPill } from "@/components/dapp/ui";
@@ -15,7 +17,6 @@ import { Card, DataRow, SectionHead, StatusPill } from "@/components/dapp/ui";
 // 已转账、待填写收货信息的本机记录：刷新或断网后仍可继续提交，避免重复转账。
 type PendingTransfer = { quantity: number; amount: string; hash: `0x${string}`; at: number; confirmed?: boolean };
 const storageKey = (chainId: number, address: string) => `cabi-exchange-pending:v1:${chainId}:${address.toLowerCase()}`;
-const emptyShipping: RedemptionShipping = { name: "", phone: "", address: "" };
 
 function readPending(key: string): PendingTransfer | null {
   try {
@@ -74,7 +75,7 @@ export default function ExchangeForm() {
     const timer = window.setTimeout(() => {
       const saved = key ? readPending(key) : null;
       setPending(saved?.confirmed === false ? null : saved);
-      setShipping(emptyShipping);
+      setShipping(readShippingProfile() ?? emptyShipping);
       setError("");
       setNotice("");
       requestRef.current = saved?.confirmed === false ? { quantity: saved.quantity, amount: saved.amount } : null;
@@ -140,6 +141,7 @@ export default function ExchangeForm() {
         body: JSON.stringify({ quantity: pending.quantity, shipping, hash: pending.hash }),
       });
       clearPending(expectedKey);
+      saveShippingProfile(shipping);
       notifyRedemptionChanged();
       if (keyRef.current !== expectedKey) return;
       setPending(null);
@@ -202,6 +204,7 @@ export default function ExchangeForm() {
             <p className="text-xs font-medium text-strong">{pending.quantity} 份蟹礼 · 已支付 {formatAssetAmount(BigInt(pending.amount), 18)} CaBi</p>
             <a href={getExplorerTxUrl(pending.hash)} target="_blank" rel="noreferrer" className="shrink-0 text-[11px] text-purple-deep underline">付款记录</a>
           </div>
+          <ShippingAddressPicker value={shipping} onChange={setShipping} disabled={submitting} />
           <label className="block space-y-2 text-xs text-mute"><span>收件人</span><input value={shipping.name} onChange={e => setShipping(s => ({ ...s, name: e.target.value }))} maxLength={60} autoComplete="name" className="field min-h-11 w-full px-3 text-sm" required disabled={submitting} /></label>
           <label className="block space-y-2 text-xs text-mute"><span>联系电话</span><input type="tel" value={shipping.phone} onChange={e => setShipping(s => ({ ...s, phone: e.target.value }))} maxLength={25} autoComplete="tel" className="field min-h-11 w-full px-3 text-sm" required disabled={submitting} /></label>
           <label className="block space-y-2 text-xs text-mute"><span>完整收货地址</span><textarea value={shipping.address} onChange={e => setShipping(s => ({ ...s, address: e.target.value }))} minLength={5} maxLength={500} autoComplete="street-address" rows={3} className="field w-full px-3 py-3 text-sm" required disabled={submitting} /></label>

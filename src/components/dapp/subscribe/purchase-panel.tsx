@@ -8,12 +8,14 @@ import { chainConfig } from "@/lib/chain-config";
 import { copyText } from "@/lib/clipboard";
 import { formatAssetAmount } from "@/lib/amounts";
 import type { RedemptionShipping } from "@/lib/redemption";
+import { readShippingProfile, saveShippingProfile } from "@/lib/shipping-profile";
 import { fetchSubscribeConfig, useSubscribeConfig, useSubscribeOrders, type SubscribeOrderView } from "@/lib/subscribe-data";
 import { fetchReferralData, useReferralData } from "@/lib/referral-data";
 import { useContractTransaction } from "@/lib/contract-transactions";
 import { isUserCancelledError } from "@/lib/transaction-cancellation";
 import { ShareOptions } from "./share-options";
 import { PurchaseSuccess } from "./purchase-success";
+import { ShippingAddressPicker } from "@/components/dapp/shipping-address-picker";
 import { PurchaseRecords } from "./purchase-records";
 import { PurchaseStatus, type PurchaseStatusKind } from "./purchase-status";
 import styles from "./subscribe.module.css";
@@ -76,7 +78,12 @@ function PurchasePanelForm() {
     const timer = window.setTimeout(() => {
       try {
         const saved = shippingKey ? JSON.parse(window.localStorage.getItem(shippingKey) || "null") as Partial<RedemptionShipping> | null : null;
-        setShipping({ name: typeof saved?.name === "string" ? saved.name : "", phone: typeof saved?.phone === "string" ? saved.phone : "", address: typeof saved?.address === "string" ? saved.address : "" });
+        const profile = readShippingProfile();
+        setShipping({
+          name: typeof saved?.name === "string" && saved.name ? saved.name : profile?.name ?? "",
+          phone: typeof saved?.phone === "string" && saved.phone ? saved.phone : profile?.phone ?? "",
+          address: typeof saved?.address === "string" && saved.address ? saved.address : profile?.address ?? "",
+        });
       } catch { setShipping(emptyShipping); }
       shippingLoaded.current = true;
     }, 0);
@@ -268,6 +275,7 @@ function PurchasePanelForm() {
     const value = { name: shipping.name.trim(), phone: shipping.phone.trim(), address: shipping.address.trim() };
     setShippingFeedback(""); setShippingFailed(false);
     if (!validShipping(value)) { setShippingFailed(true); setShippingFeedback("请填写收货人、有效联系电话和完整收货地址。"); return; }
+    saveShippingProfile(value);
     if (!shippingOrder) {
       setShipping(value);
       setShippingFeedback("收货信息已确认，认购成功后会随订单提交。尚未付款时不会安排发货。");
@@ -340,6 +348,7 @@ function PurchasePanelForm() {
         <summary className="cursor-pointer text-sm font-semibold text-strong">蟹礼收货信息 · 可稍后填写</summary>
         <p className="mt-1 text-xs leading-6 text-mute">{shippingOrder ? "填写后点击提交，直接保存到已认购订单，无需再次付款。" : "可先确认收货信息，认购成功后随订单提交；也可付款后在认购记录中补填。"}</p>
         <form onSubmit={event => void submitShipping(event)}>
+        <ShippingAddressPicker value={shipping} onChange={updateShipping} disabled={busy || shippingSaving} />
         {shippingOrders.length > 1 ? <label className="mt-3 block space-y-2 text-xs text-mute"><span>选择收货订单</span><select aria-label="选择收货订单" value={shippingOrder?.id || ""} onChange={event => { setShippingOrderId(event.target.value); setShippingFeedback(""); }} disabled={busy || shippingSaving} className="field min-h-11 w-full px-3 text-sm">{shippingOrders.map(order => <option key={order.id} value={order.id}>{order.shares} 份 · 订单 {order.id.slice(-8)}</option>)}</select></label> : null}
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="block space-y-2 text-xs text-mute"><span>收货人</span><input value={shipping.name} onChange={event => updateShipping({ name: event.target.value })} maxLength={60} autoComplete="name" className="field min-h-11 w-full px-3 text-base sm:text-sm" required disabled={busy || shippingSaving} /></label>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Check, Copy, ExternalLink, Headphones, LoaderCircle } from "lucide-react";
 import { formatAssetAmount } from "@/lib/amounts";
@@ -8,6 +8,8 @@ import { getExplorerTxUrl } from "@/lib/chain-config";
 import { copyText } from "@/lib/clipboard";
 import type { SubscribeOrderView } from "@/lib/subscribe-data";
 import type { RedemptionShipping } from "@/lib/redemption";
+import { readShippingProfile, saveShippingProfile } from "@/lib/shipping-profile";
+import { ShippingAddressPicker } from "@/components/dapp/shipping-address-picker";
 import { afterSalesUrl } from "@/lib/support";
 import styles from "./purchase-records.module.css";
 
@@ -50,6 +52,15 @@ function PurchaseRecord({ order, usdtDecimals, onUpdated }: { order: SubscribeOr
   const explorerUrl = getExplorerTxUrl(order.txHash);
   const shortHash = order.txHash.length > 18 ? `${order.txHash.slice(0, 8)}…${order.txHash.slice(-6)}` : order.txHash;
 
+  // 补填地址时直接带回本机上次填写的收货信息，避免重复输入。
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const profile = readShippingProfile();
+      if (profile) setShipping(profile);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   async function copyHash() {
     setCopyState("copying");
     setCopyState((await copyText(order.txHash)) ? "copied" : "failed");
@@ -71,6 +82,7 @@ function PurchaseRecord({ order, usdtDecimals, onUpdated }: { order: SubscribeOr
       if (!response.ok) throw new Error(body.error || "收货信息提交失败");
       if (body.order?.id !== order.id || !body.order.shipping) throw new Error("提交结果暂未确认，请刷新记录核对。");
       setSavedShipping(body.order.shipping);
+      saveShippingProfile(value);
       onUpdated(body.order);
     } catch (cause) { setShippingError(cause instanceof Error ? cause.message : "收货信息提交失败"); }
     finally { shippingOperation.current = false; setSaving(false); }
@@ -99,6 +111,7 @@ function PurchaseRecord({ order, usdtDecimals, onUpdated }: { order: SubscribeOr
       {currentShipping ? <div className={styles.shippingState}><p role="status">{order.trackingNumber ? `物流：${order.carrier || ""} ${order.trackingNumber}` : "收货信息已提交，待安排发货"}</p><p>{currentShipping.name} · {currentShipping.phone}<br />{currentShipping.address}</p></div> : order.status === "confirmed" ? <details className={styles.shippingDetails}>
         <summary>待补收货信息 <span>填写蟹礼地址</span></summary>
         <form onSubmit={event => void saveShipping(event)} className={styles.shippingForm}>
+          <ShippingAddressPicker value={shipping} onChange={setShipping} disabled={saving} />
           <div className={styles.shippingFields}>
             <label>收货人<input autoComplete="name" value={shipping.name} maxLength={60} required disabled={saving} onChange={event => setShipping(value => ({ ...value, name: event.target.value }))} /></label>
             <label>联系电话<input type="tel" autoComplete="tel" value={shipping.phone} maxLength={25} required disabled={saving} onChange={event => setShipping(value => ({ ...value, phone: event.target.value }))} /></label>

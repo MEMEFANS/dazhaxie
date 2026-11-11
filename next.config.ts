@@ -24,7 +24,13 @@ const nextConfig: NextConfig = {
       // DApp 页面依赖钱包、登录会话和实时额度，禁止复用旧的静态页面壳。
       { source: "/dapp", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
       { source: "/dapp/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
-      ...["/", "/subscribe", "/token", "/promotion", "/team", "/community", "/exchange", "/support", "/liquidity/:path*"].map(source => ({
+      // 展示型页面内容变化不频繁，允许 Cloudflare 边缘短缓存，避免每次进站都跨境回源渲染。
+      ...["/", "/token", "/promotion", "/team", "/community"].map(source => ({
+        source,
+        headers: [{ key: "Cache-Control", value: "public, max-age=0, s-maxage=60, stale-while-revalidate=300" }],
+      })),
+      // 认购、兑换、工单页面含实时额度和用户输入，禁止中间层缓存。
+      ...["/subscribe", "/exchange", "/support", "/liquidity/:path*"].map(source => ({
         source, headers: [{ key: "Cache-Control", value: "private, no-store" }],
       })),
     ];

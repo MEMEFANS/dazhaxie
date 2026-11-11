@@ -3,6 +3,7 @@
 .heading h3 { color: #513363; font-size: 14px; font-weight: 700; line-height: 1.7; }
 .heading > span { color: #796187; font-size: 12px; }
 .list { display: grid; gap: 12px; margin: 15px 0 0; padding: 0; list-style: none; }
+.empty { margin: 12px 0 0; color: #796187; font-size: 12px; line-height: 1.8; }
 .record { min-width: 0; padding: 16px; border: 1px solid #e9dff0; border-radius: 13px; background: #fcf9ff; }
 .recordHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .recordHeading > strong { color: #64447a; font-size: 19px; font-weight: 750; line-height: 1.5; }

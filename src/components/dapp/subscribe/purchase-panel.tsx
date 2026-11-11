@@ -332,6 +332,7 @@ function PurchasePanelForm() {
       </div> : <>
       <ShareOptions value={quantity} onChange={setQuantity} config={data} available={maximum} disabled={busy} />
       <div className={styles.accountStats}><span>已认购 <strong>{data && state.connected ? data.purchased : "—"}</strong> 份</span><span>此钱包还可认购 <strong>{data && state.connected ? remaining : "—"}</strong> 份</span></div>
+      <p className="-mt-1 text-right"><a href="#subscription-records" className="text-xs font-semibold text-purple-deep">查看认购记录与收货地址 →</a></p>
 
       <div className={styles.receipt}>
         <div className={styles.payment}><span>本次支付</span><strong aria-live="polite">{data ? formatAssetAmount(amount, data.usdtDecimals) : "—"}<small>USDT</small></strong></div>
@@ -370,7 +371,7 @@ function PurchasePanelForm() {
       <p className={styles.actionHint}><Wallet size={12} />BSC 网络 · USDT 转账 · 确认后登记认购</p>
       </>}
       {orders.error ? <p role="status" className={styles.feedback}>{orders.error}</p> : null}
-      <PurchaseRecords orders={visibleOrders} usdtDecimals={data?.usdtDecimals} onUpdated={shippingUpdated} />
+      <PurchaseRecords orders={visibleOrders} usdtDecimals={data?.usdtDecimals} onUpdated={shippingUpdated} connected={state.connected} />
     </section>
     {!completed ? <div className={styles.mobileCheckout} data-inline-visible={inlineActionVisible} role="region" aria-label="快捷认购">
       <div className={styles.mobileCheckoutInner}>

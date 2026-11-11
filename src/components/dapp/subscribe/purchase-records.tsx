@@ -17,6 +17,7 @@ type PurchaseRecordsProps = {
   orders: SubscribeOrderView[];
   usdtDecimals?: number;
   onUpdated: (order: SubscribeOrderView) => void;
+  connected: boolean;
 };
 
 function orderStatus(status: string) {
@@ -108,8 +109,8 @@ function PurchaseRecord({ order, usdtDecimals, onUpdated }: { order: SubscribeOr
           {explorerUrl ? <a href={explorerUrl} target="_blank" rel="noopener noreferrer" aria-label={`查看 ${order.shares} 份认购的链上交易（新窗口）`}><span className={styles.explorerText}>链上查看</span><ExternalLink size={14} aria-hidden="true" /></a> : null}
         </div>
       </div>
-      {currentShipping ? <div className={styles.shippingState}><p role="status">{order.trackingNumber ? `物流：${order.carrier || ""} ${order.trackingNumber}` : "收货信息已提交，待安排发货"}</p><p>{currentShipping.name} · {currentShipping.phone}<br />{currentShipping.address}</p></div> : order.status === "confirmed" ? <details className={styles.shippingDetails}>
-        <summary>待补收货信息 <span>填写蟹礼地址</span></summary>
+      {currentShipping ? <div className={styles.shippingState}><p role="status">收货地址{order.trackingNumber ? ` · 物流：${order.carrier || ""} ${order.trackingNumber}` : " · 待安排发货"}</p><p>{currentShipping.name} · {currentShipping.phone}<br />{currentShipping.address}</p></div> : order.status === "confirmed" ? <details className={styles.shippingDetails}>
+        <summary>收货地址未填写 <span>点击补填蟹礼地址</span></summary>
         <form onSubmit={event => void saveShipping(event)} className={styles.shippingForm}>
           <ShippingAddressPicker value={shipping} onChange={setShipping} disabled={saving} />
           <div className={styles.shippingFields}>
@@ -120,7 +121,7 @@ function PurchaseRecord({ order, usdtDecimals, onUpdated }: { order: SubscribeOr
           <button type="submit" disabled={saving}>{saving ? "正在提交…" : "提交收货信息"}</button>
           {shippingError ? <p role="alert" className={styles.shippingError}>{shippingError}</p> : null}
         </form>
-      </details> : null}
+      </details> : <div className={styles.shippingState}><p>收货地址：认购确认后可填写</p></div>}
       <Link href={afterSalesUrl({ type: "subscribe", id: order.id })} className={styles.afterSales}><Headphones size={15} />售后服务<span>物流、地址与商品问题</span></Link>
       {copyState === "copied" ? <p role="status" className={styles.copyFeedback}>完整交易哈希已复制</p> : null}
       {copyState === "failed" ? <div className={styles.copyError}><p role="status">复制失败，请手动复制下方完整哈希。</p><code>{order.txHash}</code></div> : null}
@@ -128,14 +129,15 @@ function PurchaseRecord({ order, usdtDecimals, onUpdated }: { order: SubscribeOr
   );
 }
 
-export function PurchaseRecords({ orders, usdtDecimals, onUpdated }: PurchaseRecordsProps) {
+export function PurchaseRecords({ orders, usdtDecimals, onUpdated, connected }: PurchaseRecordsProps) {
   const titleId = useId();
-  if (!orders.length) return null;
 
   return (
     <section id="subscription-records" className={styles.records} aria-labelledby={titleId}>
-      <div className={styles.heading}><h3 id={titleId}>我的认购记录</h3><span>{orders.length} 笔</span></div>
-      <ol className={styles.list}>{orders.map(order => <PurchaseRecord key={order.id} order={order} usdtDecimals={usdtDecimals} onUpdated={onUpdated} />)}</ol>
+      <div className={styles.heading}><h3 id={titleId}>我的认购记录</h3><span>{connected ? `${orders.length} 笔` : "未登录"}</span></div>
+      {!connected ? <p className={styles.empty}>连接钱包并签名后，显示本钱包的认购记录与收货地址。</p>
+        : !orders.length ? <p className={styles.empty}>暂无认购记录。若已认购过，请先签名登录后刷新本页；新认购完成后会显示在这里。</p>
+        : <ol className={styles.list}>{orders.map(order => <PurchaseRecord key={order.id} order={order} usdtDecimals={usdtDecimals} onUpdated={onUpdated} />)}</ol>}
     </section>
   );
 }

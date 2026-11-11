@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Check, Copy, ExternalLink, Headphones, LoaderCircle } from "lucide-react";
 import { formatAssetAmount } from "@/lib/amounts";
 import { getExplorerTxUrl } from "@/lib/chain-config";
+import { copyText } from "@/lib/clipboard";
 import type { SubscribeOrderView } from "@/lib/subscribe-data";
 import type { RedemptionShipping } from "@/lib/redemption";
 import { afterSalesUrl } from "@/lib/support";
@@ -51,12 +52,7 @@ function PurchaseRecord({ order, usdtDecimals, onUpdated }: { order: SubscribeOr
 
   async function copyHash() {
     setCopyState("copying");
-    try {
-      await navigator.clipboard.writeText(order.txHash);
-      setCopyState("copied");
-    } catch {
-      setCopyState("failed");
-    }
+    setCopyState((await copyText(order.txHash)) ? "copied" : "failed");
   }
 
   async function saveShipping(event: FormEvent<HTMLFormElement>) {

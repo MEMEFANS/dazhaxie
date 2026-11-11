@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useStore } from "@/lib/store";
+import { copyText } from "@/lib/clipboard";
 import styles from "./ui.module.css";
 
 /* ---------- 页面骨架：统一内容栅格（最大 960px，区块间距 24px） ---------- */
@@ -543,7 +544,7 @@ export function CopyButton({
     e.preventDefault();
     e.stopPropagation();
     try {
-      await navigator.clipboard.writeText(value);
+      if (!(await copyText(value))) throw new Error("copy failed");
       setCopied(true);
       showToast("已复制到剪贴板");
       window.setTimeout(() => setCopied(false), 1600);

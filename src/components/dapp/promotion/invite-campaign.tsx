@@ -7,6 +7,7 @@ import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import { useStore } from "@/lib/store";
 import { useReferralData } from "@/lib/referral-data";
+import { copyText } from "@/lib/clipboard";
 import styles from "./invite-campaign.module.css";
 
 export function InviteCampaign() {
@@ -28,11 +29,10 @@ export function InviteCampaign() {
 
   async function copy(value: string, type: "code" | "link") {
     if (!value) return;
-    try {
-      await navigator.clipboard.writeText(value);
+    if (await copyText(value)) {
       setCopied(type);
       showToast("复制成功");
-    } catch {
+    } else {
       showToast("复制失败，请长按文字手动复制");
     }
   }

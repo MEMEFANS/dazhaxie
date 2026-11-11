@@ -5,6 +5,7 @@ import { erc20Abi, parseUnits } from "viem";
 import { ArrowRight, Check, ChevronDown, Coins, Copy, ShoppingBag, Wallet } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { chainConfig } from "@/lib/chain-config";
+import { copyText } from "@/lib/clipboard";
 import { formatAssetAmount } from "@/lib/amounts";
 import type { RedemptionShipping } from "@/lib/redemption";
 import { fetchSubscribeConfig, useSubscribeConfig, useSubscribeOrders, type SubscribeOrderView } from "@/lib/subscribe-data";
@@ -243,7 +244,7 @@ function PurchasePanelForm() {
 
   async function copyPayee() {
     if (!data?.payee) return;
-    try { await navigator.clipboard.writeText(data.payee); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { /* Clipboard may require a secure context. */ }
+    if (await copyText(data.payee)) { setCopied(true); window.setTimeout(() => setCopied(false), 1500); }
   }
 
   const visibleOrders = orders.orders.map(order => ({ ...order, shipping: order.shipping || savedShippingOrders[order.id] }));

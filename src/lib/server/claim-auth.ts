@@ -44,7 +44,10 @@ export const claimPoolAbi = parseAbi([
   "function totalUsdtCharged() view returns (uint256)",
   "event LiquidityPrepared(address indexed user, uint256 amount, uint256 payout, uint256 lpTokens, uint256 usdtPaid, uint256 liquidity, uint256 nonce)",
 ]);
-const tokenAbi = parseAbi(["function owner() view returns (address)"]);
+const tokenAbi = parseAbi([
+  "function owner() view returns (address)",
+  "function tradingPair() view returns (address)",
+]);
 const erc20Abi = parseAbi([
   "function balanceOf(address) view returns (uint256)",
 ]);
@@ -266,7 +269,7 @@ export interface ClaimPoolOverview {
   pool: Address | null;
   error?: string;
   chain?: {
-    owner: Address; signer: Address; usdt: Address; lpReceiver: Address; usdtDecimals: number;
+    owner: Address; pair: Address; signer: Address; usdt: Address; lpReceiver: Address; usdtDecimals: number;
     poolBalance: string; totalClaimed: string; totalLpTokens: string; totalUsdtCharged: string;
     allocatedUnclaimed: string; unusedBalance: string;
     lpReady: boolean;
@@ -288,8 +291,10 @@ export async function claimPoolOverview(): Promise<ClaimPoolOverview> {
 
   const visible = rows.slice(0, 200);
   try {
+    const token = await claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "token" });
     const chain = await Promise.all([
-      claimPoolClient.readContract({ address: await claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "token" }), abi: tokenAbi, functionName: "owner" }),
+      claimPoolClient.readContract({ address: token, abi: tokenAbi, functionName: "owner" }),
+      claimPoolClient.readContract({ address: token, abi: tokenAbi, functionName: "tradingPair" }),
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "signer" }),
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "usdt" }),
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "lpReceiver" }),
@@ -299,8 +304,8 @@ export async function claimPoolOverview(): Promise<ClaimPoolOverview> {
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "totalClaimed" }),
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "totalLpTokens" }),
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "totalUsdtCharged" }),
-    ]) as [Address, Address, Address, Address, number, bigint, bigint, bigint, bigint, bigint];
-    const [owner, chainSigner, usdt, lpReceiver, usdtDecimals, poolBalance, totalPrepared, totalClaimed, totalLpTokens, totalUsdtCharged] = chain;
+    ]) as [Address, Address, Address, Address, Address, number, bigint, bigint, bigint, bigint, bigint];
+    const [owner, pair, chainSigner, usdt, lpReceiver, usdtDecimals, poolBalance, totalPrepared, totalClaimed, totalLpTokens, totalUsdtCharged] = chain;
     const claimedAmounts = await Promise.all(visible.map(row =>
       claimPoolClient.readContract({ address: pool, abi: claimPoolAbi, functionName: "preparedOf", args: [row.address as Address] }).catch(() => 0n) as Promise<bigint>
     ));
@@ -314,7 +319,7 @@ export async function claimPoolOverview(): Promise<ClaimPoolOverview> {
     return {
       mode: "signed", pool,
       chain: {
-        owner, signer: chainSigner, usdt, lpReceiver, usdtDecimals: Number(usdtDecimals),
+        owner, pair, signer: chainSigner, usdt, lpReceiver, usdtDecimals: Number(usdtDecimals),
         poolBalance: String(poolBalance), totalClaimed: String(totalClaimed),
         totalLpTokens: String(totalLpTokens), totalUsdtCharged: String(totalUsdtCharged),
         allocatedUnclaimed: String(totalPrepared), unusedBalance: String(poolBalance > totalPrepared ? poolBalance - totalPrepared : 0n),

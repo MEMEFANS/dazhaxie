@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { useReferralData } from "@/lib/referral-data";
 import type { PromotionStats } from "@/lib/subscribe-data";
+import { copyText } from "@/lib/clipboard";
 import { TEAM_TIERS, fmt, teamTierIndex } from "@/lib/constants";
 import { Card } from "@/components/dapp/ui";
 
@@ -28,8 +29,8 @@ export function TeamHero({ stats }: { stats?: PromotionStats }) {
 
   async function copyLink() {
     if (!link) return;
-    try { await navigator.clipboard.writeText(link); setCopied(true); showToast("邀请链接已复制"); }
-    catch { showToast("复制失败，请长按手动复制"); }
+    if (await copyText(link)) { setCopied(true); showToast("邀请链接已复制"); }
+    else showToast("复制失败，请长按手动复制");
   }
 
   return <div className="space-y-4">

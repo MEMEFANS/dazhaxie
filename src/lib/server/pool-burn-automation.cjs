@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Shared by the server-only API and Node 24 worker. */
-const { DatabaseSync } = require('node:sqlite');
+// Turbopack 无法把 node:sqlite 作为 commonjs 外部依赖处理；经 createRequire 在运行时加载 Node 24 内置模块。
+const { DatabaseSync } = require('node:module').createRequire(__filename)('node:sqlite');
 const { mkdirSync } = require('node:fs');
 const path = require('node:path');
 const { homedir } = require('node:os');

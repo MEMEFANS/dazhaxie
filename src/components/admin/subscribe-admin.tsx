@@ -12,7 +12,7 @@ interface ClaimPoolResponse {
   mode: "signed" | "legacy" | "unconfigured" | "error";
   pool: string | null; error?: string;
   chain?: {
-    owner: string; signer: string; usdt: string; lpReceiver: string; usdtDecimals: number;
+    owner: string; pair: string; signer: string; usdt: string; lpReceiver: string; usdtDecimals: number;
     poolBalance: string; totalClaimed: string; totalLpTokens: string; totalUsdtCharged: string;
     allocatedUnclaimed: string; unusedBalance: string; lpReady: boolean;
   };
@@ -178,7 +178,7 @@ export default function SubscribeAdmin() {
         <DataRow label="用户已支付 USDT 累计" value={formatAssetAmount(BigInt(pool.chain.totalUsdtCharged), pool.chain.usdtDecimals) + " USDT"} />
         <DataRow label="待领额度（服务器聚合）" value={formatAssetAmount(BigInt(pool.entitlements.outstanding), 18) + " CaBi / " + pool.entitlements.addresses + " 个地址"} />
         <DataRow label="领取规则" value="支付 30% USDT，30% CaBi 自动进 LP，领取开放后到账 70%" />
-        <DataRow label="LP 接收地址" value={pool.chain.lpReady ? pool.chain.lpReceiver : "未配置（领取不可用）"} />
+        <DataRow label="LP加池合约" value={pool.chain.pair} />
         <DataRow label="USDT" value={pool.chain.usdt || "—"} />
         <DataRow label="代币 owner" value={pool.chain.owner} />
         <DataRow label="链上 signer" value={pool.chain.signer} />

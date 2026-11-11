@@ -163,7 +163,7 @@ async function click(element, wait = 24) {
 
     ordersQuery.orders = [{ id: 'o1', shares: 1, amount: '50000000', txHash: hash, status: 'confirmed', createdAt: Date.now() }];
     await render();
-    const shippingDetails = Array.from(document.querySelectorAll('summary')).find(item => item.textContent.includes('待补收货信息'));
+    const shippingDetails = Array.from(document.querySelectorAll('summary')).find(item => item.textContent.includes('收货地址未填写'));
     assert(shippingDetails, 'missing shipping editor');
     await click(shippingDetails);
     await React.act(async () => {
@@ -177,7 +177,7 @@ async function click(element, wait = 24) {
     await React.act(async () => { shippingForm.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await pause(30); });
     assert.equal(requests.at(-1).init.method, 'PATCH');
     assert.equal(JSON.parse(requests.at(-1).init.body).id, 'o1');
-    assert(document.body.textContent.includes('收货信息已提交，待安排发货'));
+    assert(document.body.textContent.includes('收货地址 · 待安排发货'));
     assert(document.body.textContent.includes('蟹礼收货信息已保存'));
     assert(document.querySelector('a[href*="category=after-sales"][href*="order=o1"]'));
     pass('confirmed orders can add shipping later without another payment');
@@ -195,7 +195,7 @@ async function click(element, wait = 24) {
     assert.equal(writes.length, 0);
     assert(requests.every(request => request.init.method === 'PATCH'));
     assert(document.body.textContent.includes('收货信息提交成功'));
-    assert(document.body.textContent.includes('收货信息已提交，待安排发货'));
+    assert(document.body.textContent.includes('收货地址 · 待安排发货'));
     pass('upper shipping form submits to an existing order, keeps input on failure and updates the receipt on retry');
 
     await reset(); await fillShipping();

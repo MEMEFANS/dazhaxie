@@ -119,16 +119,16 @@ function PurchasePanelForm() {
       body: JSON.stringify({ shares, hash, ...(validShipping(shippingInfo) ? { shipping: shippingInfo } : {}) }),
     });
   }
-  function reportServerResult(response: Response, body: { error?: string; order?: { shipping?: RedemptionShipping } }, purchase: PurchaseSnapshot) {
-    if (response.status === 202) { setServerState("verifying"); setServerMessage(body.error || "转账确认中，请稍后点击重新查询。"); return false; }
-    if (!response.ok) { setServerState("failed"); setServerMessage(body.error || "暂未完成认购登记，请查询本次结果，无需再次支付。"); return false; }
+  function reportServerResult(response: Response, body: { error?: string; order?: { shipping?: RedemptionShipping } }, purchase: PurchaseSnapshot): "done" | "retry" | "stop" {
+    if (response.status === 202) { setServerState("verifying"); setServerMessage(body.error || "转账确认中，正在自动补登记，请勿重复支付。"); return "retry"; }
+    if (!response.ok) { setServerState("failed"); setServerMessage(body.error || "暂未完成认购登记，请查询本次结果，无需再次支付。"); return response.status >= 500 ? "retry" : "stop"; }
     setServerState("success"); setServerMessage(""); setCompleted({ ...purchase, shipping: body.order?.shipping || emptyShipping }); setPending(null);
     tx.acknowledge(purchase.hash);
     window.dispatchEvent(new Event("cabi-subscription-updated"));
     window.dispatchEvent(new Event("cabi-chain-updated"));
     try { if (registrationKey) window.localStorage.removeItem(registrationKey); } catch { /* Local recovery is optional. */ }
     setQuantity(Math.max(1, data?.minShares ?? 1)); void query.refresh(); orders.refresh();
-    return true;
+    return "done";
   }
 
   useEffect(() => {
@@ -212,18 +212,37 @@ function PurchasePanelForm() {
     }
   }
 
-  async function recheck() {
-    if (!pending || checking || operation.current) return;
+  async function recheck(): Promise<"done" | "retry" | "stop" | "busy"> {
+    if (!pending || checking || operation.current) return "busy";
     operation.current = true; setChecking(true); setError("");
     try {
       const response = await verifyOnServer(pending.hash, pending.shares, pending.shipping);
       const body = await response.json().catch(() => ({}));
-      if (!mounted.current) return;
-      reportServerResult(response, body, pending);
+      if (!mounted.current) return "busy";
+      return reportServerResult(response, body, pending);
     } catch (cause) {
       if (mounted.current) { setServerState("failed"); setServerMessage(cause instanceof Error ? cause.message : "重新核验失败，请稍后重试"); }
+      return "retry";
     } finally { operation.current = false; if (mounted.current) setChecking(false); }
   }
+
+  // 付款后登记若因确认延迟或网络抖动失败，自动重试；用户下次打开本页也会自动补查。
+  const recheckRef = useRef(recheck);
+  useEffect(() => { recheckRef.current = recheck; });
+  useEffect(() => {
+    if (!pending) return;
+    let cancelled = false;
+    (async () => {
+      for (const delay of [4000, 6000, 12000, 25000, 45000, 90000]) {
+        if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+        if (cancelled || !mounted.current) return;
+        const outcome = await recheckRef.current();
+        if (outcome === "done" || outcome === "stop") return;
+      }
+      if (!cancelled && mounted.current) setServerMessage("登记尚未完成，稍后重新打开本页会自动继续查询；请勿重复支付。");
+    })();
+    return () => { cancelled = true; };
+  }, [pending?.hash]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function resumeTransfer() {
     if (checking || resuming || operation.current) return;

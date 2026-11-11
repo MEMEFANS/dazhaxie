@@ -27,7 +27,16 @@ export async function POST(request: Request) {
       return Response.json({ order: existing }, { headers: { "Cache-Control": "no-store" } });
     }
     const shipping = body.shipping == null ? undefined : parseShipping(body.shipping);
-    const amount = await verifySubscriptionTransfer({ address: user.address, hash: body.hash, shares });
+    let amount: bigint;
+    try {
+      amount = await verifySubscriptionTransfer({ address: user.address, hash: body.hash, shares });
+    } catch (error) {
+      // 链上已广播但确认未完成时，服务端继续在后台补登记：即使用户关掉页面，记录也会补上。
+      if (error instanceof AdminRequestError && error.status === 202) {
+        registerInBackground({ address: user.address, chainId: user.chainId, shares, txHash: body.hash, shipping });
+      }
+      throw error;
+    }
     const order = createSubscriptionOrder({
       address: user.address, shares, amount, txHash: body.hash,
       shipping,
@@ -44,6 +53,31 @@ export async function PATCH(request: Request) {
     const order = saveSubscriptionShipping(body.id, user.address, parseShipping(body.shipping));
     return Response.json({ order }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return adminErrorResponse(error); }
+}
+
+// 链上已转账但确认延迟时，在服务端继续补登记；用户关闭页面也能补上记录，同一哈希只跑一个任务。
+const pendingRegistrations = ((globalThis as { __cabiSubscriptionRegistrations?: Set<string> }).__cabiSubscriptionRegistrations ??= new Set<string>());
+
+function registerInBackground(input: { address: string; chainId: 56 | 97; shares: number; txHash: string; shipping?: { name: string; phone: string; address: string } }) {
+  const key = input.txHash.toLowerCase();
+  if (pendingRegistrations.has(key)) return;
+  pendingRegistrations.add(key);
+  let attempts = 0;
+  const attempt = async () => {
+    attempts += 1;
+    try {
+      if (subscriptionOrderByHash(input.txHash, input.chainId)) { pendingRegistrations.delete(key); return; }
+      const amount = await verifySubscriptionTransfer({ address: input.address, hash: input.txHash, shares: input.shares });
+      createSubscriptionOrder({ address: input.address, shares: input.shares, amount, txHash: input.txHash, shipping: input.shipping });
+      pendingRegistrations.delete(key);
+    } catch (error) {
+      const status = error instanceof AdminRequestError ? error.status : 0;
+      const retryable = status === 202 || status === 0 || status >= 500;
+      if (!retryable || attempts >= 30) { pendingRegistrations.delete(key); return; }
+      setTimeout(() => { void attempt(); }, 10_000);
+    }
+  };
+  setTimeout(() => { void attempt(); }, 8_000);
 }
 
 function parseShipping(value: unknown) {
